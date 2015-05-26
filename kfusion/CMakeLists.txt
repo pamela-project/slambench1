@@ -52,6 +52,7 @@ add_version(${appname} openmp "-fopenmp" "-fopenmp")
  #  ----------------- OCL VERSION ----------------- 
  
 if (OPENCL_FOUND) 
+MESSAGE(Found OpenCL!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!)
    include_directories(${OPENCL_INCLUDE_DIRS})
     add_library(${appname}-opencl  src/opencl/kernels.cpp src/opencl/common_opencl.cpp)
     target_link_libraries(${appname}-opencl   ${common_libraries} ${OPENCL_LIBRARIES})	
@@ -73,6 +74,12 @@ set(kfusion_cuda_srcs
     add_version(${appname} cuda    "" "")
 
 endif(CUDA_FOUND)
+
+ #  ----------------- SYCL VERSION ----------------- 
+
+if (SYCL_FOUND)
+MESSAGE(Found SYCL!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!)
+endif(SYCL_FOUND)
 
 #  ----------------- thirdparty ----------------- 
 
