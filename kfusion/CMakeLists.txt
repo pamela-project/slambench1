@@ -78,7 +78,11 @@ endif(CUDA_FOUND)
  #  ----------------- SYCL VERSION ----------------- 
 
 if (SYCL_FOUND)
-add_library(${appname}-sycl  src/sycl/kernels.cpp)
+set(kfusion_sycl_srcs
+  src/sycl/kernels.cpp
+) # Also add SYCL/sycl.hpp here?
+#add_library(${appname}-sycl  src/sycl/kernels.cpp)
+sycl_add_library(${appname}-sycl  src/sycl/kernels.cpp)
 target_link_libraries(${appname}-sycl   ${common_libraries})	
 add_version(${appname} sycl "" "")
 endif(SYCL_FOUND)
