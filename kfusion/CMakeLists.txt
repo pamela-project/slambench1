@@ -78,7 +78,9 @@ endif(CUDA_FOUND)
  #  ----------------- SYCL VERSION ----------------- 
 
 if (SYCL_FOUND)
-# MESSAGE(Found SYCL)
+add_library(${appname}-sycl  src/sycl/kernels.cpp)
+target_link_libraries(${appname}-sycl   ${common_libraries})	
+add_version(${appname} sycl "" "")
 endif(SYCL_FOUND)
 
 #  ----------------- thirdparty ----------------- 
