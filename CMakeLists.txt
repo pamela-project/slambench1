@@ -1,5 +1,9 @@
 cmake_minimum_required(VERSION 2.8)
 
+if    (SYCL_BUILD)
+  set(CMAKE_CXX_COMPILER syclone) # Must come before project()
+endif (SYCL_BUILD)
+
 project(pamela_testcases)
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
@@ -113,6 +117,12 @@ endif(APPLE)
 endfunction()
 
 
-add_subdirectory( kfusion )
+if    (SYCL_BUILD)
+  message(ok 1)
+  add_subdirectory( kfusion/sycl_cmake )
+else  (SYCL_BUILD)
+  message(ok 2)
+  add_subdirectory( kfusion )
+endif (SYCL_BUILD)
 
 

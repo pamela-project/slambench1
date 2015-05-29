@@ -1,12 +1,12 @@
 
-find_path(SYCL_DRIVER_SCRIPT syclone)  # Ensure syclone exe script is in PATH
+find_path(SYCL_CC syclone)  # Ensure syclone exe script is in PATH
 
-if    (SYCL_DRIVER_SCRIPT)
+if    (SYCL_CC)
   set (SYCL_FOUND TRUE)
-endif (SYCL_DRIVER_SCRIPT)
+endif (SYCL_CC)
 
 if    (SYCL_FOUND)
-  message ("-- Found SYCL driver: ${SYCL_DRIVER_SCRIPT}/syclone")
+  message ("-- Found SYCL driver: ${SYCL_CC}/syclone")
 else  (SYCL_FOUND)
-  message ("-- Could NOT find SYCL driver (missing: SYCL_DRIVER_SCRIPT)")
+  message ("-- Could NOT find SYCL exe driver script (missing: SYCL_CC)")
 endif (SYCL_FOUND)

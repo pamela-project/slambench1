@@ -75,18 +75,6 @@ set(kfusion_cuda_srcs
 
 endif(CUDA_FOUND)
 
- #  ----------------- SYCL VERSION ----------------- 
-
-if (SYCL_FOUND)
-#  COMMAND syclone src/sycl/kernels.cpp
-message("SYCL was found.")
-add_custom_target(
-  ${appname}-sycl
-  COMMAND echo "jambo!"
-)
-add_version(${appname} sycl "" "")
-endif(SYCL_FOUND)
-
 #  ----------------- thirdparty ----------------- 
 
 add_subdirectory( thirdparty    )
