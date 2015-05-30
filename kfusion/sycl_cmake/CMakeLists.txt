@@ -16,7 +16,7 @@ find_package(Qt5Gui)
 find_package(Qt5OpenGL)
 find_package(Qt5PrintSupport)
 
-include_directories(./include ${TOON_INCLUDE_PATHS} ../thirdparty)
+include_directories(../include ${TOON_INCLUDE_PATHS} ../thirdparty)
 
 
  # ---- PREPARE COMMON DEPENDENCIES  ------------ 
@@ -34,5 +34,5 @@ set(common_compile_flags "")
 message("SYCL was found: ${SYCL_CC}/syclone")
 add_library(${appname}-sycl  ../src/sycl/kernels.cpp)
 target_link_libraries(${appname}-sycl   ${common_libraries})	
-add_version(${appname} sycl "" "")
+add_version(${appname} sycl "" "") # Paths 
 

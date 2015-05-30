@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 2.8)
 
 if    (SYCL_BUILD)
-  set(CMAKE_CXX_COMPILER syclone) # Must come before project()
+  set(CMAKE_CXX_COMPILER clang) # Must come before project()
 endif (SYCL_BUILD)
 
 project(pamela_testcases)
@@ -119,7 +119,8 @@ endfunction()
 
 if    (SYCL_BUILD)
   message(ok 1)
-  add_subdirectory( kfusion/sycl_cmake )
+  add_subdirectory( kfusion/sycl_cmake ) # Can this *not* use CMakeLists.txt
+#  include( kfusion/sycl_cmake/CMakeLists.txt )
 else  (SYCL_BUILD)
   message(ok 2)
   add_subdirectory( kfusion )
