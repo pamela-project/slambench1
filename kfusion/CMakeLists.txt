@@ -35,6 +35,15 @@ endif(APPLE)
 
 set(common_compile_flags "")
 
+if    (SYCL_BUILD)
+
+ # ----------------- SYCL VERSION ----------------- 
+message("SYCL was found: ${SYCL_CC}/syclone")
+add_library(${appname}-sycl  src/sycl/kernels.cpp)
+target_link_libraries(${appname}-sycl   ${common_libraries})	
+add_version(${appname} sycl "" "") # Paths 
+
+else  (SYCL_BUILD)
 
  # ----------------- CPP VERSION ----------------- 
 
@@ -79,4 +88,4 @@ endif(CUDA_FOUND)
 
 add_subdirectory( thirdparty    )
 
-
+endif (SYCL_BUILD)
