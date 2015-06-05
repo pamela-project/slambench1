@@ -38,7 +38,7 @@ set(common_compile_flags "")
 if    (SYCL_BUILD)
 
  # ----------------- SYCL VERSION ----------------- 
-message("SYCL was found: ${SYCL_CC}/syclone")
+message("SYCL was found: ${SYCL_CC_PATH}/syclcc")
 add_library(${appname}-sycl  src/sycl/kernels.cpp)
 target_link_libraries(${appname}-sycl   ${common_libraries})	
 add_version(${appname} sycl "" "") # Paths 

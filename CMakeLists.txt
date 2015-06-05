@@ -1,9 +1,13 @@
 cmake_minimum_required(VERSION 2.8)
 
-if    (SYCL_BUILD)
-  message(This is a SYCL build.)
-  set(CMAKE_CXX_COMPILER syclone) # Must come before project()
-endif (SYCL_BUILD)
+if     ("$ENV{CXX}" STREQUAL "syclcc")
+  set(SYCL_BUILD TRUE)
+  message("Building for SYCL.")
+elseif ("$ENV{CXX}" STREQUAL "g++")
+  message("Building for g++.")
+elseif ("$ENV{CXX}" STREQUAL "clang++")
+  message("Building for clang++.")
+endif()
 
 project(pamela_testcases)
 
