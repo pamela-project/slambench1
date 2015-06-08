@@ -6,6 +6,7 @@
  This code is licensed under the MIT License.
 
  */
+#include <SYCL/sycl.hpp>
 #include <kernels.h>
 
 #ifdef __APPLE__
