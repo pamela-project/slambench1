@@ -70,6 +70,8 @@ void Kfusion::languageSpecificConstructor() {
 	if (getenv("KERNEL_TIMINGS"))
 		print_kernel_timing = true;
 
+  cl::sycl::queue q;
+
 	// internal buffers to initialize
 	reductionoutput = (float*) calloc(sizeof(float) * 8 * 32, 1);
 
