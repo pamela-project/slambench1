@@ -55,6 +55,11 @@ Matrix4 raycastPose;
 float3 ** inputVertex;
 float3 ** inputNormal;
 
+// sycl specific
+cl::sycl::queue q;
+uint2 computationSizeBkp = make_uint2(0, 0);
+//cl::sycl::buffer<ushort,1> *ocl_depth_buffer = NULL; // cl_mem ocl_depth_buffer
+
 bool print_kernel_timing = false;
 #ifdef __APPLE__
 	clock_serv_t cclock;
@@ -70,8 +75,6 @@ void Kfusion::languageSpecificConstructor() {
 	if (getenv("KERNEL_TIMINGS"))
 		print_kernel_timing = true;
 
-  cl::sycl::queue q;
-
 	// internal buffers to initialize
 	reductionoutput = (float*) calloc(sizeof(float) * 8 * 32, 1);
 
@@ -81,7 +84,6 @@ void Kfusion::languageSpecificConstructor() {
 
 	for (unsigned int i = 0; i < iterations.size(); ++i) {
 		ScaledDepth[i] = (float*) calloc(
-				sizeof(float) * (computationSize.x * computationSize.y)
 						/ (int) pow(2, i), 1);
 		inputVertex[i] = (float3*) calloc(
 				sizeof(float3) * (computationSize.x * computationSize.y)
@@ -914,9 +916,74 @@ void renderVolumeKernel(uchar4* out, const uint2 depthSize, const Volume volume,
 
 bool Kfusion::preprocessing(const ushort * inputDepth, const uint2 inputSize) {
 
-	mm2metersKernel(floatDepth, computationSize, inputDepth, inputSize);
-	bilateralFilterKernel(ScaledDepth[0], floatDepth, computationSize, gaussian,
-			e_delta, radius);
+	// bilateral_filter(ScaledDepth[0], inputDepth, inputSize , gaussian, e_delta, radius);
+	uint2 outSize = computationSize;
+
+	// Check for unsupported conditions
+	if ((inSize.x < outSize.x) || (inSize.y < outSize.y)) {
+		std::cerr << "Invalid ratio." << std::endl;
+		exit(1);
+	}
+	if ((inSize.x % outSize.x != 0) || (inSize.y % outSize.y != 0)) {
+		std::cerr << "Invalid ratio." << std::endl;
+		exit(1);
+	}
+	if ((inSize.x / outSize.x != inSize.y / outSize.y)) {
+		std::cerr << "Invalid ratio." << std::endl;
+		exit(1);
+	}
+
+	int ratio = inSize.x / outSize.x;
+
+  // where is computationSizeBkp used?
+	if (computationSizeBkp.x < inSize.x|| computationSizeBkp.y < inSize.y || ocl_depth_buffer == NULL) {
+		computationSizeBkp = make_uint2(inSize.x, inSize.y);
+    delete ocl_depth_buffer;
+		ocl_depth_buffer = clCreateBuffer(context, CL_MEM_READ_WRITE,
+				inSize.x * inSize.y * sizeof(uint16_t), NULL, &clError);
+    ocl_depth_buffer = new cl::sycl::buffer<ushort,1>(
+				inSize.x * inSize.y * sizeof(uint16_t));
+		checkErr(clError, "clCreateBuffer input");
+	}
+	clError = clEnqueueWriteBuffer(commandQueue, ocl_depth_buffer, CL_FALSE, 0,
+			inSize.x * inSize.y * sizeof(uint16_t), inputDepth, 0, NULL, NULL);
+	checkErr(clError, "clEnqueueWriteBuffer");
+
+  // vi -p ../kfusion/src/sycl/kernels.cpp ~/projects/sycl-snippets/no_cmake/hello_sycl.cpp ../kfusion/src/benchmark.cpp ../kfusion/src/opencl/*.*
+
+  {
+    using namespace cl::sycl;
+    const auto  in_size = inSize.x * inSize.y * sizeof(uint16_t);
+    const auto out_size = sizeof(float) * computationSize.x * computationSize.y;
+    buffer<ushort,1> ocl_depth_buffer(inputDepth, in_size);
+    buffer< float,1> olc_FloatDepth(out_size);
+    q.submit([&](handler &cgh) {
+
+      auto in    = ocl_depth_buffer.get_access<access::read_write>(cgh);
+      auto depth =   ocl_FloatDepth.get_access<access::read_write>(cgh);
+
+      auto ndr   = nd_range<2>({outSize.x,outSize.y},{1,1});
+      cgh.parallel_for<class X>(ndr, [=](nd_item<2> ix) {
+        uint2 pixel = (uint2) (ix.get_global_id(0),ix.get_global_id(1));
+        depth[pixel.x + depthSize.x * pixel.y] =
+           in[pixel.x * ratio + inSize.x * pixel.y * ratio] / 1000.0f;
+      });
+    }
+  }
+/*__kernel void mm2metersKernel(
+		__global float * depth,
+		const uint2 depthSize ,
+		const __global ushort * in ,
+		const uint2 inSize ,
+		const int ratio ) {
+	uint2 pixel = (uint2) (get_global_id(0),get_global_id(1));
+	depth[pixel.x + depthSize.x * pixel.y] = in[pixel.x * ratio + inSize.x * pixel.y * ratio] / 1000.0f;
+}
+*/
+
+//	mm2metersKernel(floatDepth, computationSize, inputDepth, inputSize);
+//	bilateralFilterKernel(ScaledDepth[0], floatDepth, computationSize, gaussian,
+//			e_delta, radius);
 
 	return true;
 }
