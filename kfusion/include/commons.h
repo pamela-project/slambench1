@@ -31,7 +31,7 @@
 #include <iterator>
 
 // Internal dependencies
-#include <default_parameters.h>
+#include <default_parameters.h> // (CUDA) includes vector_types.h + cutil_math.h
 #ifndef CUDA
 #include <vector_types.h>
 #include <cutil_math.h>
