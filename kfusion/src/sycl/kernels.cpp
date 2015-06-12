@@ -956,9 +956,15 @@ bool Kfusion::preprocessing(const uint16_t * inputDepth, const uint2 inSize) {
     using namespace cl::sycl;
     const range<1>  in_size{sizeof(uint16_t)*inSize.x*inSize.y};
     const range<1> out_size{sizeof(float)*computationSize.x*computationSize.y};
-    buffer<ushort,1> ocl_depth_buffer(inputDepth, in_size); // used elsewhere?
-    buffer< float,1> ocl_FloatDepth(out_size);
-    q.submit([&](handler &cgh) {
+    //buffer<ushort,1> ocl_depth_buffer(inputDepth, in_size); // used elsewhere?
+    const range<1> sz{64};
+//    const ushort *pp = new const ushort[sizeof(uint16_t)*inSize.x*inSize.y]{};
+    const ushort *pp = inputDepth;
+    printf("size:   %d\n", sizeof(uint16_t)*inSize.x*inSize.y);
+
+    buffer<ushort,1> test(pp, in_size); // used elsewhere?
+    //buffer< float,1> ocl_FloatDepth(out_size);
+    /*q.submit([&](handler &cgh) {
 
       auto in    = ocl_depth_buffer.get_access<access::read_write>(cgh);
       auto depth =   ocl_FloatDepth.get_access<access::read_write>(cgh);
@@ -972,7 +978,7 @@ bool Kfusion::preprocessing(const uint16_t * inputDepth, const uint2 inSize) {
 //        depth[pixel.x + depthSize.x * pixel.y] =
 //           in[pixel.x * ratio + inSize.x * pixel.y * ratio] / 1000.0f;
       });
-    });
+    });*/
   }
 /*__kernel void mm2metersKernel(
 		__global float * depth,
@@ -986,8 +992,10 @@ bool Kfusion::preprocessing(const uint16_t * inputDepth, const uint2 inSize) {
 */
 
 //	mm2metersKernel(floatDepth, computationSize, inputDepth, inputSize);
+  printf("printf works at least.\n");
 	bilateralFilterKernel(ScaledDepth[0], floatDepth, computationSize, gaussian,
 		e_delta, radius);
+  printf("printf works at least 2.\n");
 
 	return true;
 }
