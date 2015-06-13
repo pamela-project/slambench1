@@ -955,30 +955,28 @@ bool Kfusion::preprocessing(const uint16_t * inputDepth, const uint2 inSize) {
   {
     using namespace cl::sycl;
     const range<1>  in_size{sizeof(uint16_t)*inSize.x*inSize.y};
-    const range<1> out_size{sizeof(float)*computationSize.x*computationSize.y};
-    //buffer<ushort,1> ocl_depth_buffer(inputDepth, in_size); // used elsewhere?
-    const range<1> sz{64};
-//    const ushort *pp = new const ushort[sizeof(uint16_t)*inSize.x*inSize.y]{};
-    const ushort *pp = inputDepth;
-    printf("size:   %d\n", sizeof(uint16_t)*inSize.x*inSize.y);
+    const range<1> out_size{sizeof(float)*outSize.x*outSize.y};
+    // The const_casts overcome a SYCL buffer ctor bug causing a segfault
+    buffer<ushort,1> ocl_depth_buffer(const_cast<ushort*>(inputDepth), in_size);
+    buffer< float,1> ocl_FloatDepth(out_size);
+    q.submit([&](handler &cgh) {
 
-    buffer<ushort,1> test(pp, in_size); // used elsewhere?
-    //buffer< float,1> ocl_FloatDepth(out_size);
-    /*q.submit([&](handler &cgh) {
-
-      auto in    = ocl_depth_buffer.get_access<access::read_write>(cgh);
-      auto depth =   ocl_FloatDepth.get_access<access::read_write>(cgh);
+      auto in    = ocl_depth_buffer.get_access<access::mode::read_write>(cgh);
+      auto depth =   ocl_FloatDepth.get_access<access::mode::read_write>(cgh);
 
       auto r = range<2>{outSize.x,outSize.y};
       cgh.parallel_for<class X>(r, [=](item<2> ix) {
 //        uint2 pixel = (uint2) (ix.get_global_id(0),ix.get_global_id(1));
 //        ::uint2 pixel(ix.get_global(0),ix.get_global(1));
         //item<2> ix_scaled{ix.get_global(0)*ratio,ix.get_global(1)*ratio};
-        depth[ix] = in[ ix.get_global()*ratio ] / 1000.0f;
+//        depth[ix] = in[ ix.get()*ratio ] / 1000.0f;
 //        depth[pixel.x + depthSize.x * pixel.y] =
 //           in[pixel.x * ratio + inSize.x * pixel.y * ratio] / 1000.0f;
+//        depth[ix[0] + outSize.x * ix[1]] =
+//           in[ix[0] * ratio + inSize.x * ix[1] * ratio] / 1000.0f;
+          depth[0] = 0;
       });
-    });*/
+    });
   }
 /*__kernel void mm2metersKernel(
 		__global float * depth,
@@ -991,11 +989,9 @@ bool Kfusion::preprocessing(const uint16_t * inputDepth, const uint2 inSize) {
 }
 */
 
-//	mm2metersKernel(floatDepth, computationSize, inputDepth, inputSize);
-  printf("printf works at least.\n");
+//	mm2metersKernel(floatDepth, computationSize, inputDepth, inSize);
 	bilateralFilterKernel(ScaledDepth[0], floatDepth, computationSize, gaussian,
 		e_delta, radius);
-  printf("printf works at least 2.\n");
 
 	return true;
 }
