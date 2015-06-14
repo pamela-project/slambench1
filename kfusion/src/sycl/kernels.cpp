@@ -919,6 +919,11 @@ bool Kfusion::preprocessing(const uint16_t * inputDepth, const uint2 inSize) {
 
 	// bilateral_filter(ScaledDepth[0], inputDepth, inputSize , gaussian, e_delta, radius);
 	uint2 outSize = computationSize;
+  int osx = computationSize.x; int osy = computationSize.y;
+  static_assert(std::is_standard_layout<uint2>::value,"");
+//  struct dub { int x; int y; };
+//  dub os;
+//  os.x = computationSize.x; os.y = computationSize.y;
 
 	// Check for unsupported conditions
 	if ((inSize.x < outSize.x) || (inSize.y < outSize.y)) {
@@ -952,10 +957,12 @@ bool Kfusion::preprocessing(const uint16_t * inputDepth, const uint2 inSize) {
 
   // vi -p ../kfusion/src/sycl/kernels.cpp ~/projects/sycl-snippets/no_cmake/hello_sycl.cpp ../kfusion/src/benchmark.cpp ../kfusion/src/opencl/*.*
 
+  // 320 240 76800
+  printf("----> %d %d %d\n", outSize.x, outSize.y, outSize.x*outSize.y);
   {
     using namespace cl::sycl;
-    const range<1>  in_size{sizeof(uint16_t)*inSize.x*inSize.y};
-    const range<1> out_size{sizeof(float)*outSize.x*outSize.y};
+    const range<1>  in_size{inSize.x*inSize.y};
+    const range<1> out_size{outSize.x*outSize.y};
     // The const_casts overcome a SYCL buffer ctor bug causing a segfault
     buffer<ushort,1> ocl_depth_buffer(const_cast<ushort*>(inputDepth), in_size);
     buffer< float,1> ocl_FloatDepth(out_size);
@@ -974,7 +981,11 @@ bool Kfusion::preprocessing(const uint16_t * inputDepth, const uint2 inSize) {
 //           in[pixel.x * ratio + inSize.x * pixel.y * ratio] / 1000.0f;
 //        depth[ix[0] + outSize.x * ix[1]] =
 //           in[ix[0] * ratio + inSize.x * ix[1] * ratio] / 1000.0f;
-          depth[0] = 0;
+          int v = 0;//outSize.x > outSize.y;
+          depth[32] = v;//in[ix[0] * ratio + inSize.x * ix[1] * ratio] / 1000.0f;
+          depth[76799] = 0;
+//          depth[computationSize.x*computationSize.y-1] = 0;
+//          depth[outSize.x*outSize.y-1] = 0;
       });
     });
   }
