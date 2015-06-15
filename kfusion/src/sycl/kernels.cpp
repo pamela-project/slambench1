@@ -919,11 +919,6 @@ bool Kfusion::preprocessing(const uint16_t * inputDepth, const uint2 inSize) {
 
 	// bilateral_filter(ScaledDepth[0], inputDepth, inputSize , gaussian, e_delta, radius);
 	uint2 outSize = computationSize;
-  int osx = computationSize.x; int osy = computationSize.y;
-  static_assert(std::is_standard_layout<uint2>::value,"");
-//  struct dub { int x; int y; };
-//  dub os;
-//  os.x = computationSize.x; os.y = computationSize.y;
 
 	// Check for unsupported conditions
 	if ((inSize.x < outSize.x) || (inSize.y < outSize.y)) {
@@ -941,24 +936,15 @@ bool Kfusion::preprocessing(const uint16_t * inputDepth, const uint2 inSize) {
 
 	int ratio = inSize.x / outSize.x;
 
-  // where is computationSizeBkp used?
-/*	if (computationSizeBkp.x < inSize.x|| computationSizeBkp.y < inSize.y || ocl_depth_buffer == NULL) {
-		computationSizeBkp = make_uint2(inSize.x, inSize.y);
-    delete ocl_depth_buffer;
-		ocl_depth_buffer = clCreateBuffer(context, CL_MEM_READ_WRITE,
-				inSize.x * inSize.y * sizeof(uint16_t), NULL, &clError);
-    ocl_depth_buffer = new cl::sycl::buffer<ushort,1>(
-				inSize.x * inSize.y * sizeof(uint16_t));
-		checkErr(clError, "clCreateBuffer input");
-	}
-	clError = clEnqueueWriteBuffer(commandQueue, ocl_depth_buffer, CL_FALSE, 0,
-			inSize.x * inSize.y * sizeof(uint16_t), inputDepth, 0, NULL, NULL);
-	checkErr(clError, "clEnqueueWriteBuffer"); */
-
-  // vi -p ../kfusion/src/sycl/kernels.cpp ~/projects/sycl-snippets/no_cmake/hello_sycl.cpp ../kfusion/src/benchmark.cpp ../kfusion/src/opencl/*.*
-
-  // 320 240 76800
-  printf("----> %d %d %d\n", outSize.x, outSize.y, outSize.x*outSize.y);
+#define USE_SYCL 1
+  {
+    float total = 0;
+    for (int i = 0; i < computationSize.x * computationSize.y; i++)
+      total += floatDepth[i];
+//    printf("(%d) sum of floatDepth  in: %g\n", USE_SYCL, total);
+  }
+    
+#if 1
   {
     using namespace cl::sycl;
     const range<1>  in_size{inSize.x*inSize.y};
@@ -966,12 +952,13 @@ bool Kfusion::preprocessing(const uint16_t * inputDepth, const uint2 inSize) {
     // The const_casts overcome a SYCL buffer ctor bug causing a segfault
     buffer<ushort,1> ocl_depth_buffer(const_cast<ushort*>(inputDepth), in_size);
     buffer< float,1> ocl_FloatDepth(out_size);
+//    buffer< float,1> ocl_FloatDepth(floatDepth,out_size);
     buffer<decltype(ratio),1>   buf_ratio(&ratio,range<1>{sizeof(ratio)});
     buffer<decltype(outSize),1> buf_os(&outSize,range<1>{sizeof(outSize)});
     buffer<decltype(inSize),1>  buf_is(&inSize,range<1>{sizeof(inSize)});
     q.submit([&](handler &cgh) {
 
-      auto in      = ocl_depth_buffer.get_access<access::mode::read_write>(cgh);
+      auto in      = ocl_depth_buffer.get_access<access::mode::read      >(cgh);
       auto depth   =   ocl_FloatDepth.get_access<access::mode::read_write>(cgh);
       auto a_ratio   = buf_ratio.get_access<access::mode::read>(cgh); //
       auto a_outSize = buf_os.get_access<access::mode::read>(cgh); //
@@ -979,14 +966,74 @@ bool Kfusion::preprocessing(const uint16_t * inputDepth, const uint2 inSize) {
 
       cgh.parallel_for<class X>(range<2>{outSize.x,outSize.y},
         [in,depth,a_ratio,a_inSize,a_outSize](item<2> ix) {
-        auto &ratio   = a_ratio  [0];
-        auto &outSize = a_outSize[0];
-        auto &inSize  = a_inSize [0];
+        auto &ratio   = a_ratio  [0]; //
+        auto &outSize = a_outSize[0]; //
+        auto &inSize  = a_inSize [0]; //
         depth[ix[0] + outSize.x * ix[1]] =
            in[ix[0] * ratio + inSize.x * ix[1] * ratio] / 1000.0f;
 //        depth[ix] = in[ ix.get()*ratio ] / 1000.0f;
       });
     });
+
+	  const size_t gaussianS = radius * 2 + 1;
+    buffer<float,1> ocl_ScaledDepth(out_size);
+    buffer<float,1> ocl_gaussian(gaussian, range<1>{gaussianS});
+    buffer<decltype(radius),1> buf_radius(&radius,range<1>{sizeof(radius)});
+
+    q.submit([&](handler &cgh) {
+
+      auto in       = ocl_depth_buffer.get_access<access::mode::read>(cgh);
+      auto out      =  ocl_ScaledDepth.get_access<access::mode::write>(cgh);
+      auto gaussian =     ocl_gaussian.get_access<access::mode::read>(cgh);
+      auto a_radius = buf_radius.get_access<access::mode::read>(cgh); //
+
+      cgh.parallel_for<class Y>(range<2>{outSize.x,outSize.y},
+        [in,out,a_radius](item<2> ix) {
+          struct uint2 { size_t x, y; }; // x and y data members
+          const uint2 pos{ix[0],ix[1]};
+          const uint2 size{ix.get_range()[0], ix.get_range()[1]};
+          auto &r = a_radius[0]; //
+
+          const float center = in[ix[0] + ix.get_range()[0] * ix[1]];
+
+          if ( center == 0 ) {
+            out[pos.x + size.x * pos.y] = 0;
+            return;
+          }
+
+          float sum = 0.0f;
+          float t   = 0.0f;
+          for (int i = -r; i <= r; ++i) {
+            for (int j = -r; j <= r; ++j) {
+              const uint2 curPos = (uint2)(clamp(pos.x + i, 0u, size.x-1),
+                                           clamp(pos.y + j, 0u, size.y-1));
+              const float curPix = in[curPos.x + curPos.y * size.x];
+              if (curPix > 0) {
+                const float mod    = sq(curPix - center);
+                const float factor = gaussian[i + r] * gaussian[j + r] *
+                                     exp(-mod / (2 * e_d * e_d));
+                t   += factor * curPix;
+                sum += factor;
+              } else {
+                // std::cerr << "ERROR BILATERAL " << pos.x+i << " " <<
+                // pos.y+j<< " " <<curPix<<" \n";
+              }
+            }
+          } 
+          out[pos.x + size.x * pos.y] = t / sum;
+      });
+    });
+
+  }
+#else
+
+	mm2metersKernel(floatDepth, computationSize, inputDepth, inSize);
+#endif
+  {
+    float total = 0;
+    for (int i = 0; i < computationSize.x * computationSize.y; i++)
+      total += floatDepth[i];
+//    printf("(%d) sum of floatDepth out: %g\n", USE_SYCL, total);
   }
 /*__kernel void mm2metersKernel(
 		__global float * depth,
@@ -998,6 +1045,43 @@ bool Kfusion::preprocessing(const uint16_t * inputDepth, const uint2 inSize) {
 	depth[pixel.x + depthSize.x * pixel.y] = in[pixel.x * ratio + inSize.x * pixel.y * ratio] / 1000.0f;
 }
 */
+
+/*__kernel void bilateralFilterKernel( __global float * out,
+		const __global float * in,
+		const __global float * gaussian,
+		const float e_d,
+		const int r ) {
+
+	const uint2 pos = (uint2) (get_global_id(0),get_global_id(1));
+	const uint2 size = (uint2) (get_global_size(0),get_global_size(1));
+
+	const float center = in[pos.x + size.x * pos.y];
+
+	if ( center == 0 ) {
+		out[pos.x + size.x * pos.y] = 0;
+		return;
+	}
+
+	float sum = 0.0f;
+	float t = 0.0f;
+	// FIXME : sum and t diverge too much from cpp version
+	for(int i = -r; i <= r; ++i) {
+		for(int j = -r; j <= r; ++j) {
+			const uint2 curPos = (uint2)(clamp(pos.x + i, 0u, size.x-1), clamp(pos.y + j, 0u, size.y-1));
+			const float curPix = in[curPos.x + curPos.y * size.x];
+			if(curPix > 0) {
+				const float mod = sq(curPix - center);
+				const float factor = gaussian[i + r] * gaussian[j + r] * exp(-mod / (2 * e_d * e_d));
+				t += factor * curPix;
+				sum += factor;
+			} else {
+				//std::cerr << "ERROR BILATERAL " <<pos.x+i<< " "<<pos.y+j<< " " <<curPix<<" \n";
+			}
+		}
+	}
+	out[pos.x + size.x * pos.y] = t / sum;
+
+} */
 
 //	mm2metersKernel(floatDepth, computationSize, inputDepth, inSize);
 	bilateralFilterKernel(ScaledDepth[0], floatDepth, computationSize, gaussian,
