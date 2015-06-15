@@ -966,26 +966,25 @@ bool Kfusion::preprocessing(const uint16_t * inputDepth, const uint2 inSize) {
     // The const_casts overcome a SYCL buffer ctor bug causing a segfault
     buffer<ushort,1> ocl_depth_buffer(const_cast<ushort*>(inputDepth), in_size);
     buffer< float,1> ocl_FloatDepth(out_size);
+    buffer<decltype(ratio),1>   buf_ratio(&ratio,range<1>{sizeof(ratio)});
+    buffer<decltype(outSize),1> buf_os(&outSize,range<1>{sizeof(outSize)});
+    buffer<decltype(inSize),1>  buf_is(&inSize,range<1>{sizeof(inSize)});
     q.submit([&](handler &cgh) {
 
-      auto in    = ocl_depth_buffer.get_access<access::mode::read_write>(cgh);
-      auto depth =   ocl_FloatDepth.get_access<access::mode::read_write>(cgh);
+      auto in      = ocl_depth_buffer.get_access<access::mode::read_write>(cgh);
+      auto depth   =   ocl_FloatDepth.get_access<access::mode::read_write>(cgh);
+      auto a_ratio   = buf_ratio.get_access<access::mode::read>(cgh); //
+      auto a_outSize = buf_os.get_access<access::mode::read>(cgh); //
+      auto a_inSize  = buf_is.get_access<access::mode::read>(cgh); //
 
-      auto r = range<2>{outSize.x,outSize.y};
-      cgh.parallel_for<class X>(r, [=](item<2> ix) {
-//        uint2 pixel = (uint2) (ix.get_global_id(0),ix.get_global_id(1));
-//        ::uint2 pixel(ix.get_global(0),ix.get_global(1));
-        //item<2> ix_scaled{ix.get_global(0)*ratio,ix.get_global(1)*ratio};
+      cgh.parallel_for<class X>(range<2>{outSize.x,outSize.y},
+        [in,depth,a_ratio,a_inSize,a_outSize](item<2> ix) {
+        auto &ratio   = a_ratio  [0];
+        auto &outSize = a_outSize[0];
+        auto &inSize  = a_inSize [0];
+        depth[ix[0] + outSize.x * ix[1]] =
+           in[ix[0] * ratio + inSize.x * ix[1] * ratio] / 1000.0f;
 //        depth[ix] = in[ ix.get()*ratio ] / 1000.0f;
-//        depth[pixel.x + depthSize.x * pixel.y] =
-//           in[pixel.x * ratio + inSize.x * pixel.y * ratio] / 1000.0f;
-//        depth[ix[0] + outSize.x * ix[1]] =
-//           in[ix[0] * ratio + inSize.x * ix[1] * ratio] / 1000.0f;
-          int v = 0;//outSize.x > outSize.y;
-          depth[32] = v;//in[ix[0] * ratio + inSize.x * ix[1] * ratio] / 1000.0f;
-          depth[76799] = 0;
-//          depth[computationSize.x*computationSize.y-1] = 0;
-//          depth[outSize.x*outSize.y-1] = 0;
       });
     });
   }
