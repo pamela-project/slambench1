@@ -978,24 +978,28 @@ bool Kfusion::preprocessing(const uint16_t * inputDepth, const uint2 inSize) {
 	  const size_t gaussianS = radius * 2 + 1;
     buffer<float,1> ocl_ScaledDepth(out_size);
     buffer<float,1> ocl_gaussian(gaussian, range<1>{gaussianS});
-    buffer<decltype(radius),1> buf_radius(&radius,range<1>{sizeof(radius)});
+    buffer<decltype(radius),1>  buf_radius(&radius,range<1>{sizeof(radius)});
+    buffer<decltype(e_delta),1> buf_e_delta(&e_delta,range<1>{sizeof(e_delta)});
 
     q.submit([&](handler &cgh) {
 
-      auto in       = ocl_depth_buffer.get_access<access::mode::read>(cgh);
-      auto out      =  ocl_ScaledDepth.get_access<access::mode::write>(cgh);
-      auto gaussian =     ocl_gaussian.get_access<access::mode::read>(cgh);
-      auto a_radius = buf_radius.get_access<access::mode::read>(cgh); //
+      auto in        = ocl_depth_buffer.get_access<access::mode::read>(cgh);
+      auto out       =  ocl_ScaledDepth.get_access<access::mode::write>(cgh);
+      auto gaussian  =     ocl_gaussian.get_access<access::mode::read>(cgh);
+      auto a_radius  = buf_radius.get_access<access::mode::read>(cgh); //
+      auto a_e_delta = buf_e_delta.get_access<access::mode::read>(cgh); //
+   
 
       cgh.parallel_for<class Y>(range<2>{outSize.x,outSize.y},
-        [in,out,a_radius](item<2> ix) {
+        [in,out,gaussian,a_radius,a_e_delta](item<2> ix) {
           using namespace cl::sycl;
-          struct uint2 { size_t x, y; }; // x and y data members
+          struct uint2 { size_t x, y; }; // SYCL uint x()/y() methods non-const!
           const uint2 pos{ix[0],ix[1]};
           const uint2 size{ix.get_range()[0], ix.get_range()[1]};
-          auto &r = a_radius[0]; //
+          auto &r   =  a_radius[0]; //
+          auto &e_d = a_e_delta[0]; //
 
-          const float center = in[ix[0] + ix.get_range()[0] * ix[1]];
+          const float center = in[pos.x + size.x * pos.y];
 
           if ( center == 0 ) {
             out[pos.x + size.x * pos.y] = 0;
