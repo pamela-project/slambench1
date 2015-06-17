@@ -989,6 +989,7 @@ bool Kfusion::preprocessing(const uint16_t * inputDepth, const uint2 inSize) {
 
       cgh.parallel_for<class Y>(range<2>{outSize.x,outSize.y},
         [in,out,a_radius](item<2> ix) {
+          using namespace cl::sycl;
           struct uint2 { size_t x, y; }; // x and y data members
           const uint2 pos{ix[0],ix[1]};
           const uint2 size{ix.get_range()[0], ix.get_range()[1]};
@@ -1005,9 +1006,12 @@ bool Kfusion::preprocessing(const uint16_t * inputDepth, const uint2 inSize) {
           float t   = 0.0f;
           for (int i = -r; i <= r; ++i) {
             for (int j = -r; j <= r; ++j) {
-              const uint2 curPos = (uint2)(clamp(pos.x + i, 0u, size.x-1),
-                                           clamp(pos.y + j, 0u, size.y-1));
-              const float curPix = in[curPos.x + curPos.y * size.x];
+              // n.b. unsigned + signed is unsigned! Bug in OpenCL C version?
+              const int px = pos.x+i; const int sx = size.x-1;
+              const int py = pos.y+i; const int sy = size.y-1;
+              const int curPosx = cl::sycl::clamp(px,0,sx);
+              const int curPosy = cl::sycl::clamp(py,0,sy);
+              const float curPix = in[curPosx + curPosy * size.x];
               if (curPix > 0) {
                 const float mod    = sq(curPix - center);
                 const float factor = gaussian[i + r] * gaussian[j + r] *
