@@ -939,12 +939,15 @@ bool Kfusion::preprocessing(const uint16_t * inputDepth, const uint2 inSize) {
 #define USE_SYCL 1
   {
     float total = 0;
-    for (int i = 0; i < computationSize.x * computationSize.y; i++)
-      total += floatDepth[i];
+//    for (int i = 0; i < computationSize.x * computationSize.y; i++)
+//      total += floatDepth[i];
 //    printf("(%d) sum of floatDepth  in: %g\n", USE_SYCL, total);
+    for (int i = 0; i < computationSize.x * computationSize.y; i++)
+      total += ScaledDepth[0][i];
+    printf("(%d) sum of ScaledDepth in: %g\n", USE_SYCL, total);
   }
     
-#if 1
+#if USE_SYCL
   {
     using namespace cl::sycl;
     const range<1>  in_size{inSize.x*inSize.y};
@@ -976,22 +979,22 @@ bool Kfusion::preprocessing(const uint16_t * inputDepth, const uint2 inSize) {
     });
 
 	  const size_t gaussianS = radius * 2 + 1;
-    buffer<float,1> ocl_ScaledDepth(out_size);
+    buffer<float,1> ocl_ScaledDepth(ScaledDepth[0],out_size); // remove arg 1
     buffer<float,1> ocl_gaussian(gaussian, range<1>{gaussianS});
-    buffer<decltype(radius),1>  buf_radius(&radius,range<1>{sizeof(radius)});
-    buffer<decltype(e_delta),1> buf_e_delta(&e_delta,range<1>{sizeof(e_delta)});
+    buffer<int,1>  buf_radius(const_cast<int*>(&radius),range<1>{1});
+    buffer<float,1> buf_e_delta(const_cast<float*>(&e_delta),range<1>{1});
 
     q.submit([&](handler &cgh) {
 
       auto in        = ocl_depth_buffer.get_access<access::mode::read>(cgh);
       auto out       =  ocl_ScaledDepth.get_access<access::mode::write>(cgh);
       auto gaussian  =     ocl_gaussian.get_access<access::mode::read>(cgh);
-      auto a_radius  = buf_radius.get_access<access::mode::read>(cgh); //
-      auto a_e_delta = buf_e_delta.get_access<access::mode::read>(cgh); //
+      auto a_radius  =       buf_radius.get_access<access::mode::read>(cgh); //
+      auto a_e_delta =      buf_e_delta.get_access<access::mode::read>(cgh); //
    
-
       cgh.parallel_for<class Y>(range<2>{outSize.x,outSize.y},
-        [in,out,gaussian,a_radius,a_e_delta](item<2> ix) {
+//        [in,out,gaussian,a_radius,a_e_delta](item<2> ix) { /*
+        [in,out,gaussian,a_radius](item<2> ix) { /*
           using namespace cl::sycl;
           struct uint2 { size_t x, y; }; // SYCL uint x()/y() methods non-const!
           const uint2 pos{ix[0],ix[1]};
@@ -1019,7 +1022,7 @@ bool Kfusion::preprocessing(const uint16_t * inputDepth, const uint2 inSize) {
               if (curPix > 0) {
                 const float mod    = sq(curPix - center);
                 const float factor = gaussian[i + r] * gaussian[j + r] *
-                                     exp(-mod / (2 * e_d * e_d));
+                                     cl::sycl::exp(-mod / (2 * e_d * e_d));
                 t   += factor * curPix;
                 sum += factor;
               } else {
@@ -1028,20 +1031,25 @@ bool Kfusion::preprocessing(const uint16_t * inputDepth, const uint2 inSize) {
               }
             }
           } 
-          out[pos.x + size.x * pos.y] = t / sum;
-      });
+          out[pos.x + size.x * pos.y] = t / sum; */
+      }); 
     });
 
   }
 #else
 
 	mm2metersKernel(floatDepth, computationSize, inputDepth, inSize);
+	bilateralFilterKernel(ScaledDepth[0], floatDepth, computationSize, gaussian,
+    e_delta, radius);
 #endif
   {
     float total = 0;
-    for (int i = 0; i < computationSize.x * computationSize.y; i++)
-      total += floatDepth[i];
+//    for (int i = 0; i < computationSize.x * computationSize.y; i++)
+//      total += floatDepth[i];
 //    printf("(%d) sum of floatDepth out: %g\n", USE_SYCL, total);
+    for (int i = 0; i < computationSize.x * computationSize.y; i++)
+      total += ScaledDepth[0][i];
+    printf("(%d) sum of ScaledDepth out: %g\n", USE_SYCL, total);
   }
 /*__kernel void mm2metersKernel(
 		__global float * depth,
@@ -1092,8 +1100,8 @@ bool Kfusion::preprocessing(const uint16_t * inputDepth, const uint2 inSize) {
 } */
 
 //	mm2metersKernel(floatDepth, computationSize, inputDepth, inSize);
-	bilateralFilterKernel(ScaledDepth[0], floatDepth, computationSize, gaussian,
-		e_delta, radius);
+//	bilateralFilterKernel(ScaledDepth[0], floatDepth, computationSize, gaussian,
+//		e_delta, radius);
 
 	return true;
 }
