@@ -56,7 +56,7 @@ float3 ** inputVertex;
 float3 ** inputNormal;
 
 // sycl specific
-cl::sycl::queue q;
+cl::sycl::queue q(cl::sycl::intel_selector{});
 uint2 computationSizeBkp = make_uint2(0, 0);
 //cl::sycl::buffer<ushort,1> *ocl_depth_buffer = NULL; // cl_mem ocl_depth_buffer
 
@@ -981,8 +981,10 @@ bool Kfusion::preprocessing(const uint16_t * inputDepth, const uint2 inSize) {
 	  const size_t gaussianS = radius * 2 + 1;
     buffer<float,1> ocl_ScaledDepth(ScaledDepth[0],out_size); // remove arg 1
     buffer<float,1> ocl_gaussian(gaussian, range<1>{gaussianS});
-    buffer<int,1>  buf_radius(const_cast<int*>(&radius),range<1>{1});
-    buffer<float,1> buf_e_delta(const_cast<float*>(&e_delta),range<1>{1});
+    decltype(radius)  stack_radius  = radius; 
+    decltype(e_delta) stack_e_delta = e_delta;
+    buffer<int,1>    buf_radius(const_cast<int*>(&stack_radius),range<1>{1});
+    buffer<float,1> buf_e_delta(const_cast<float*>(&stack_e_delta),range<1>{1});
 
     q.submit([&](handler &cgh) {
 
@@ -993,8 +995,7 @@ bool Kfusion::preprocessing(const uint16_t * inputDepth, const uint2 inSize) {
       auto a_e_delta =      buf_e_delta.get_access<access::mode::read>(cgh); //
    
       cgh.parallel_for<class Y>(range<2>{outSize.x,outSize.y},
-//        [in,out,gaussian,a_radius,a_e_delta](item<2> ix) { /*
-        [in,out,gaussian,a_radius](item<2> ix) { /*
+        [in,out,gaussian,a_radius,a_e_delta](item<2> ix) { 
           using namespace cl::sycl;
           struct uint2 { size_t x, y; }; // SYCL uint x()/y() methods non-const!
           const uint2 pos{ix[0],ix[1]};
@@ -1031,7 +1032,7 @@ bool Kfusion::preprocessing(const uint16_t * inputDepth, const uint2 inSize) {
               }
             }
           } 
-          out[pos.x + size.x * pos.y] = t / sum; */
+          out[pos.x + size.x * pos.y] = t / sum;
       }); 
     });
 
