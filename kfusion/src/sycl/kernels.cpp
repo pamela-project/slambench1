@@ -194,7 +194,7 @@ void bilateralFilterKernel(float* out, const float* in, uint2 size,
 						}
 					}
 				}
-				out[pos] = t / sum;
+				out[pos] = center;//t / sum;
 			}
 		}
 		TOCK("bilateralFilterKernel", size.x * size.y);
@@ -1032,7 +1032,7 @@ bool Kfusion::preprocessing(const uint16_t * inputDepth, const uint2 inSize) {
               }
             }
           } 
-          out[pos.x + size.x * pos.y] = t / sum;
+          out[pos.x + size.x * pos.y] = center;//t / sum;
       }); 
     });
 
