@@ -915,6 +915,15 @@ void renderVolumeKernel(uchar4* out, const uint2 depthSize, const Volume volume,
 	TOCK("renderVolumeKernel", depthSize.x * depthSize.y);
 }
 
+template <typename T>
+void dbg_show(T *p, const char *fname, size_t sz, int id)
+{
+  T total{0};
+  for (size_t i = 0; i < sz; i++)
+    total += p[i];
+  printf("(%d) sum of %s: %g\n", id, fname, total);
+}
+
 bool Kfusion::preprocessing(const uint16_t * inputDepth, const uint2 inSize) {
 
 	// bilateral_filter(ScaledDepth[0], inputDepth, inputSize , gaussian, e_delta, radius);
@@ -936,26 +945,19 @@ bool Kfusion::preprocessing(const uint16_t * inputDepth, const uint2 inSize) {
 
 	int ratio = inSize.x / outSize.x;
 
-#define USE_SYCL 1
-  {
-    float total = 0;
-//    for (int i = 0; i < computationSize.x * computationSize.y; i++)
-//      total += floatDepth[i];
-//    printf("(%d) sum of floatDepth  in: %g\n", USE_SYCL, total);
-    for (int i = 0; i < computationSize.x * computationSize.y; i++)
-      total += ScaledDepth[0][i];
-    printf("(%d) sum of ScaledDepth in: %g\n", USE_SYCL, total);
-  }
+#define USE_SYCL 0
     
 #if USE_SYCL
+  dbg_show(ScaledDepth[0], "ScaledDepth[0]", outSize.x * outSize.y, 0);
+  // dbg_show(floatDepth, "floatDepth", outSize.x * outSize.y, 0);
   {
     using namespace cl::sycl;
     const range<1>  in_size{inSize.x*inSize.y};
     const range<1> out_size{outSize.x*outSize.y};
     // The const_casts overcome a SYCL buffer ctor bug causing a segfault
     buffer<ushort,1> ocl_depth_buffer(const_cast<ushort*>(inputDepth), in_size);
-    buffer< float,1> ocl_FloatDepth(out_size);
-//    buffer< float,1> ocl_FloatDepth(floatDepth,out_size);
+//    buffer< float,1> ocl_FloatDepth(out_size);
+    buffer< float,1> ocl_FloatDepth(floatDepth,out_size);
     buffer<decltype(ratio),1>   buf_ratio(&ratio,range<1>{sizeof(ratio)});
     buffer<decltype(outSize),1> buf_os(&outSize,range<1>{sizeof(outSize)});
     buffer<decltype(inSize),1>  buf_is(&inSize,range<1>{sizeof(inSize)});
@@ -977,6 +979,9 @@ bool Kfusion::preprocessing(const uint16_t * inputDepth, const uint2 inSize) {
 //        depth[ix] = in[ ix.get()*ratio ] / 1000.0f;
       });
     });
+    } //
+    } //
+// The in accessor below is wrong!
 
 	  const size_t gaussianS = radius * 2 + 1;
     buffer<float,1> ocl_ScaledDepth(ScaledDepth[0],out_size); // remove arg 1
@@ -1038,20 +1043,22 @@ bool Kfusion::preprocessing(const uint16_t * inputDepth, const uint2 inSize) {
 
   }
 #else
+  dbg_show(floatDepth, "floatDepth", outSize.x * outSize.y, 0);
+  dbg_show(ScaledDepth[0], "ScaledDepth[0]", outSize.x * outSize.y, 0);
 
 	mm2metersKernel(floatDepth, computationSize, inputDepth, inSize);
+
+  dbg_show(floatDepth, "floatDepth", outSize.x * outSize.y, 1);
+  dbg_show(ScaledDepth[0], "ScaledDepth[0]", outSize.x * outSize.y, 1);
+
 	bilateralFilterKernel(ScaledDepth[0], floatDepth, computationSize, gaussian,
     e_delta, radius);
+
+  dbg_show(floatDepth, "floatDepth", outSize.x * outSize.y, 2);
+  dbg_show(ScaledDepth[0], "ScaledDepth[0]", outSize.x * outSize.y, 2);
 #endif
-  {
-    float total = 0;
-//    for (int i = 0; i < computationSize.x * computationSize.y; i++)
-//      total += floatDepth[i];
-//    printf("(%d) sum of floatDepth out: %g\n", USE_SYCL, total);
-    for (int i = 0; i < computationSize.x * computationSize.y; i++)
-      total += ScaledDepth[0][i];
-    printf("(%d) sum of ScaledDepth out: %g\n", USE_SYCL, total);
-  }
+
+
 /*__kernel void mm2metersKernel(
 		__global float * depth,
 		const uint2 depthSize ,
