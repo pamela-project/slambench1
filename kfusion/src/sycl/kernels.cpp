@@ -945,19 +945,18 @@ bool Kfusion::preprocessing(const uint16_t * inputDepth, const uint2 inSize) {
 
 	int ratio = inSize.x / outSize.x;
 
-#define USE_SYCL 0
+#define USE_SYCL 1
+
+//  dbg_show(ScaledDepth[0], "ScaledDepth[0]", outSize.x * outSize.y, 0);
     
 #if USE_SYCL
-  dbg_show(ScaledDepth[0], "ScaledDepth[0]", outSize.x * outSize.y, 0);
-  // dbg_show(floatDepth, "floatDepth", outSize.x * outSize.y, 0);
   {
     using namespace cl::sycl;
     const range<1>  in_size{inSize.x*inSize.y};
     const range<1> out_size{outSize.x*outSize.y};
     // The const_casts overcome a SYCL buffer ctor bug causing a segfault
     buffer<ushort,1> ocl_depth_buffer(const_cast<ushort*>(inputDepth), in_size);
-//    buffer< float,1> ocl_FloatDepth(out_size);
-    buffer< float,1> ocl_FloatDepth(floatDepth,out_size);
+    buffer< float,1> ocl_FloatDepth(out_size);
     buffer<decltype(ratio),1>   buf_ratio(&ratio,range<1>{sizeof(ratio)});
     buffer<decltype(outSize),1> buf_os(&outSize,range<1>{sizeof(outSize)});
     buffer<decltype(inSize),1>  buf_is(&inSize,range<1>{sizeof(inSize)});
@@ -979,11 +978,8 @@ bool Kfusion::preprocessing(const uint16_t * inputDepth, const uint2 inSize) {
 //        depth[ix] = in[ ix.get()*ratio ] / 1000.0f;
       });
     });
-    } //
-    } //
-// The in accessor below is wrong!
 
-	  const size_t gaussianS = radius * 2 + 1;
+    const size_t gaussianS = radius * 2 + 1;
     buffer<float,1> ocl_ScaledDepth(ScaledDepth[0],out_size); // remove arg 1
     buffer<float,1> ocl_gaussian(gaussian, range<1>{gaussianS});
     decltype(radius)  stack_radius  = radius; 
@@ -993,11 +989,11 @@ bool Kfusion::preprocessing(const uint16_t * inputDepth, const uint2 inSize) {
 
     q.submit([&](handler &cgh) {
 
-      auto in        = ocl_depth_buffer.get_access<access::mode::read>(cgh);
-      auto out       =  ocl_ScaledDepth.get_access<access::mode::write>(cgh);
-      auto gaussian  =     ocl_gaussian.get_access<access::mode::read>(cgh);
-      auto a_radius  =       buf_radius.get_access<access::mode::read>(cgh); //
-      auto a_e_delta =      buf_e_delta.get_access<access::mode::read>(cgh); //
+      auto out       = ocl_ScaledDepth.get_access<access::mode::write>(cgh);
+      auto in        =  ocl_FloatDepth.get_access<access::mode::read>(cgh);
+      auto gaussian  =    ocl_gaussian.get_access<access::mode::read>(cgh);
+      auto a_radius  =      buf_radius.get_access<access::mode::read>(cgh); //
+      auto a_e_delta =     buf_e_delta.get_access<access::mode::read>(cgh); //
    
       cgh.parallel_for<class Y>(range<2>{outSize.x,outSize.y},
         [in,out,gaussian,a_radius,a_e_delta](item<2> ix) { 
@@ -1043,20 +1039,14 @@ bool Kfusion::preprocessing(const uint16_t * inputDepth, const uint2 inSize) {
 
   }
 #else
-  dbg_show(floatDepth, "floatDepth", outSize.x * outSize.y, 0);
-  dbg_show(ScaledDepth[0], "ScaledDepth[0]", outSize.x * outSize.y, 0);
 
-	mm2metersKernel(floatDepth, computationSize, inputDepth, inSize);
-
-  dbg_show(floatDepth, "floatDepth", outSize.x * outSize.y, 1);
-  dbg_show(ScaledDepth[0], "ScaledDepth[0]", outSize.x * outSize.y, 1);
-
-	bilateralFilterKernel(ScaledDepth[0], floatDepth, computationSize, gaussian,
+  mm2metersKernel(floatDepth, computationSize, inputDepth, inSize);
+  bilateralFilterKernel(ScaledDepth[0], floatDepth, computationSize, gaussian,
     e_delta, radius);
 
-  dbg_show(floatDepth, "floatDepth", outSize.x * outSize.y, 2);
-  dbg_show(ScaledDepth[0], "ScaledDepth[0]", outSize.x * outSize.y, 2);
 #endif
+
+//  dbg_show(ScaledDepth[0], "ScaledDepth[0]", outSize.x * outSize.y, 1);
 
 
 /*__kernel void mm2metersKernel(
@@ -1107,9 +1097,9 @@ bool Kfusion::preprocessing(const uint16_t * inputDepth, const uint2 inSize) {
 
 } */
 
-//	mm2metersKernel(floatDepth, computationSize, inputDepth, inSize);
-//	bilateralFilterKernel(ScaledDepth[0], floatDepth, computationSize, gaussian,
-//		e_delta, radius);
+//  mm2metersKernel(floatDepth, computationSize, inputDepth, inSize);
+//  bilateralFilterKernel(ScaledDepth[0], floatDepth, computationSize, gaussian,
+//    e_delta, radius);
 
 	return true;
 }
