@@ -58,6 +58,8 @@ float3 ** inputNormal;
 // sycl specific
 cl::sycl::queue q(cl::sycl::intel_selector{});
 uint2 computationSizeBkp = make_uint2(0, 0);
+cl::sycl::buffer<float,1>  *ocl_FloatDepth = NULL;
+cl::sycl::buffer<float,1> **ocl_ScaledDepth = NULL;
 //cl::sycl::buffer<ushort,1> *ocl_depth_buffer = NULL; // cl_mem ocl_depth_buffer
 
 bool print_kernel_timing = false;
@@ -74,6 +76,24 @@ void Kfusion::languageSpecificConstructor() {
 
 	if (getenv("KERNEL_TIMINGS"))
 		print_kernel_timing = true;
+
+  using fb_type = cl::sycl::buffer<float,1>;
+	ocl_FloatDepth = new fb_type(cl::sycl::range<1>{
+    sizeof(float) * computationSize.x * computationSize.y});
+
+  ocl_ScaledDepth = (fb_type**) malloc(sizeof(fb_type*) * iterations.size());
+
+  for (unsigned int i = 0; i < iterations.size(); ++i) {
+		ocl_ScaledDepth[i] = new fb_type(cl::sycl::range<1>{
+      sizeof(float) * (computationSize.x * computationSize.y) / (int)pow(2,i)});
+
+/*		ocl_inputVertex[i] = clCreateBuffer(context, CL_MEM_READ_WRITE,
+				sizeof(float3) * (computationSize.x * computationSize.y)
+						/ (int) pow(2, i), NULL, &clError);
+		ocl_inputNormal[i] = clCreateBuffer(context, CL_MEM_READ_WRITE,
+				sizeof(float3) * (computationSize.x * computationSize.y)
+						/ (int) pow(2, i), NULL, &clError); */
+  }  //
 
 	// internal buffers to initialize
 	reductionoutput = (float*) calloc(sizeof(float) * 8 * 32, 1);
@@ -118,6 +138,27 @@ void Kfusion::languageSpecificConstructor() {
 }
 
 Kfusion::~Kfusion() {
+	if (ocl_FloatDepth) {
+		delete ocl_FloatDepth;
+	  ocl_FloatDepth = NULL;
+  }
+
+	for (unsigned int i = 0; i < iterations.size(); ++i) {
+		if (ocl_ScaledDepth[i]) {
+			delete ocl_ScaledDepth[i];
+      ocl_ScaledDepth[i] = NULL;
+    }
+/*		if (ocl_inputVertex[i])
+			clReleaseMemObject(ocl_inputVertex[i]);
+		ocl_inputVertex[i] = NULL;
+		if (ocl_inputNormal[i])
+			clReleaseMemObject(ocl_inputNormal[i]);
+		ocl_inputNormal[i] = NULL; */
+	}
+	if (ocl_ScaledDepth) {
+    free(ocl_ScaledDepth);
+    ocl_ScaledDepth = NULL;
+  }
 
 	free(reductionoutput);
 	for (unsigned int i = 0; i < iterations.size(); ++i) {
@@ -945,9 +986,9 @@ bool Kfusion::preprocessing(const uint16_t * inputDepth, const uint2 inSize) {
 
 	int ratio = inSize.x / outSize.x;
 
-#define USE_SYCL 1
+#define USE_SYCL 0
 
-//  dbg_show(ScaledDepth[0], "ScaledDepth[0]", outSize.x * outSize.y, 0);
+  dbg_show(ScaledDepth[0], "ScaledDepth[0]", outSize.x * outSize.y, 0);
     
 #if USE_SYCL
   {
@@ -956,14 +997,14 @@ bool Kfusion::preprocessing(const uint16_t * inputDepth, const uint2 inSize) {
     const range<1> out_size{outSize.x*outSize.y};
     // The const_casts overcome a SYCL buffer ctor bug causing a segfault
     buffer<ushort,1> ocl_depth_buffer(const_cast<ushort*>(inputDepth), in_size);
-    buffer< float,1> ocl_FloatDepth(out_size);
+//    buffer< float,1> ocl_FloatDepth(out_size);
     buffer<decltype(ratio),1>   buf_ratio(&ratio,range<1>{sizeof(ratio)});
     buffer<decltype(outSize),1> buf_os(&outSize,range<1>{sizeof(outSize)});
     buffer<decltype(inSize),1>  buf_is(&inSize,range<1>{sizeof(inSize)});
     q.submit([&](handler &cgh) {
 
       auto in      = ocl_depth_buffer.get_access<access::mode::read      >(cgh);
-      auto depth   =   ocl_FloatDepth.get_access<access::mode::read_write>(cgh);
+      auto depth   =  ocl_FloatDepth->get_access<access::mode::read_write>(cgh);
       auto a_ratio   = buf_ratio.get_access<access::mode::read>(cgh); //
       auto a_outSize = buf_os.get_access<access::mode::read>(cgh); //
       auto a_inSize  = buf_is.get_access<access::mode::read>(cgh); //
@@ -980,7 +1021,7 @@ bool Kfusion::preprocessing(const uint16_t * inputDepth, const uint2 inSize) {
     });
 
     const size_t gaussianS = radius * 2 + 1;
-    buffer<float,1> ocl_ScaledDepth(ScaledDepth[0],out_size); // remove arg 1
+//    buffer<float,1> ocl_ScaledDepth(ScaledDepth[0],out_size); // remove arg 1
     buffer<float,1> ocl_gaussian(gaussian, range<1>{gaussianS});
     decltype(radius)  stack_radius  = radius; 
     decltype(e_delta) stack_e_delta = e_delta;
@@ -989,8 +1030,8 @@ bool Kfusion::preprocessing(const uint16_t * inputDepth, const uint2 inSize) {
 
     q.submit([&](handler &cgh) {
 
-      auto out       = ocl_ScaledDepth.get_access<access::mode::write>(cgh);
-      auto in        =  ocl_FloatDepth.get_access<access::mode::read>(cgh);
+      auto out       = ocl_ScaledDepth[0]->get_access<access::mode::write>(cgh);
+      auto in        = ocl_FloatDepth->get_access<access::mode::read>(cgh);
       auto gaussian  =    ocl_gaussian.get_access<access::mode::read>(cgh);
       auto a_radius  =      buf_radius.get_access<access::mode::read>(cgh); //
       auto a_e_delta =     buf_e_delta.get_access<access::mode::read>(cgh); //
@@ -1046,7 +1087,7 @@ bool Kfusion::preprocessing(const uint16_t * inputDepth, const uint2 inSize) {
 
 #endif
 
-//  dbg_show(ScaledDepth[0], "ScaledDepth[0]", outSize.x * outSize.y, 1);
+  dbg_show(ScaledDepth[0], "ScaledDepth[0]", outSize.x * outSize.y, 1);
 
 
 /*__kernel void mm2metersKernel(
@@ -1112,9 +1153,65 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 
 	// half sample the input depth maps into the pyramid levels
 	for (unsigned int i = 1; i < iterations.size(); ++i) {
+#if 0 // USE_SYCL
+    using namespace cl::sycl;
+    struct uint2 { size_t x, y; }; // SYCL uint x()/y() methods non-const!
+    struct  int2 { int    x, y; }; // SYCL  int x()/y() methods non-const!
+		uint2 outSize{computationSize.x / (int) pow(2, i),
+                  computationSize.y / (int) pow(2, i)};
+
+		float e_d = e_delta * 3;
+		int r = 1;
+		uint2 inSize{outSize.x*2,outSize.y*2};
+
+    buffer<uint2,1> buf_inSize(&inSize,range<1>{1});
+    buffer<float,1> buf_e_d(&e_d,range<1>{1});
+    buffer<int,1>   buf_r(&r,range<1>{1});
+
+    q.submit([&](handler &cgh) {
+
+      auto out = ocl_ScaledDepth[i  ]->get_access<access::mode::write>(cgh);
+      auto in  = ocl_ScaledDepth[i-1]->get_access<access::mode::read>(cgh);
+      auto a_inSize = buf_inSize.get_access<access::mode::read>(cgh);
+      auto a_e_d    = buf_e_d.get_access<access::mode::read>(cgh);
+      auto a_r      = buf_r.get_access<access::mode::read>(cgh);
+
+      cgh.parallel_for<class X>(range<2>{outSize.x,outSize.y},
+        [in,out,a_inSize,a_e_d,a_r](item<2> ix) { 
+          auto &inSize = a_inSize[0]; //
+          auto &e_d    = a_e_d[0];    //
+          auto &r      = a_r[0];      //
+          uint2 pixel{ix[0],ix[1]);
+          uint2 outSize{inSize.x / 2, inSize.y / 2};
+
+          const uint2 centerPixel{2*pixel.x, 2*pixel.y};
+
+          float sum = 0.0f;
+          float t = 0.0f;
+          const float center = in[centerPixel.x + centerPixel.y * inSize.x];
+          for(int i = -r + 1; i <= r; ++i) {
+            for(int j = -r + 1; j <= r; ++j) {
+              //(int2)(centerPixel.x + j, centerPixel.y + i),
+              //(int2)(0),
+              //(int2)(inSize.x - 1, inSize.y - 1)));
+              //int2 from = (int2)(clamp((int2)(centerPixel.x + j, centerPixel.y + i), (int2)(0), (int2)(inSize.x - 1, inSize.y - 1)));
+              int2 from;
+              cl::sycl::clamp(from,from,from);
+              float current = in[from.x + from.y * inSize.x];
+              if(fabs(current - center) < e_d) {
+                sum += 1.0f;
+                t += current;
+              }
+            }
+          }
+          out[pixel.x + pixel.y * outSize.x] = t / sum;
+      });
+    };
+#else
 		halfSampleRobustImageKernel(ScaledDepth[i], ScaledDepth[i - 1],
 				make_uint2(computationSize.x / (int) pow(2, i - 1),
 						computationSize.y / (int) pow(2, i - 1)), e_delta * 3, 1);
+#endif
 	}
 
 	// prepare the 3D information from the input depth maps
