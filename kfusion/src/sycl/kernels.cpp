@@ -235,7 +235,7 @@ void bilateralFilterKernel(float* out, const float* in, uint2 size,
 						}
 					}
 				}
-				out[pos] = center;//t / sum;
+				out[pos] = t / sum;
 			}
 		}
 		TOCK("bilateralFilterKernel", size.x * size.y);
@@ -957,9 +957,10 @@ void renderVolumeKernel(uchar4* out, const uint2 depthSize, const Volume volume,
 }
 
 template <typename T>
-void dbg_show(T *p, const char *fname, size_t sz, int id)
+void dbg_show(T p, const char *fname, size_t sz, int id)
 {
-  T total{0};
+  typename std::remove_reference<decltype(p[0])>::type total{0};
+//  decltype(p[0]) total{0};
   for (size_t i = 0; i < sz; i++)
     total += p[i];
   printf("(%d) sum of %s: %g\n", id, fname, total);
@@ -986,7 +987,7 @@ bool Kfusion::preprocessing(const uint16_t * inputDepth, const uint2 inSize) {
 
 	int ratio = inSize.x / outSize.x;
 
-#define USE_SYCL 0
+#define USE_SYCL 1
 
   dbg_show(ScaledDepth[0], "ScaledDepth[0]", outSize.x * outSize.y, 0);
     
@@ -1009,7 +1010,7 @@ bool Kfusion::preprocessing(const uint16_t * inputDepth, const uint2 inSize) {
       auto a_outSize = buf_os.get_access<access::mode::read>(cgh); //
       auto a_inSize  = buf_is.get_access<access::mode::read>(cgh); //
 
-      cgh.parallel_for<class X>(range<2>{outSize.x,outSize.y},
+      cgh.parallel_for<class T0>(range<2>{outSize.x,outSize.y},
         [in,depth,a_ratio,a_inSize,a_outSize](item<2> ix) {
         auto &ratio   = a_ratio  [0]; //
         auto &outSize = a_outSize[0]; //
@@ -1036,7 +1037,7 @@ bool Kfusion::preprocessing(const uint16_t * inputDepth, const uint2 inSize) {
       auto a_radius  =      buf_radius.get_access<access::mode::read>(cgh); //
       auto a_e_delta =     buf_e_delta.get_access<access::mode::read>(cgh); //
    
-      cgh.parallel_for<class Y>(range<2>{outSize.x,outSize.y},
+      cgh.parallel_for<class T1>(range<2>{outSize.x,outSize.y},
         [in,out,gaussian,a_radius,a_e_delta](item<2> ix) { 
           using namespace cl::sycl;
           struct uint2 { size_t x, y; }; // SYCL uint x()/y() methods non-const!
@@ -1074,20 +1075,24 @@ bool Kfusion::preprocessing(const uint16_t * inputDepth, const uint2 inSize) {
               }
             }
           } 
-          out[pos.x + size.x * pos.y] = center;//t / sum;
+          out[pos.x + size.x * pos.y] = t / sum;
       }); 
     });
 
   }
+  auto sd0 = ocl_ScaledDepth[0]->get_access<
+    cl::sycl::access::mode::read,
+    cl::sycl::access::target::host_buffer
+  >();
+  dbg_show(sd0, "ScaledDepth[0]", outSize.x * outSize.y, 1);
 #else
 
   mm2metersKernel(floatDepth, computationSize, inputDepth, inSize);
   bilateralFilterKernel(ScaledDepth[0], floatDepth, computationSize, gaussian,
     e_delta, radius);
 
-#endif
-
   dbg_show(ScaledDepth[0], "ScaledDepth[0]", outSize.x * outSize.y, 1);
+#endif
 
 
 /*__kernel void mm2metersKernel(
@@ -1153,20 +1158,20 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 
 	// half sample the input depth maps into the pyramid levels
 	for (unsigned int i = 1; i < iterations.size(); ++i) {
-#if 0 // USE_SYCL
+#if USE_SYCL
     using namespace cl::sycl;
-    struct uint2 { size_t x, y; }; // SYCL uint x()/y() methods non-const!
-    struct  int2 { int    x, y; }; // SYCL  int x()/y() methods non-const!
-		uint2 outSize{computationSize.x / (int) pow(2, i),
-                  computationSize.y / (int) pow(2, i)};
+//    struct uint2 { size_t x, y; }; // SYCL uint x()/y() methods non-const!
+//    struct  int2 { int    x, y; }; // SYCL  int x()/y() methods non-const!
+		cl::sycl::uint2 outSize{computationSize.x / (int) ::pow(2, i),
+                            computationSize.y / (int) ::pow(2, i)};
 
 		float e_d = e_delta * 3;
 		int r = 1;
-		uint2 inSize{outSize.x*2,outSize.y*2};
+		cl::sycl::uint2 inSize{outSize.x()*2,outSize.y()*2};
 
-    buffer<uint2,1> buf_inSize(&inSize,range<1>{1});
-    buffer<float,1> buf_e_d(&e_d,range<1>{1});
-    buffer<int,1>   buf_r(&r,range<1>{1});
+    buffer<cl::sycl::uint2,1> buf_inSize(&inSize,range<1>{1});
+    buffer<float,1>           buf_e_d(&e_d,range<1>{1});
+    buffer<int,1>             buf_r(&r,range<1>{1});
 
     q.submit([&](handler &cgh) {
 
@@ -1176,43 +1181,56 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
       auto a_e_d    = buf_e_d.get_access<access::mode::read>(cgh);
       auto a_r      = buf_r.get_access<access::mode::read>(cgh);
 
-      cgh.parallel_for<class X>(range<2>{outSize.x,outSize.y},
+      cgh.parallel_for<class T2>(range<2>{outSize.x(),outSize.y()},
         [in,out,a_inSize,a_e_d,a_r](item<2> ix) { 
           auto &inSize = a_inSize[0]; //
           auto &e_d    = a_e_d[0];    //
           auto &r      = a_r[0];      //
-          uint2 pixel{ix[0],ix[1]);
-          uint2 outSize{inSize.x / 2, inSize.y / 2};
+          cl::sycl::uint2 pixel{ix[0],ix[1]};
+          cl::sycl::uint2 outSize{inSize.x() / 2, inSize.y() / 2};
 
-          const uint2 centerPixel{2*pixel.x, 2*pixel.y};
+         /* const */  cl::sycl::uint2 centerPixel{2*pixel.x(), 2*pixel.y()};
 
           float sum = 0.0f;
           float t = 0.0f;
-          const float center = in[centerPixel.x + centerPixel.y * inSize.x];
+          const float center = in[centerPixel.x()+centerPixel.y()*inSize.x()];
           for(int i = -r + 1; i <= r; ++i) {
             for(int j = -r + 1; j <= r; ++j) {
-              //(int2)(centerPixel.x + j, centerPixel.y + i),
-              //(int2)(0),
-              //(int2)(inSize.x - 1, inSize.y - 1)));
-              //int2 from = (int2)(clamp((int2)(centerPixel.x + j, centerPixel.y + i), (int2)(0), (int2)(inSize.x - 1, inSize.y - 1)));
-              int2 from;
-              cl::sycl::clamp(from,from,from);
-              float current = in[from.x + from.y * inSize.x];
-              if(fabs(current - center) < e_d) {
+              const cl::sycl::int2 x{centerPixel.x()+j, centerPixel.y()+i};
+              const cl::sycl::int2 minval{0,0};
+              const cl::sycl::int2 maxval{inSize.x()-1, inSize.y()-1};
+              cl::sycl::int2 from{cl::sycl::clamp(x,minval,maxval)};
+              float current = in[from.x() + from.y() * inSize.x()];
+              if (cl::sycl::fabs(current - center) < e_d) {
                 sum += 1.0f;
                 t += current;
               }
             }
           }
-          out[pixel.x + pixel.y * outSize.x] = t / sum;
+          out[pixel.x() + pixel.y() * outSize.x()] = t / sum;
       });
-    };
+    });
 #else
 		halfSampleRobustImageKernel(ScaledDepth[i], ScaledDepth[i - 1],
 				make_uint2(computationSize.x / (int) pow(2, i - 1),
 						computationSize.y / (int) pow(2, i - 1)), e_delta * 3, 1);
 #endif
 	}
+#if USE_SYCL
+  auto sd0 = ocl_ScaledDepth[0]->get_access<
+    cl::sycl::access::mode::read,
+    cl::sycl::access::target::host_buffer
+  >();
+  auto sd1 = ocl_ScaledDepth[1]->get_access<
+    cl::sycl::access::mode::read,
+    cl::sycl::access::target::host_buffer
+  >();
+  dbg_show(sd0, "ScaledDepth[0]", (computationSize.x * computationSize.y) / (int)pow(2,0), 2);
+  dbg_show(sd1, "ScaledDepth[1]", (computationSize.x * computationSize.y) / (int)pow(2,1), 2);
+#else
+  dbg_show(ScaledDepth[0], "ScaledDepth[0]", (computationSize.x * computationSize.y) / (int)pow(2,0), 2);
+  dbg_show(ScaledDepth[1], "ScaledDepth[1]", (computationSize.x * computationSize.y) / (int)pow(2,1), 2);
+#endif
 
 	// prepare the 3D information from the input depth maps
 	uint2 localimagesize = computationSize;
