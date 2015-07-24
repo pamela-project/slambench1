@@ -58,8 +58,9 @@ float3 ** inputNormal;
 // sycl specific
 cl::sycl::queue q(cl::sycl::intel_selector{});
 uint2 computationSizeBkp = make_uint2(0, 0);
-cl::sycl::buffer<float,1>  *ocl_FloatDepth = NULL;
-cl::sycl::buffer<float,1> **ocl_ScaledDepth = NULL;
+cl::sycl::buffer<float,1>   *ocl_FloatDepth  = NULL;
+cl::sycl::buffer<float,1>  **ocl_ScaledDepth = NULL;
+cl::sycl::buffer<cl::sycl::float3,1> **ocl_inputVertex = NULL;
 //cl::sycl::buffer<ushort,1> *ocl_depth_buffer = NULL; // cl_mem ocl_depth_buffer
 
 bool print_kernel_timing = false;
@@ -77,15 +78,19 @@ void Kfusion::languageSpecificConstructor() {
 	if (getenv("KERNEL_TIMINGS"))
 		print_kernel_timing = true;
 
-  using fb_type = cl::sycl::buffer<float,1>;
+  using fb_type  = cl::sycl::buffer<float,1>;
+  using fb_type3 = cl::sycl::buffer<cl::sycl::float3,1>;
 	ocl_FloatDepth = new fb_type(cl::sycl::range<1>{
     sizeof(float) * computationSize.x * computationSize.y});
 
-  ocl_ScaledDepth = (fb_type**) malloc(sizeof(fb_type*) * iterations.size());
+  ocl_ScaledDepth = (fb_type**)  malloc(sizeof(fb_type*)  * iterations.size());
+  ocl_inputVertex = (fb_type3**) malloc(sizeof(fb_type3*) * iterations.size());
 
   for (unsigned int i = 0; i < iterations.size(); ++i) {
 		ocl_ScaledDepth[i] = new fb_type(cl::sycl::range<1>{
       sizeof(float) * (computationSize.x * computationSize.y) / (int)pow(2,i)});
+		ocl_inputVertex[i] = new fb_type3(cl::sycl::range<1>{
+      sizeof(float3) * (computationSize.x * computationSize.y) / (int)pow(2,i)});
 
 /*		ocl_inputVertex[i] = clCreateBuffer(context, CL_MEM_READ_WRITE,
 				sizeof(float3) * (computationSize.x * computationSize.y)
@@ -147,6 +152,10 @@ Kfusion::~Kfusion() {
 		if (ocl_ScaledDepth[i]) {
 			delete ocl_ScaledDepth[i];
       ocl_ScaledDepth[i] = NULL;
+    }
+		if (ocl_inputVertex[i]) {
+			delete ocl_inputVertex[i];
+      ocl_inputVertex[i] = NULL;
     }
 /*		if (ocl_inputVertex[i])
 			clReleaseMemObject(ocl_inputVertex[i]);
@@ -1150,6 +1159,13 @@ bool Kfusion::preprocessing(const uint16_t * inputDepth, const uint2 inSize) {
 	return true;
 }
 
+template <typename F3>
+inline F3 myrotate(const Matrix4 M, const F3 v) {
+	return F3{cl::sycl::dot(F3{M.data[0].x, M.data[0].y, M.data[0].z}, v),
+            cl::sycl::dot(F3{M.data[1].x, M.data[1].y, M.data[1].z}, v),
+            cl::sycl::dot(F3{M.data[2].x, M.data[2].y, M.data[2].z}, v)};
+}
+
 bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 		uint frame) {
 
@@ -1236,8 +1252,39 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 	uint2 localimagesize = computationSize;
 	for (unsigned int i = 0; i < iterations.size(); ++i) {
 		Matrix4 invK = getInverseCameraMatrix(k / float(1 << i));
+#if USE_SYCL
+    using namespace cl::sycl;
+    buffer<Matrix4,1> buf_invK(&invK,range<1>{1});
+		range<2> imageSize{localimagesize.x,localimagesize.y};
+
+    q.submit([&](handler &cgh) {
+      auto depth  = ocl_ScaledDepth[i]->get_access<access::mode::read>(cgh);
+      auto vertex = ocl_inputVertex[i]->get_access<access::mode::read_write>(cgh);
+      auto a_invK = buf_invK.get_access<access::mode::read>(cgh);
+      cgh.parallel_for<class T3>(imageSize, [depth,vertex,a_invK](item<2> ix) {
+        Matrix4 &invK = a_invK[0]; // auto fails here when invK used as an arg
+        cl::sycl::uint2 pixel{ix[0],ix[1]};
+        cl::sycl::float3 vert{ix[0],ix[1],1.0f};
+        cl::sycl::float3 res{0,0,0};
+
+        auto elem = depth[pixel.x() + ix.get_range()[0] * pixel.y()];
+        if (elem > 0) {
+          cl::sycl::float3 tmp3{pixel.x(), pixel.y(), 1.f};
+//          res = elem * myrotate(invK, tmp3); // SYCL needs this (*) operator
+          cl::sycl::float3 rot = myrotate(invK, tmp3);
+          res.x() = elem * rot.x();
+          res.y() = elem * rot.y();
+          res.z() = elem * rot.z();
+        }
+
+        // cl::sycl::vstore3(res, pixel.x() + ix.get_range()[0] * pixel.y(),vertex); 	// vertex[pixel] = 
+        vertex[pixel.x() + ix.get_range()[0] * pixel.y()] = res;
+      });
+    });
+#else
 		depth2vertexKernel(inputVertex[i], ScaledDepth[i], localimagesize,
 				invK);
+#endif
 		vertex2normalKernel(inputNormal[i], inputVertex[i], localimagesize);
 		localimagesize = make_uint2(localimagesize.x / 2, localimagesize.y / 2);
 	}
