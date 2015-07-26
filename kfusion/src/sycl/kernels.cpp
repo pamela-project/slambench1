@@ -965,6 +965,8 @@ void renderVolumeKernel(uchar4* out, const uint2 depthSize, const Volume volume,
 	TOCK("renderVolumeKernel", depthSize.x * depthSize.y);
 }
 
+#define USE_SYCL 1
+
 template <typename T>
 void dbg_show(T p, const char *fname, size_t sz, int id)
 {
@@ -972,6 +974,18 @@ void dbg_show(T p, const char *fname, size_t sz, int id)
 //  decltype(p[0]) total{0};
   for (size_t i = 0; i < sz; i++)
     total += p[i];
+  printf("(%d) sum of %s: %g\n", id, fname, total);
+}
+template <typename T>
+void dbg_show3(T p, const char *fname, size_t sz, int id)
+{
+  float total{0};
+  for (size_t i = 0; i < sz; i++)
+#if USE_SYCL
+    total += p[i].x() + p[i].y() + p[i].z();
+#else
+    total += p[i].x   + p[i].y   + p[i].z;
+#endif
   printf("(%d) sum of %s: %g\n", id, fname, total);
 }
 
@@ -995,8 +1009,6 @@ bool Kfusion::preprocessing(const uint16_t * inputDepth, const uint2 inSize) {
 	}
 
 	int ratio = inSize.x / outSize.x;
-
-#define USE_SYCL 1
 
   dbg_show(ScaledDepth[0], "ScaledDepth[0]", outSize.x * outSize.y, 0);
     
@@ -1288,6 +1300,15 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 		vertex2normalKernel(inputNormal[i], inputVertex[i], localimagesize);
 		localimagesize = make_uint2(localimagesize.x / 2, localimagesize.y / 2);
 	}
+#if USE_SYCL
+  auto iv = ocl_inputVertex[0]->get_access<
+    cl::sycl::access::mode::read,
+    cl::sycl::access::target::host_buffer
+  >();
+  dbg_show3(iv, "inputVertex[0]", (computationSize.x * computationSize.y) / (int)pow(2,0), 3);
+#else
+  dbg_show3(inputVertex[0], "inputVertex[0]", (computationSize.x * computationSize.y) / (int)pow(2,0), 3);
+#endif
 
 	oldPose = pose;
 	const Matrix4 projectReference = getCameraMatrix(k) * inverse(raycastPose);
