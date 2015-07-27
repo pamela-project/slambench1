@@ -61,6 +61,7 @@ uint2 computationSizeBkp = make_uint2(0, 0);
 cl::sycl::buffer<float,1>   *ocl_FloatDepth  = NULL;
 cl::sycl::buffer<float,1>  **ocl_ScaledDepth = NULL;
 cl::sycl::buffer<cl::sycl::float3,1> **ocl_inputVertex = NULL;
+cl::sycl::buffer<cl::sycl::float3,1> **ocl_inputNormal = NULL;
 //cl::sycl::buffer<ushort,1> *ocl_depth_buffer = NULL; // cl_mem ocl_depth_buffer
 
 bool print_kernel_timing = false;
@@ -85,12 +86,15 @@ void Kfusion::languageSpecificConstructor() {
 
   ocl_ScaledDepth = (fb_type**)  malloc(sizeof(fb_type*)  * iterations.size());
   ocl_inputVertex = (fb_type3**) malloc(sizeof(fb_type3*) * iterations.size());
+  ocl_inputNormal = (fb_type3**) malloc(sizeof(fb_type3*) * iterations.size());
 
   for (unsigned int i = 0; i < iterations.size(); ++i) {
 		ocl_ScaledDepth[i] = new fb_type(cl::sycl::range<1>{
-      sizeof(float) * (computationSize.x * computationSize.y) / (int)pow(2,i)});
+      sizeof(float) * (computationSize.x * computationSize.y)/(int)pow(2,i)});
 		ocl_inputVertex[i] = new fb_type3(cl::sycl::range<1>{
-      sizeof(float3) * (computationSize.x * computationSize.y) / (int)pow(2,i)});
+      sizeof(float3) * (computationSize.x * computationSize.y)/(int)pow(2,i)});
+		ocl_inputNormal[i] = new fb_type3(cl::sycl::range<1>{
+      sizeof(float3) * (computationSize.x * computationSize.y)/(int)pow(2,i)});
 
 /*		ocl_inputVertex[i] = clCreateBuffer(context, CL_MEM_READ_WRITE,
 				sizeof(float3) * (computationSize.x * computationSize.y)
@@ -156,6 +160,10 @@ Kfusion::~Kfusion() {
 		if (ocl_inputVertex[i]) {
 			delete ocl_inputVertex[i];
       ocl_inputVertex[i] = NULL;
+    }
+		if (ocl_inputNormal[i]) {
+			delete ocl_inputNormal[i];
+      ocl_inputNormal[i] = NULL;
     }
 /*		if (ocl_inputVertex[i])
 			clReleaseMemObject(ocl_inputVertex[i]);
@@ -1272,7 +1280,7 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
     q.submit([&](handler &cgh) {
       auto depth  = ocl_ScaledDepth[i]->get_access<access::mode::read>(cgh);
       auto vertex = ocl_inputVertex[i]->get_access<access::mode::read_write>(cgh);
-      auto a_invK = buf_invK.get_access<access::mode::read>(cgh);
+      auto a_invK =            buf_invK.get_access<access::mode::read>(cgh);
       cgh.parallel_for<class T3>(imageSize, [depth,vertex,a_invK](item<2> ix) {
         Matrix4 &invK = a_invK[0]; // auto fails here when invK used as an arg
         cl::sycl::uint2 pixel{ix[0],ix[1]};
@@ -1293,11 +1301,48 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
         vertex[pixel.x() + ix.get_range()[0] * pixel.y()] = res;
       });
     });
+    q.submit([&](handler &cgh) {
+      auto normal = ocl_inputNormal[i]->get_access<access::mode::read_write>(cgh);
+      auto vertex = ocl_inputVertex[i]->get_access<access::mode::read>(cgh);
+      auto a_invK =            buf_invK.get_access<access::mode::read>(cgh);
+      cgh.parallel_for<class T4>(imageSize, [normal,vertex,a_invK](item<2> ix) {
+        cl::sycl::uint2  pixel{ix[0],ix[1]};
+        cl::sycl::uint2  vleft{cl::sycl::max((int)(pixel.x())-1,0), pixel.y()};
+        cl::sycl::uint2 vright{cl::sycl::min((int)(pixel.x())+1,
+                                             (int)ix.get_range()[0]-1),
+                               pixel.y()};
+        cl::sycl::uint2    vup{pixel.x(), cl::sycl::max((int)(pixel.y())-1,0)};
+        cl::sycl::uint2  vdown{pixel.x(),
+                               cl::sycl::min((int)(pixel.y())+1,
+                                             (int)ix.get_range()[1]-1)};
+
+        // Not const as the x(), y() etc. methods are not marked as const
+        /*const*/ cl::sycl::float3 left =
+          vertex[vleft.x()  + ix.get_range()[0] * vleft.y()];
+        /*const*/ cl::sycl::float3 right = 
+          vertex[vright.x() + ix.get_range()[0] * vright.y()];
+        /*const*/ cl::sycl::float3 up = 
+          vertex[vup.x()    + ix.get_range()[0] * vup.y()];
+        /*const*/ cl::sycl::float3 down = 
+          vertex[vdown.x()  + ix.get_range()[0] * vdown.y()];
+
+        if (left.z() == 0 || right.z() == 0|| up.z() == 0 || down.z() == 0) {
+          cl::sycl::float3 invalid3{INVALID,INVALID,INVALID};
+          normal[pixel.x() + ix.get_range()[0] * pixel.y()] = invalid3;
+          return;
+        }
+
+        const cl::sycl::float3 dxv = right - left;
+        const cl::sycl::float3 dyv = down  - up;
+        normal[pixel.x() + ix.get_range()[0] * pixel.y()] =
+          cl::sycl::normalize(cl::sycl::cross(dyv,dxv));
+      });
+    });
 #else
 		depth2vertexKernel(inputVertex[i], ScaledDepth[i], localimagesize,
 				invK);
-#endif
 		vertex2normalKernel(inputNormal[i], inputVertex[i], localimagesize);
+#endif
 		localimagesize = make_uint2(localimagesize.x / 2, localimagesize.y / 2);
 	}
 #if USE_SYCL
@@ -1305,9 +1350,15 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
     cl::sycl::access::mode::read,
     cl::sycl::access::target::host_buffer
   >();
+  auto in = ocl_inputNormal[0]->get_access<
+    cl::sycl::access::mode::read,
+    cl::sycl::access::target::host_buffer
+  >();
   dbg_show3(iv, "inputVertex[0]", (computationSize.x * computationSize.y) / (int)pow(2,0), 3);
+  dbg_show3(in, "inputNormal[0]", (computationSize.x * computationSize.y) / (int)pow(2,0), 3);
 #else
   dbg_show3(inputVertex[0], "inputVertex[0]", (computationSize.x * computationSize.y) / (int)pow(2,0), 3);
+  dbg_show3(inputNormal[0], "inputNormal[0]", (computationSize.x * computationSize.y) / (int)pow(2,0), 3);
 #endif
 
 	oldPose = pose;
