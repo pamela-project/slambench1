@@ -58,10 +58,11 @@ float3 ** inputNormal;
 // sycl specific
 cl::sycl::queue q(cl::sycl::intel_selector{});
 uint2 computationSizeBkp = make_uint2(0, 0);
-cl::sycl::buffer<float,1>   *ocl_FloatDepth  = NULL;
-cl::sycl::buffer<float,1>  **ocl_ScaledDepth = NULL;
-cl::sycl::buffer<cl::sycl::float3,1> **ocl_inputVertex = NULL;
-cl::sycl::buffer<cl::sycl::float3,1> **ocl_inputNormal = NULL;
+cl::sycl::buffer<TrackData,1>         *ocl_trackingResult = NULL;
+cl::sycl::buffer<float,1>             *ocl_FloatDepth     = NULL;
+cl::sycl::buffer<float,1>            **ocl_ScaledDepth    = NULL;
+cl::sycl::buffer<cl::sycl::float3,1> **ocl_inputVertex    = NULL;
+cl::sycl::buffer<cl::sycl::float3,1> **ocl_inputNormal    = NULL;
 //cl::sycl::buffer<ushort,1> *ocl_depth_buffer = NULL; // cl_mem ocl_depth_buffer
 
 bool print_kernel_timing = false;
@@ -103,6 +104,9 @@ void Kfusion::languageSpecificConstructor() {
 				sizeof(float3) * (computationSize.x * computationSize.y)
 						/ (int) pow(2, i), NULL, &clError); */
   }  //
+
+  ocl_trackingResult = new cl::sycl::buffer<TrackData>(cl::sycl::range<1>{
+    sizeof(TrackData) * computationSize.x * computationSize.y});
 
 	// internal buffers to initialize
 	reductionoutput = (float*) calloc(sizeof(float) * 8 * 32, 1);
@@ -175,6 +179,10 @@ Kfusion::~Kfusion() {
 	if (ocl_ScaledDepth) {
     free(ocl_ScaledDepth);
     ocl_ScaledDepth = NULL;
+  }
+	if (ocl_trackingResult) {
+		delete ocl_trackingResult;
+		ocl_trackingResult = NULL;
   }
 
 	free(reductionoutput);
@@ -1369,10 +1377,37 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 				computationSize.x / (int) pow(2, level),
 				computationSize.y / (int) pow(2, level));
 		for (int i = 0; i < iterations[level]; ++i) {
+#if USE_SYCL
+      using namespace cl::sycl;
+      range<2> imageSize{localimagesize.x,localimagesize.y};
+		  cl::sycl::uint2 outputSize{computationSize.x, computationSize.y};
+      buffer<cl::sycl::uint2,1> buf_outputSize(&outputSize,range<1>{1});
 
+      q.submit([&](handler &cgh) {
+
+        const auto rw     = access::mode::read_write;
+        auto inNormal     = ocl_inputNormal[i]->get_access<rw>(cgh);
+        auto output       = ocl_trackingResult->get_access<rw>(cgh);
+        auto a_outputSize = buf_outputSize.get_access<access::mode::read>(cgh);
+
+        cgh.parallel_for<class T5>(imageSize,
+          [output,a_outputSize,inNormal](item<2> ix) {
+          auto &outputSize = a_outputSize[0]; //
+          cl::sycl::uint2  pixel{ix[0],ix[1]};
+          cl::sycl::float3 inNormalPixel =
+            inNormal[pixel.x() + ix.get_range()[0] * pixel.y()];
+            if (inNormalPixel.x() == INVALID) {
+              output[pixel.x() + outputSize.x() * pixel.y()].result = -1;
+              return;
+            }
+//todo: float3 inVertexPixel = vload3(pixel.x + inVertexSize.x * pixel.y,inVertex);
+        });
+      });
+#else
 			trackKernel(trackingResult, inputVertex[level], inputNormal[level],
 					localimagesize, vertex, normal, computationSize, pose,
 					projectReference, dist_threshold, normal_threshold);
+#endif
 
 			reduceKernel(reductionoutput, trackingResult, computationSize,
 					localimagesize);
