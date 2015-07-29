@@ -597,6 +597,7 @@ void trackKernel(TrackData* output, const float3* inVertex,
 
 			TrackData & row = output[pixel.x + pixel.y * refSize.x];
 
+#if 0
 			if (inNormal[pixel.x + pixel.y * inSize.x].x == INVALID) {
 				row.result = -1;
 				continue;
@@ -636,10 +637,18 @@ void trackKernel(TrackData* output, const float3* inVertex,
 				row.result = -5;
 				continue;
 			}
-			row.result = 1;
-			row.error = dot(referenceNormal, diff);
-			((float3 *) row.J)[0] = referenceNormal;
-			((float3 *) row.J)[1] = cross(projectedVertex, referenceNormal);
+#endif
+      float3 qq1{0.01f,0.02f,0.03f}, qq2{0.04f,0.05f,0.06f};
+      row.result = 1;
+      row.error = 0;//dot(qq1,qq2);//referenceNormal, diff);
+      ((float3 *) row.J)[0] = qq1;// referenceNormal;
+      ((float3 *) row.J)[1] = qq2;//cross(projectedVertex, referenceNormal);
+			/*row.J[0] = 0.01f;
+			row.J[1] = 0.02f;
+			row.J[2] = 0.03f;
+			row.J[3] = 0.04f;
+			row.J[4] = 0.05f;
+			row.J[5] = 0.06f;*/
 		}
 	}
 	TOCK("trackKernel", inSize.x * inSize.y);
@@ -1022,6 +1031,16 @@ void dbg_show3(T p, const char *fname, size_t sz, int id)
   printf("(%d) sum of %s: %g\n", id, fname, total);
 }
 
+template <typename T>
+void dbg_show_TrackData(T p, const char *fname, size_t sz, int id)
+{
+  float total{0};
+  for (size_t i = 0; i < sz; i++)
+    total += p[i].J[0] + p[i].J[1] + p[i].J[2] +
+             p[i].J[3] + p[i].J[4] + p[i].J[5];
+  printf("(%d) sum of %s: %g\n", id, fname, total);
+}
+
 bool Kfusion::preprocessing(const uint16_t * inputDepth, const uint2 inSize) {
 
 	// bilateral_filter(ScaledDepth[0], inputDepth, inputSize , gaussian, e_delta, radius);
@@ -1388,10 +1407,10 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
     cl::sycl::access::target::host_buffer
   >();
   dbg_show3(iv, "inputVertex[0]", (computationSize.x * computationSize.y) / (int)pow(2,0), 3);
-  dbg_show3(in, "inputNormal[0]", (computationSize.x * computationSize.y) / (int)pow(2,0), 3);
+  dbg_show3(in, "inputNormal[0]", (computationSize.x * computationSize.y) / (int)pow(2,0), 4);
 #else
   dbg_show3(inputVertex[0], "inputVertex[0]", (computationSize.x * computationSize.y) / (int)pow(2,0), 3);
-  dbg_show3(inputNormal[0], "inputNormal[0]", (computationSize.x * computationSize.y) / (int)pow(2,0), 3);
+  dbg_show3(inputNormal[0], "inputNormal[0]", (computationSize.x * computationSize.y) / (int)pow(2,0), 4);
 #endif
 
 	oldPose = pose;
@@ -1435,12 +1454,13 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
           cl::sycl::uint2 pixel{ix[0],ix[1]};
           TrackData &row = output[pixel.x() + outputSize.x() * pixel.y()];
 
+#if 0
           cl::sycl::float3 inNormalPixel =
             inNormal[pixel.x() + ix.get_range()[0] * pixel.y()];
-            if (inNormalPixel.x() == INVALID) {
-              row.result = -1;
-              return;
-            }
+          if (inNormalPixel.x() == INVALID) {
+            row.result = -1;
+            return;
+          }
 
           cl::sycl::float3 inVertexPixel =
             inVertex[pixel.x() + ix.get_range()[0] * pixel.y()];
@@ -1477,12 +1497,27 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
             row.result = -5;
             return;
           }
+#endif
 
+          cl::sycl::float3 qq0{0.0f,0.0f,0.0f};
+          cl::sycl::float3 qq1{0.01f,0.02f,0.03f};
+          cl::sycl::float3 qq2{0.04f,0.05f,0.06f};
           row.result = 1;
-          row.error  = cl::sycl::dot(referenceNormal, diff);
-          ((cl::sycl::float3 *) row.J)[0] = referenceNormal;
-          ((cl::sycl::float3 *) row.J)[1] =
-            cl::sycl::cross(projectedVertex, referenceNormal);
+          row.error  = 0;//cl::sycl::dot(qq1,qq2);//referenceNormal, diff);
+//          ((cl::sycl::float3 *) row.J)[0] = qq1;//referenceNormal;
+//          ((cl::sycl::float3 *) row.J)[1] = qq2;//
+          *((cl::sycl::float3 *)(row.J + 0)) = qq1;
+          *((cl::sycl::float3 *)(row.J + 3)) = qq2;
+//          *(cl::sycl::float3 *)row.J = qq1;
+//          *(cl::sycl::float3 *)(row.J + 4*sizeof(float)) = qq2;
+//          *row.J
+            //cl::sycl::cross(projectedVertex, referenceNormal);
+//          row.J[0] = 0.01f;
+//          row.J[1] = 0.02f;
+//          row.J[2] = 0.03f;
+//          row.J[3] = 0.04f;
+//          row.J[4] = 0.05f;
+//          row.J[5] = 0.06f;
         });
       });
 #else
@@ -1499,6 +1534,17 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 
 		}
 	}
+#if USE_SYCL
+  auto tres = ocl_trackingResult->get_access<
+    cl::sycl::access::mode::read,
+    cl::sycl::access::target::host_buffer
+  >();
+  dbg_show_TrackData(tres, "trackingResult",
+                     computationSize.x * computationSize.y, 5);
+#else
+  dbg_show_TrackData(trackingResult, "trackingResult",
+                     computationSize.x * computationSize.y, 5);
+#endif
 	return checkPoseKernel(pose, oldPose, reductionoutput, computationSize,
 			track_threshold);
 
