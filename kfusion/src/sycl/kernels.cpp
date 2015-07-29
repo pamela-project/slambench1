@@ -597,7 +597,6 @@ void trackKernel(TrackData* output, const float3* inVertex,
 
 			TrackData & row = output[pixel.x + pixel.y * refSize.x];
 
-#if 0
 			if (inNormal[pixel.x + pixel.y * inSize.x].x == INVALID) {
 				row.result = -1;
 				continue;
@@ -633,22 +632,16 @@ void trackKernel(TrackData* output, const float3* inVertex,
 				row.result = -4;
 				continue;
 			}
+      for (int i = 0; i < 6; i++) row.J[i] = 0.01f; continue;
 			if (dot(projectedNormal, referenceNormal) < normal_threshold) {
 				row.result = -5;
 				continue;
 			}
-#endif
-      float3 qq1{0.01f,0.02f,0.03f}, qq2{0.04f,0.05f,0.06f};
+
       row.result = 1;
-      row.error = 0;//dot(qq1,qq2);//referenceNormal, diff);
-      ((float3 *) row.J)[0] = qq1;// referenceNormal;
-      ((float3 *) row.J)[1] = qq2;//cross(projectedVertex, referenceNormal);
-			/*row.J[0] = 0.01f;
-			row.J[1] = 0.02f;
-			row.J[2] = 0.03f;
-			row.J[3] = 0.04f;
-			row.J[4] = 0.05f;
-			row.J[5] = 0.06f;*/
+      row.error = dot(referenceNormal, diff);
+      ((float3 *) row.J)[0] = referenceNormal;
+      ((float3 *) row.J)[1] = cross(projectedVertex, referenceNormal);
 		}
 	}
 	TOCK("trackKernel", inSize.x * inSize.y);
@@ -1007,7 +1000,7 @@ void renderVolumeKernel(uchar4* out, const uint2 depthSize, const Volume volume,
 	TOCK("renderVolumeKernel", depthSize.x * depthSize.y);
 }
 
-#define USE_SYCL 1
+#define USE_SYCL 0
 
 template <typename T>
 void dbg_show(T p, const char *fname, size_t sz, int id)
@@ -1428,6 +1421,10 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
       buffer<cl::sycl::uint2,1> buf_outputSize(&outputSize,range<1>{1});
       buffer<Matrix4,1> buf_pose(&pose,range<1>{1});
       buffer<Matrix4,1> buf_projectReference(&projectReference,range<1>{1});
+      decltype(dist_threshold)   stack_dist_threshold   = dist_threshold;
+      decltype(normal_threshold) stack_normal_threshold = normal_threshold;
+      buffer<float,1> buf_dist_threshold(const_cast<float*>(&stack_dist_threshold),range<1>{1});
+      buffer<float,1> buf_normal_threshold(const_cast<float*>(&stack_normal_threshold),range<1>{1});
 
       q.submit([&](handler &cgh) {
 
@@ -1441,20 +1438,23 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
         auto a_pose       = buf_pose.get_access<access::mode::read>(cgh);
         auto a_projectReference =
           buf_projectReference.get_access<access::mode::read>(cgh);
+        auto a_dist_threshold   = buf_dist_threshold.get_access<access::mode::read>(cgh); //
+        auto a_normal_threshold = buf_normal_threshold.get_access<access::mode::read>(cgh); //
 
         cgh.parallel_for<class T5>(
           imageSize,
           [output,a_outputSize,inVertex,inNormal,refVertex,refNormal,
-           a_pose,a_projectReference]
+           a_pose,a_projectReference,a_dist_threshold,a_normal_threshold]
           (item<2> ix)
         {
           auto &outputSize       = a_outputSize[0]; //
           const Matrix4 &Ttrack  = a_pose[0]; // auto fails here as earlier
           const Matrix4 &view    = a_projectReference[0]; // ""
+          auto &dist_threshold   = a_dist_threshold[0]; //
+          auto &normal_threshold = a_normal_threshold[0]; //
           cl::sycl::uint2 pixel{ix[0],ix[1]};
           TrackData &row = output[pixel.x() + outputSize.x() * pixel.y()];
 
-#if 0
           cl::sycl::float3 inNormalPixel =
             inNormal[pixel.x() + ix.get_range()[0] * pixel.y()];
           if (inNormalPixel.x() == INVALID) {
@@ -1489,35 +1489,21 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
             refVertex[refPixel.x() + outputSize.x() * refPixel.y()] -
             projectedVertex;
           const cl::sycl::float3 projectedNormal = myrotate(Ttrack, inNormalPixel);
-          if (cl::sycl::length(diff) > dist_threshold ) {
+          if (cl::sycl::length(diff) > dist_threshold) {
             row.result = -4;
             return;
           }
+          for (int i = 0; i < 6; i++) row.J[i] = 0.01f; return;
           if (cl::sycl::dot(projectedNormal,referenceNormal)<normal_threshold) {
             row.result = -5;
             return;
           }
-#endif
 
-          cl::sycl::float3 qq0{0.0f,0.0f,0.0f};
-          cl::sycl::float3 qq1{0.01f,0.02f,0.03f};
-          cl::sycl::float3 qq2{0.04f,0.05f,0.06f};
           row.result = 1;
-          row.error  = 0;//cl::sycl::dot(qq1,qq2);//referenceNormal, diff);
-//          ((cl::sycl::float3 *) row.J)[0] = qq1;//referenceNormal;
-//          ((cl::sycl::float3 *) row.J)[1] = qq2;//
-          *((cl::sycl::float3 *)(row.J + 0)) = qq1;
-          *((cl::sycl::float3 *)(row.J + 3)) = qq2;
-//          *(cl::sycl::float3 *)row.J = qq1;
-//          *(cl::sycl::float3 *)(row.J + 4*sizeof(float)) = qq2;
-//          *row.J
-            //cl::sycl::cross(projectedVertex, referenceNormal);
-//          row.J[0] = 0.01f;
-//          row.J[1] = 0.02f;
-//          row.J[2] = 0.03f;
-//          row.J[3] = 0.04f;
-//          row.J[4] = 0.05f;
-//          row.J[5] = 0.06f;
+          row.error  = cl::sycl::dot(referenceNormal, diff);
+          *((cl::sycl::float3 *)(row.J + 0)) = referenceNormal; // row.J[0:2]
+          *((cl::sycl::float3 *)(row.J + 3)) =                  // row.J[3:5]
+            cl::sycl::cross(projectedVertex, referenceNormal);
         });
       });
 #else
