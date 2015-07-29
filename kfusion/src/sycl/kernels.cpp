@@ -56,8 +56,13 @@ float3 ** inputVertex;
 float3 ** inputNormal;
 
 // sycl specific
+static_assert(std::is_standard_layout<TrackData>::value,"");
 cl::sycl::queue q(cl::sycl::intel_selector{});
-uint2 computationSizeBkp = make_uint2(0, 0);
+// needed? Depends on depth buffer location/lifetime
+// uint2 computationSizeBkp = make_uint2(0, 0);
+cl::sycl::buffer<cl::sycl::float3,1>  *ocl_vertex         = NULL;
+cl::sycl::buffer<cl::sycl::float3,1>  *ocl_normal         = NULL;
+
 cl::sycl::buffer<TrackData,1>         *ocl_trackingResult = NULL;
 cl::sycl::buffer<float,1>             *ocl_FloatDepth     = NULL;
 cl::sycl::buffer<float,1>            **ocl_ScaledDepth    = NULL;
@@ -105,6 +110,10 @@ void Kfusion::languageSpecificConstructor() {
 						/ (int) pow(2, i), NULL, &clError); */
   }  //
 
+  ocl_vertex = new cl::sycl::buffer<cl::sycl::float3>(cl::sycl::range<1>{
+    sizeof(cl::sycl::float3) * computationSize.x * computationSize.y});
+  ocl_normal = new cl::sycl::buffer<cl::sycl::float3>(cl::sycl::range<1>{
+    sizeof(cl::sycl::float3) * computationSize.x * computationSize.y});
   ocl_trackingResult = new cl::sycl::buffer<TrackData>(cl::sycl::range<1>{
     sizeof(TrackData) * computationSize.x * computationSize.y});
 
@@ -179,6 +188,14 @@ Kfusion::~Kfusion() {
 	if (ocl_ScaledDepth) {
     free(ocl_ScaledDepth);
     ocl_ScaledDepth = NULL;
+  }
+	if (ocl_vertex) {
+		delete ocl_vertex;
+		ocl_vertex = NULL;
+  }
+	if (ocl_normal) {
+		delete ocl_normal;
+		ocl_normal = NULL;
   }
 	if (ocl_trackingResult) {
 		delete ocl_trackingResult;
@@ -1194,6 +1211,14 @@ inline F3 myrotate(const Matrix4 M, const F3 v) {
             cl::sycl::dot(F3{M.data[2].x, M.data[2].y, M.data[2].z}, v)};
 }
 
+template <typename F3>
+inline F3 Mat4TimeFloat3(const Matrix4 M, const F3 v) {
+	return
+  F3{cl::sycl::dot(F3{M.data[0].x, M.data[0].y, M.data[0].z}, v) + M.data[0].w,
+     cl::sycl::dot(F3{M.data[1].x, M.data[1].y, M.data[1].z}, v) + M.data[1].w,
+     cl::sycl::dot(F3{M.data[2].x, M.data[2].y, M.data[2].z}, v) + M.data[2].w};
+}
+
 bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 		uint frame) {
 
@@ -1290,7 +1315,7 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
       auto vertex = ocl_inputVertex[i]->get_access<access::mode::read_write>(cgh);
       auto a_invK =            buf_invK.get_access<access::mode::read>(cgh);
       cgh.parallel_for<class T3>(imageSize, [depth,vertex,a_invK](item<2> ix) {
-        Matrix4 &invK = a_invK[0]; // auto fails here when invK used as an arg
+        Matrix4 &invK = a_invK[0]; // auto fails here when var used as an arg
         cl::sycl::uint2 pixel{ix[0],ix[1]};
         cl::sycl::float3 vert{ix[0],ix[1],1.0f};
         cl::sycl::float3 res{0,0,0};
@@ -1382,25 +1407,82 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
       range<2> imageSize{localimagesize.x,localimagesize.y};
 		  cl::sycl::uint2 outputSize{computationSize.x, computationSize.y};
       buffer<cl::sycl::uint2,1> buf_outputSize(&outputSize,range<1>{1});
+      buffer<Matrix4,1> buf_pose(&pose,range<1>{1});
+      buffer<Matrix4,1> buf_projectReference(&projectReference,range<1>{1});
 
       q.submit([&](handler &cgh) {
 
         const auto rw     = access::mode::read_write;
-        auto inNormal     = ocl_inputNormal[i]->get_access<rw>(cgh);
+        auto inNormal     = ocl_inputNormal[level]->get_access<rw>(cgh);
+        auto inVertex     = ocl_inputVertex[level]->get_access<rw>(cgh);
         auto output       = ocl_trackingResult->get_access<rw>(cgh);
+        auto refVertex    = ocl_vertex->get_access<access::mode::read>(cgh);
+        auto refNormal    = ocl_normal->get_access<access::mode::read>(cgh);
         auto a_outputSize = buf_outputSize.get_access<access::mode::read>(cgh);
+        auto a_pose       = buf_pose.get_access<access::mode::read>(cgh);
+        auto a_projectReference =
+          buf_projectReference.get_access<access::mode::read>(cgh);
 
-        cgh.parallel_for<class T5>(imageSize,
-          [output,a_outputSize,inNormal](item<2> ix) {
-          auto &outputSize = a_outputSize[0]; //
-          cl::sycl::uint2  pixel{ix[0],ix[1]};
+        cgh.parallel_for<class T5>(
+          imageSize,
+          [output,a_outputSize,inVertex,inNormal,refVertex,refNormal,
+           a_pose,a_projectReference]
+          (item<2> ix)
+        {
+          auto &outputSize       = a_outputSize[0]; //
+          const Matrix4 &Ttrack  = a_pose[0]; // auto fails here as earlier
+          const Matrix4 &view    = a_projectReference[0]; // ""
+          cl::sycl::uint2 pixel{ix[0],ix[1]};
+          TrackData &row = output[pixel.x() + outputSize.x() * pixel.y()];
+
           cl::sycl::float3 inNormalPixel =
             inNormal[pixel.x() + ix.get_range()[0] * pixel.y()];
             if (inNormalPixel.x() == INVALID) {
-              output[pixel.x() + outputSize.x() * pixel.y()].result = -1;
+              row.result = -1;
               return;
             }
-//todo: float3 inVertexPixel = vload3(pixel.x + inVertexSize.x * pixel.y,inVertex);
+
+          cl::sycl::float3 inVertexPixel =
+            inVertex[pixel.x() + ix.get_range()[0] * pixel.y()];
+          const cl::sycl::float3 projectedVertex =
+            Mat4TimeFloat3(Ttrack, inVertexPixel);
+          /*const*/ cl::sycl::float3 projectedPos    =
+            Mat4TimeFloat3(view, projectedVertex);
+          /*const*/ cl::sycl::float2 projPixel{
+            projectedPos.x() / projectedPos.z() + 0.5f,
+            projectedPos.y() / projectedPos.z() + 0.5f};
+          if (projPixel.x() < 0 || projPixel.x() > outputSize.x()-1 ||
+              projPixel.y() < 0 || projPixel.y() > outputSize.y()-1) {
+            row.result = -2;
+            return;
+          }
+
+          /*const*/ cl::sycl::uint2 refPixel{projPixel.x(), projPixel.y()};
+          /*const*/ cl::sycl::float3 referenceNormal =
+            refNormal[refPixel.x() + outputSize.x() * refPixel.y()];
+          if (referenceNormal.x() == INVALID) {
+            row.result = -3;
+            return;
+          }
+
+          const cl::sycl::float3 diff =
+            refVertex[refPixel.x() + outputSize.x() * refPixel.y()] -
+            projectedVertex;
+          const cl::sycl::float3 projectedNormal = myrotate(Ttrack, inNormalPixel);
+          if (cl::sycl::length(diff) > dist_threshold ) {
+            row.result = -4;
+            return;
+          }
+          if (cl::sycl::dot(projectedNormal,referenceNormal)<normal_threshold) {
+            row.result = -5;
+            return;
+          }
+
+          row.result = 1;
+          row.error  = cl::sycl::dot(referenceNormal, diff);
+          ((cl::sycl::float3 *) row.J)[0] = referenceNormal;
+          ((cl::sycl::float3 *) row.J)[1] =
+            cl::sycl::cross(projectedVertex, referenceNormal);
         });
       });
 #else
