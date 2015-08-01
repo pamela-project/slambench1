@@ -628,11 +628,10 @@ void trackKernel(TrackData* output, const float3* inVertex,
 			const float3 projectedNormal = rotate(Ttrack,
 					inNormal[pixel.x + pixel.y * inSize.x]);
 
-			if (diff.x/*length(diff)*/ < 0.0f/*dist_threshold*/) {
+			if (length(diff) > dist_threshold) {
 				row.result = -4;
 				continue;
 			}
-      for (int i = 0; i < 6; i++) row.J[i] = 0.01f; continue;
 			if (dot(projectedNormal, referenceNormal) < normal_threshold) {
 				row.result = -5;
 				continue;
@@ -1485,26 +1484,15 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
             return;
           }
 
-          /*const*/ //cl::sycl::float3 diff =
-            //refVertex[refPixel.x() + outputSize.x() * refPixel.y()] -
-            //projectedVertex;
-          cl::sycl::float3 diff;
-          diff.x() = refVertex[refPixel.x() + outputSize.x() * refPixel.y()].x();
-          diff.y() = refVertex[refPixel.x() + outputSize.x() * refPixel.y()].y();
-          diff.z() = refVertex[refPixel.x() + outputSize.x() * refPixel.y()].z();
-          diff.x() = diff.x() - projectedVertex.x();
-          diff.y() = diff.y() - projectedVertex.y();
-          diff.z() = diff.z() - projectedVertex.z();
+          const cl::sycl::float3 diff =
+            refVertex[refPixel.x() + outputSize.x() * refPixel.y()] -
+            projectedVertex;
           const cl::sycl::float3 projectedNormal = myrotate(Ttrack, inNormalPixel);
-//const float dist_threshold = 0.1f;
-//const float normal_threshold = 0.8f;
-//          if (cl::sycl::length(diff) > 0.1f/*dist_threshold*/) {
-          if (diff.x() < 0.0f/*dist_threshold*/) {
+          if (cl::sycl::length(diff) > dist_threshold) {
             row.result = -4;
             return;
           }
-          for (int i = 0; i < 6; i++) row.J[i] = 0.01f; return;
-          if (cl::sycl::dot(projectedNormal,referenceNormal)<0.8f/*normal_threshold*/) {
+          if (cl::sycl::dot(projectedNormal,referenceNormal)<normal_threshold) {
             row.result = -5;
             return;
           }
