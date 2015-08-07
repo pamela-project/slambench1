@@ -682,7 +682,6 @@ public:
  std::cout << ( "OpenNI15DepthReader ERROR !!!") << std::endl;
         } else {
 	  _image_available = true;
-	}
 
         _rc = _context.StartGeneratingAll();
         if (_rc != XN_STATUS_OK) {

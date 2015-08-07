@@ -182,6 +182,7 @@ float PowerMonitor::getPower(Sensor sensor) {
 			return (power);
 		}
 	}
+
 	return 0;
 }
 
