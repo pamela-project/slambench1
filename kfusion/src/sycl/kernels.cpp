@@ -63,12 +63,18 @@ cl::sycl::queue q(cl::sycl::intel_selector{});
 cl::sycl::buffer<cl::sycl::float3,1>  *ocl_vertex         = NULL;
 cl::sycl::buffer<cl::sycl::float3,1>  *ocl_normal         = NULL;
 
-cl::sycl::buffer<TrackData,1>         *ocl_trackingResult = NULL;
-cl::sycl::buffer<float,1>             *ocl_FloatDepth     = NULL;
-cl::sycl::buffer<float,1>            **ocl_ScaledDepth    = NULL;
-cl::sycl::buffer<cl::sycl::float3,1> **ocl_inputVertex    = NULL;
-cl::sycl::buffer<cl::sycl::float3,1> **ocl_inputNormal    = NULL;
+cl::sycl::buffer<float,1>             *ocl_reduce_output_buffer = NULL;
+cl::sycl::buffer<TrackData,1>         *ocl_trackingResult       = NULL;
+cl::sycl::buffer<float,1>             *ocl_FloatDepth           = NULL;
+cl::sycl::buffer<float,1>            **ocl_ScaledDepth          = NULL;
+cl::sycl::buffer<cl::sycl::float3,1> **ocl_inputVertex          = NULL;
+cl::sycl::buffer<cl::sycl::float3,1> **ocl_inputNormal          = NULL;
 //cl::sycl::buffer<ushort,1> *ocl_depth_buffer = NULL; // cl_mem ocl_depth_buffer
+float *reduceOutputBuffer = NULL;
+
+// reduction parameters
+static const size_t size_of_group = 64;
+static const size_t number_of_groups = 8;
 
 bool print_kernel_timing = false;
 #ifdef __APPLE__
@@ -116,6 +122,12 @@ void Kfusion::languageSpecificConstructor() {
     sizeof(cl::sycl::float3) * computationSize.x * computationSize.y});
   ocl_trackingResult = new cl::sycl::buffer<TrackData>(cl::sycl::range<1>{
     sizeof(TrackData) * computationSize.x * computationSize.y});
+// remove sizeof(TrackData) *
+
+	reduceOutputBuffer = (float*) malloc(number_of_groups * 32 * sizeof(float));
+  ocl_reduce_output_buffer = new cl::sycl::buffer<float>(
+      reduceOutputBuffer,
+      cl::sycl::range<1>{32 * number_of_groups});
 
 	// internal buffers to initialize
 	reductionoutput = (float*) calloc(sizeof(float) * 8 * 32, 1);
@@ -160,6 +172,11 @@ void Kfusion::languageSpecificConstructor() {
 }
 
 Kfusion::~Kfusion() {
+
+	if (reduceOutputBuffer)
+		free(reduceOutputBuffer);
+	reduceOutputBuffer = NULL;
+
 	if (ocl_FloatDepth) {
 		delete ocl_FloatDepth;
 	  ocl_FloatDepth = NULL;
@@ -196,6 +213,10 @@ Kfusion::~Kfusion() {
 	if (ocl_normal) {
 		delete ocl_normal;
 		ocl_normal = NULL;
+  }
+	if (ocl_reduce_output_buffer) {
+	  delete ocl_reduce_output_buffer;
+	  ocl_reduce_output_buffer = NULL;
   }
 	if (ocl_trackingResult) {
 		delete ocl_trackingResult;
@@ -1415,6 +1436,7 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 		for (int i = 0; i < iterations[level]; ++i) {
 #if USE_SYCL
       using namespace cl::sycl;
+      const auto rw = access::mode::read_write;
       range<2> imageSize{localimagesize.x,localimagesize.y};
 		  cl::sycl::uint2 outputSize{computationSize.x, computationSize.y};
       buffer<cl::sycl::uint2,1> buf_outputSize(&outputSize,range<1>{1});
@@ -1427,7 +1449,6 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 
       q.submit([&](handler &cgh) {
 
-        const auto rw     = access::mode::read_write;
         auto inNormal     = ocl_inputNormal[level]->get_access<rw>(cgh);
         auto inVertex     = ocl_inputVertex[level]->get_access<rw>(cgh);
         auto output       = ocl_trackingResult->get_access<rw>(cgh);
@@ -1504,14 +1525,115 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
             cl::sycl::cross(projectedVertex, referenceNormal);
         });
       });
+
+      const    range<1> nitems{size_of_group * number_of_groups};
+      const nd_range<1> ndr{nd_range<1>(nitems, range<1>{size_of_group})};
+      cl::sycl::uint2 JSize{computationSize.x, computationSize.y};
+      cl::sycl::uint2  size{ localimagesize.x,  localimagesize.y};
+      buffer<cl::sycl::uint2,1> buf_JSize(&JSize,range<1>{1});
+      buffer<cl::sycl::uint2,1>  buf_size( &size,range<1>{1});
+
+      q.submit([&](handler &cgh) {
+        auto       J = ocl_trackingResult->get_access<access::mode::read>(cgh);
+        auto a_JSize = buf_JSize.get_access<access::mode::read>(cgh);
+        auto  a_size =  buf_size.get_access<access::mode::read>(cgh);
+        const range<1> local_mem_size{size_of_group * 32};
+        auto out=ocl_reduce_output_buffer->get_access<access::mode::write>(cgh);
+        accessor<float, 1, rw, access::target::local> S(local_mem_size, cgh);
+
+        cgh.parallel_for<class T6>(ndr,[out,J,a_JSize,a_size,S](nd_item<1> ix) {
+          auto &JSize = a_JSize[0];  //
+          auto  &size =  a_size[0];  //
+          cl::sycl::uint blockIdx  = ix.get_group(0);
+          cl::sycl::uint blockDim  = ix.get_local_range(0);
+          cl::sycl::uint threadIdx = ix.get_local(0);
+          cl::sycl::uint gridDim   = ix.get_num_groups(0);
+
+          const cl::sycl::uint sline = threadIdx;
+
+          float         sums[32];
+          float *jtj  = sums + 7;
+          float *info = sums + 28;
+
+          for (cl::sycl::uint i = 0; i < 32; ++i)
+            sums[i] = 0.0f;
+
+          for (cl::sycl::uint y = blockIdx; y < size.y(); y += gridDim) {
+            for (cl::sycl::uint x = sline; x < size.x(); x += blockDim) {
+              const TrackData row = J[x + y * JSize.x()];
+              if (row.result < 1) {
+                info[1] += row.result == -4 ? 1 : 0;
+                info[2] += row.result == -5 ? 1 : 0;
+                info[3] += row.result > -4 ? 1 : 0;
+                continue;
+              }
+
+              // Error part
+              sums[0] += row.error * row.error;
+
+              // JTe part
+              for (int i = 0; i < 6; ++i)
+                sums[i+1] += row.error * row.J[i];
+
+              jtj[0] += row.J[0] * row.J[0];
+              jtj[1] += row.J[0] * row.J[1];
+              jtj[2] += row.J[0] * row.J[2];
+              jtj[3] += row.J[0] * row.J[3];
+              jtj[4] += row.J[0] * row.J[4];
+              jtj[5] += row.J[0] * row.J[5];
+
+              jtj[6] += row.J[1] * row.J[1];
+              jtj[7] += row.J[1] * row.J[2];
+              jtj[8] += row.J[1] * row.J[3];
+              jtj[9] += row.J[1] * row.J[4];
+              jtj[10] += row.J[1] * row.J[5];
+
+              jtj[11] += row.J[2] * row.J[2];
+              jtj[12] += row.J[2] * row.J[3];
+              jtj[13] += row.J[2] * row.J[4];
+              jtj[14] += row.J[2] * row.J[5];
+
+              jtj[15] += row.J[3] * row.J[3];
+              jtj[16] += row.J[3] * row.J[4];
+              jtj[17] += row.J[3] * row.J[5];
+
+              jtj[18] += row.J[4] * row.J[4];
+              jtj[19] += row.J[4] * row.J[5];
+
+              jtj[20] += row.J[5] * row.J[5];
+              // extra info here
+              info[0] += 1;
+            }
+          }
+
+          // copy over to shared memory
+          for (int i = 0; i < 32; ++i)
+            S[sline * 32 + i] = sums[i];
+
+          // sum up columns and copy to global memory in the final 32 threads
+          if (sline < 32) {
+            for (unsigned i = 1; i < blockDim; ++i)
+              S[sline] += S[i * 32 + sline];
+            out[sline+blockIdx*32] = S[sline];
+          }
+        });
+      });
+      using host_accessor_t = accessor<
+        float,
+        1,
+        access::mode::read,
+        access::target::host_buffer
+      >;
+      host_accessor_t ha(*ocl_reduce_output_buffer);
+      ha[0]; // I believe it will copy over everything
 #else
 			trackKernel(trackingResult, inputVertex[level], inputNormal[level],
 					localimagesize, vertex, normal, computationSize, pose,
 					projectReference, dist_threshold, normal_threshold);
-#endif
 
 			reduceKernel(reductionoutput, trackingResult, computationSize,
 					localimagesize);
+#endif
 
 			if (updatePoseKernel(pose, reductionoutput, icp_threshold))
 				break;
