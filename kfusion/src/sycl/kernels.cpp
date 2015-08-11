@@ -1621,7 +1621,6 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 
       if (updatePoseKernel(pose, reduceOutputBuffer, icp_threshold))
         break;
-
 #else
 			trackKernel(trackingResult, inputVertex[level], inputNormal[level],
 					localimagesize, vertex, normal, computationSize, pose,
@@ -1643,13 +1642,14 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
   >();
   dbg_show_TrackData(tres, "trackingResult",
                      computationSize.x * computationSize.y, 5);
+	return checkPoseKernel(pose, oldPose, reduceOutputBuffer, computationSize,
+			track_threshold);
 #else
   dbg_show_TrackData(trackingResult, "trackingResult",
                      computationSize.x * computationSize.y, 5);
-#endif
 	return checkPoseKernel(pose, oldPose, reductionoutput, computationSize,
 			track_threshold);
-
+#endif
 }
 
 bool Kfusion::raycasting(float4 k, float mu, uint frame) {
@@ -1670,12 +1670,35 @@ bool Kfusion::raycasting(float4 k, float mu, uint frame) {
 bool Kfusion::integration(float4 k, uint integration_rate, float mu,
 		uint frame) {
 
+#if USE_SYCL
 	bool doIntegrate = checkPoseKernel(pose, oldPose, reductionoutput,
 			computationSize, track_threshold);
+#else
+	bool doIntegrate = checkPoseKernel(pose, oldPose, reduceOutputBuffer,
+			computationSize, track_threshold);
+#endif
 
 	if ((doIntegrate && ((frame % integration_rate) == 0)) || (frame <= 3)) {
+#if USE_SYCL
+    using namespace cl::sycl;
+		cl::sycl::uint2 depthSize{computationSize.x,computationSize.y};
+		const Matrix4 invTrack = inverse(pose);
+		const Matrix4 K = getCameraMatrix(k);
+
+		const cl::sycl::float3 delta = myrotate(invTrack,
+				cl::sycl::float3{0, 0, volumeDimensions.z / volumeResolution.z});
+		const cl::sycl::float3 cameraDelta = myrotate(K, delta);
+
+    range<2> globalWorksize{volumeResolution.x, volumeResolution.y};
+    q.submit([&](handler &cgh) {
+      cgh.parallel_for<class T7>(globalWorksize, [](item<2> ix) {
+        // to do
+      });
+    });
+#else
 		integrateKernel(volume, floatDepth, computationSize, inverse(pose),
 				getCameraMatrix(k), mu, maxweight);
+#endif
 		doIntegrate = true;
 	} else {
 		doIntegrate = false;
