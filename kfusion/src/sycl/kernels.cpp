@@ -1537,7 +1537,9 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
           cl::sycl::uint blockIdx  = ix.get_group(0);
           cl::sycl::uint blockDim  = ix.get_local_range(0);
           cl::sycl::uint threadIdx = ix.get_local(0);
-          cl::sycl::uint gridDim   = ix.get_num_groups(0);
+          //cl::sycl::uint gridDim   = ix.get_num_groups(0); // bug: always 0
+          cl::sycl::uint gridDim   = ix.get_global_range(0) /
+                                     ix.get_local_range(0);
 
           const cl::sycl::uint sline = threadIdx;
 
