@@ -91,71 +91,47 @@ void Kfusion::languageSpecificConstructor() {
 	if (getenv("KERNEL_TIMINGS"))
 		print_kernel_timing = true;
 
-  using fb_type  = cl::sycl::buffer<float,1>;
-  using fb_type3 = cl::sycl::buffer<cl::sycl::float3,1>;
-	ocl_FloatDepth = new fb_type(cl::sycl::range<1>{
-    sizeof(float) * computationSize.x * computationSize.y});
+  const auto csize = computationSize.x * computationSize.y;
+  using f_buf  = cl::sycl::buffer<float,1>;
+  using f3_buf = cl::sycl::buffer<cl::sycl::float3,1>;
+	ocl_FloatDepth = new f_buf(cl::sycl::range<1>{csize});
 
-  ocl_ScaledDepth = (fb_type**)  malloc(sizeof(fb_type*)  * iterations.size());
-  ocl_inputVertex = (fb_type3**) malloc(sizeof(fb_type3*) * iterations.size());
-  ocl_inputNormal = (fb_type3**) malloc(sizeof(fb_type3*) * iterations.size());
+  ocl_ScaledDepth = (f_buf**)  malloc(sizeof(f_buf*)  * iterations.size());
+  ocl_inputVertex = (f3_buf**) malloc(sizeof(f3_buf*) * iterations.size());
+  ocl_inputNormal = (f3_buf**) malloc(sizeof(f3_buf*) * iterations.size());
 
   for (unsigned int i = 0; i < iterations.size(); ++i) {
-		ocl_ScaledDepth[i] = new fb_type(cl::sycl::range<1>{
-      sizeof(float) * (computationSize.x * computationSize.y)/(int)pow(2,i)});
-		ocl_inputVertex[i] = new fb_type3(cl::sycl::range<1>{
-      sizeof(float3) * (computationSize.x * computationSize.y)/(int)pow(2,i)});
-		ocl_inputNormal[i] = new fb_type3(cl::sycl::range<1>{
-      sizeof(float3) * (computationSize.x * computationSize.y)/(int)pow(2,i)});
+		ocl_ScaledDepth[i] = new f_buf (cl::sycl::range<1>{csize/(int)pow(2,i)});
+		ocl_inputVertex[i] = new f3_buf(cl::sycl::range<1>{csize/(int)pow(2,i)});
+		ocl_inputNormal[i] = new f3_buf(cl::sycl::range<1>{csize/(int)pow(2,i)});
+  }
 
-/*		ocl_inputVertex[i] = clCreateBuffer(context, CL_MEM_READ_WRITE,
-				sizeof(float3) * (computationSize.x * computationSize.y)
-						/ (int) pow(2, i), NULL, &clError);
-		ocl_inputNormal[i] = clCreateBuffer(context, CL_MEM_READ_WRITE,
-				sizeof(float3) * (computationSize.x * computationSize.y)
-						/ (int) pow(2, i), NULL, &clError); */
-  }  //
+  ocl_vertex = new f3_buf(cl::sycl::range<1>{csize});
+  ocl_normal = new f3_buf(cl::sycl::range<1>{csize});
+  ocl_trackingResult=new cl::sycl::buffer<TrackData>(cl::sycl::range<1>{csize});
 
-  ocl_vertex = new cl::sycl::buffer<cl::sycl::float3>(cl::sycl::range<1>{
-    sizeof(cl::sycl::float3) * computationSize.x * computationSize.y});
-  ocl_normal = new cl::sycl::buffer<cl::sycl::float3>(cl::sycl::range<1>{
-    sizeof(cl::sycl::float3) * computationSize.x * computationSize.y});
-  ocl_trackingResult = new cl::sycl::buffer<TrackData>(cl::sycl::range<1>{
-    sizeof(TrackData) * computationSize.x * computationSize.y});
-// remove sizeof(TrackData) *
-
+  // number_of_groups is 8
 	reduceOutputBuffer = (float*) malloc(number_of_groups * 32 * sizeof(float));
-  ocl_reduce_output_buffer = new cl::sycl::buffer<float>(
-      reduceOutputBuffer,
-      cl::sycl::range<1>{32 * number_of_groups});
+  ocl_reduce_output_buffer =
+    new f_buf(reduceOutputBuffer, cl::sycl::range<1>{32 * number_of_groups});
 
 	// internal buffers to initialize
 	reductionoutput = (float*) calloc(sizeof(float) * 8 * 32, 1);
 
-	ScaledDepth = (float**) calloc(sizeof(float*) * iterations.size(), 1);
+	ScaledDepth = (float**)  calloc(sizeof(float*)  * iterations.size(), 1);
 	inputVertex = (float3**) calloc(sizeof(float3*) * iterations.size(), 1);
 	inputNormal = (float3**) calloc(sizeof(float3*) * iterations.size(), 1);
 
 	for (unsigned int i = 0; i < iterations.size(); ++i) {
-		ScaledDepth[i] = (float*) calloc(
-				sizeof(float) * (computationSize.x * computationSize.y)
-						/ (int) pow(2, i), 1);
-		inputVertex[i] = (float3*) calloc(
-				sizeof(float3) * (computationSize.x * computationSize.y)
-						/ (int) pow(2, i), 1);
-		inputNormal[i] = (float3*) calloc(
-				sizeof(float3) * (computationSize.x * computationSize.y)
-						/ (int) pow(2, i), 1);
+		ScaledDepth[i] = (float*)  calloc(sizeof(float) *csize / (int) pow(2,i), 1);
+		inputVertex[i] = (float3*) calloc(sizeof(float3)*csize / (int) pow(2,i), 1);
+		inputNormal[i] = (float3*) calloc(sizeof(float3)*csize / (int) pow(2,i), 1);
 	}
 
-	floatDepth = (float*) calloc(
-			sizeof(float) * computationSize.x * computationSize.y, 1);
-	vertex = (float3*) calloc(
-			sizeof(float3) * computationSize.x * computationSize.y, 1);
-	normal = (float3*) calloc(
-			sizeof(float3) * computationSize.x * computationSize.y, 1);
-	trackingResult = (TrackData*) calloc(
-			sizeof(TrackData) * computationSize.x * computationSize.y, 1);
+	floatDepth     = (float*)     calloc(sizeof(float)     * csize, 1);
+	vertex         = (float3*)    calloc(sizeof(float3)    * csize, 1);
+	normal         = (float3*)    calloc(sizeof(float3)    * csize, 1);
+	trackingResult = (TrackData*) calloc(sizeof(TrackData) * csize, 1);
 
 	// ********* BEGIN : Generate the gaussian *************
 	size_t gaussianS = radius * 2 + 1;
@@ -1054,6 +1030,20 @@ void dbg_show_TrackData(T p, const char *fname, size_t sz, int id)
   printf("(%d) sum of %s: %g\n", id, fname, total);
 }
 
+template <typename T>
+void copy_back(T *p, cl::sycl::buffer<T,1> &buf) {
+  using namespace cl::sycl;
+  const auto  r = access::mode::read;
+  const auto hb = access::target::host_buffer;
+  auto ha = buf.template get_access<r, hb>();
+  const range<1> extents = buf.get_range();
+
+  const size_t e1 = extents[0];
+  for (size_t i = 0; i < e1; ++i) {
+    p[i] = ha[i];
+  }
+}
+
 bool Kfusion::preprocessing(const uint16_t * inputDepth, const uint2 inSize) {
 
 	// bilateral_filter(ScaledDepth[0], inputDepth, inputSize , gaussian, e_delta, radius);
@@ -1526,7 +1516,7 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
         });
       });
 
-      const    range<1> nitems{size_of_group * number_of_groups};
+/*      const    range<1> nitems{size_of_group * number_of_groups};
       const nd_range<1> ndr{nd_range<1>(nitems, range<1>{size_of_group})};
       cl::sycl::uint2 JSize{computationSize.x, computationSize.y};
       cl::sycl::uint2  size{ localimagesize.x,  localimagesize.y};
@@ -1610,6 +1600,8 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
           for (int i = 0; i < 32; ++i)
             S[sline * 32 + i] = sums[i];
 
+          ix.barrier(access::fence_space::local);
+
           // sum up columns and copy to global memory in the final 32 threads
           if (sline < 32) {
             for (unsigned i = 1; i < blockDim; ++i)
@@ -1618,25 +1610,31 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
           }
         });
       });
-      using host_accessor_t = accessor<
-        float,
-        1,
-        access::mode::read,
-        access::target::host_buffer
-      >;
-      host_accessor_t ha(*ocl_reduce_output_buffer);
-      ha[0]; // I believe it will copy over everything
+
+      copy_back(reduceOutputBuffer, *ocl_reduce_output_buffer);
+//      memcpy(reductionoutput,
+//             reduceOutputBuffer,
+//             number_of_groups * 32 * sizeof(float));
+
+      if (updatePoseKernel(pose, reduceOutputBuffer, icp_threshold))
+        break;
+*/
 #else
 			trackKernel(trackingResult, inputVertex[level], inputNormal[level],
 					localimagesize, vertex, normal, computationSize, pose,
 					projectReference, dist_threshold, normal_threshold);
 
-			reduceKernel(reductionoutput, trackingResult, computationSize,
-					localimagesize);
+//			reduceKernel(reductionoutput, trackingResult, computationSize,
+//					localimagesize);
+
+//			if (updatePoseKernel(pose, reductionoutput, icp_threshold))
+//				break;
 #endif
+			reduceKernel(reductionoutput, trackingResult, computationSize,
+				localimagesize);
 
 			if (updatePoseKernel(pose, reductionoutput, icp_threshold))
-				break;
+  			break;
 
 		}
 	}
