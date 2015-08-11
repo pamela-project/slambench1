@@ -1516,7 +1516,7 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
         });
       });
 
-/*      const    range<1> nitems{size_of_group * number_of_groups};
+      const    range<1> nitems{size_of_group * number_of_groups};
       const nd_range<1> ndr{nd_range<1>(nitems, range<1>{size_of_group})};
       cl::sycl::uint2 JSize{computationSize.x, computationSize.y};
       cl::sycl::uint2  size{ localimagesize.x,  localimagesize.y};
@@ -1548,6 +1548,7 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
           for (cl::sycl::uint i = 0; i < 32; ++i)
             sums[i] = 0.0f;
 
+          // Is gridDim zero!?
           for (cl::sycl::uint y = blockIdx; y < size.y(); y += gridDim) {
             for (cl::sycl::uint x = sline; x < size.x(); x += blockDim) {
               const TrackData row = J[x + y * JSize.x()];
@@ -1618,23 +1619,18 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 
       if (updatePoseKernel(pose, reduceOutputBuffer, icp_threshold))
         break;
-*/
+
 #else
 			trackKernel(trackingResult, inputVertex[level], inputNormal[level],
 					localimagesize, vertex, normal, computationSize, pose,
 					projectReference, dist_threshold, normal_threshold);
 
-//			reduceKernel(reductionoutput, trackingResult, computationSize,
-//					localimagesize);
-
-//			if (updatePoseKernel(pose, reductionoutput, icp_threshold))
-//				break;
-#endif
 			reduceKernel(reductionoutput, trackingResult, computationSize,
-				localimagesize);
+					localimagesize);
 
 			if (updatePoseKernel(pose, reductionoutput, icp_threshold))
-  			break;
+				break;
+#endif
 
 		}
 	}
