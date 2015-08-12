@@ -303,7 +303,7 @@ void depth2vertexKernel(float3* vertex, const float * depth, uint2 imageSize,
 void vertex2normalKernel(float3 * out, const float3 * in, uint2 imageSize) {
 	TICK();
 	unsigned int x, y;
-#pragma omp parallel for \
+#pragma omp 0 // parallel for \
         shared(out), private(x,y)
 	for (y = 0; y < imageSize.y; y++) {
 		for (x = 0; x < imageSize.x; x++) {
@@ -1069,7 +1069,10 @@ bool Kfusion::preprocessing(const uint16_t * inputDepth, const uint2 inSize) {
     
 #if USE_SYCL
   {
-    using namespace cl::sycl;
+    //using namespace cl::sycl;
+    using cl::sycl::range; using cl::sycl::buffer; using cl::sycl::handler;
+    using cl::sycl::item;
+    namespace access = cl::sycl::access;
     const range<1>  in_size{inSize.x*inSize.y};
     const range<1> out_size{outSize.x*outSize.y};
     // The const_casts overcome a SYCL buffer ctor bug causing a segfault
@@ -1115,7 +1118,6 @@ bool Kfusion::preprocessing(const uint16_t * inputDepth, const uint2 inSize) {
    
       cgh.parallel_for<class T1>(range<2>{outSize.x,outSize.y},
         [in,out,gaussian,a_radius,a_e_delta](item<2> ix) { 
-          using namespace cl::sycl;
           struct uint2 { size_t x, y; }; // SYCL uint x()/y() methods non-const!
           const uint2 pos{ix[0],ix[1]};
           const uint2 size{ix.get_range()[0], ix.get_range()[1]};
@@ -1679,7 +1681,7 @@ bool Kfusion::integration(float4 k, uint integration_rate, float mu,
 #endif
 
 	if ((doIntegrate && ((frame % integration_rate) == 0)) || (frame <= 3)) {
-#if USE_SYCL
+#if 0 // USE_SYCL
     using namespace cl::sycl;
 		cl::sycl::uint2 depthSize{computationSize.x,computationSize.y};
 		const Matrix4 invTrack = inverse(pose);
@@ -1689,10 +1691,12 @@ bool Kfusion::integration(float4 k, uint integration_rate, float mu,
 				cl::sycl::float3{0, 0, volumeDimensions.z / volumeResolution.z});
 		const cl::sycl::float3 cameraDelta = myrotate(K, delta);
 
+    //buffer<uint3,1> buf_v_size(&volumeResolution,range<1>{1});
+
     range<2> globalWorksize{volumeResolution.x, volumeResolution.y};
     q.submit([&](handler &cgh) {
       cgh.parallel_for<class T7>(globalWorksize, [](item<2> ix) {
-        // to do
+	     // Volume vol; /*vol.data = v_data;*/ vol.size = v_size; vol.dim = v_dim;
       });
     });
 #else
