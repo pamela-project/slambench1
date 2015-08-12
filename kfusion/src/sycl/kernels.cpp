@@ -37,6 +37,11 @@
 
 #endif
 
+using cl::sycl::accessor; using cl::sycl::buffer;  using cl::sycl::handler;
+using cl::sycl::nd_range; using cl::sycl::range;
+using cl::sycl::nd_item;  using cl::sycl::item;
+namespace access = cl::sycl::access;
+
 // input once
 float * gaussian;
 
@@ -60,16 +65,16 @@ static_assert(std::is_standard_layout<TrackData>::value,"");
 cl::sycl::queue q(cl::sycl::intel_selector{});
 // needed? Depends on depth buffer location/lifetime
 // uint2 computationSizeBkp = make_uint2(0, 0);
-cl::sycl::buffer<cl::sycl::float3,1>  *ocl_vertex         = NULL;
-cl::sycl::buffer<cl::sycl::float3,1>  *ocl_normal         = NULL;
+buffer<cl::sycl::float3,1>  *ocl_vertex         = NULL;
+buffer<cl::sycl::float3,1>  *ocl_normal         = NULL;
 
-cl::sycl::buffer<float,1>             *ocl_reduce_output_buffer = NULL;
-cl::sycl::buffer<TrackData,1>         *ocl_trackingResult       = NULL;
-cl::sycl::buffer<float,1>             *ocl_FloatDepth           = NULL;
-cl::sycl::buffer<float,1>            **ocl_ScaledDepth          = NULL;
-cl::sycl::buffer<cl::sycl::float3,1> **ocl_inputVertex          = NULL;
-cl::sycl::buffer<cl::sycl::float3,1> **ocl_inputNormal          = NULL;
-//cl::sycl::buffer<ushort,1> *ocl_depth_buffer = NULL; // cl_mem ocl_depth_buffer
+buffer<float,1>             *ocl_reduce_output_buffer = NULL;
+buffer<TrackData,1>         *ocl_trackingResult       = NULL;
+buffer<float,1>             *ocl_FloatDepth           = NULL;
+buffer<float,1>            **ocl_ScaledDepth          = NULL;
+buffer<cl::sycl::float3,1> **ocl_inputVertex          = NULL;
+buffer<cl::sycl::float3,1> **ocl_inputNormal          = NULL;
+//buffer<ushort,1> *ocl_depth_buffer = NULL; // cl_mem ocl_depth_buffer
 float *reduceOutputBuffer = NULL;
 
 // reduction parameters
@@ -92,28 +97,28 @@ void Kfusion::languageSpecificConstructor() {
 		print_kernel_timing = true;
 
   const auto csize = computationSize.x * computationSize.y;
-  using f_buf  = cl::sycl::buffer<float,1>;
-  using f3_buf = cl::sycl::buffer<cl::sycl::float3,1>;
-	ocl_FloatDepth = new f_buf(cl::sycl::range<1>{csize});
+  using f_buf  = buffer<float,1>;
+  using f3_buf = buffer<cl::sycl::float3,1>;
+	ocl_FloatDepth = new f_buf(range<1>{csize});
 
   ocl_ScaledDepth = (f_buf**)  malloc(sizeof(f_buf*)  * iterations.size());
   ocl_inputVertex = (f3_buf**) malloc(sizeof(f3_buf*) * iterations.size());
   ocl_inputNormal = (f3_buf**) malloc(sizeof(f3_buf*) * iterations.size());
 
   for (unsigned int i = 0; i < iterations.size(); ++i) {
-		ocl_ScaledDepth[i] = new f_buf (cl::sycl::range<1>{csize/(int)pow(2,i)});
-		ocl_inputVertex[i] = new f3_buf(cl::sycl::range<1>{csize/(int)pow(2,i)});
-		ocl_inputNormal[i] = new f3_buf(cl::sycl::range<1>{csize/(int)pow(2,i)});
+		ocl_ScaledDepth[i] = new f_buf (range<1>{csize/(int)pow(2,i)});
+		ocl_inputVertex[i] = new f3_buf(range<1>{csize/(int)pow(2,i)});
+		ocl_inputNormal[i] = new f3_buf(range<1>{csize/(int)pow(2,i)});
   }
 
-  ocl_vertex = new f3_buf(cl::sycl::range<1>{csize});
-  ocl_normal = new f3_buf(cl::sycl::range<1>{csize});
-  ocl_trackingResult=new cl::sycl::buffer<TrackData>(cl::sycl::range<1>{csize});
+  ocl_vertex = new f3_buf(range<1>{csize});
+  ocl_normal = new f3_buf(range<1>{csize});
+  ocl_trackingResult=new buffer<TrackData>(range<1>{csize});
 
   // number_of_groups is 8
 	reduceOutputBuffer = (float*) malloc(number_of_groups * 32 * sizeof(float));
   ocl_reduce_output_buffer =
-    new f_buf(reduceOutputBuffer, cl::sycl::range<1>{32 * number_of_groups});
+    new f_buf(reduceOutputBuffer, range<1>{32 * number_of_groups});
 
 	// internal buffers to initialize
 	reductionoutput = (float*) calloc(sizeof(float) * 8 * 32, 1);
@@ -1031,8 +1036,7 @@ void dbg_show_TrackData(T p, const char *fname, size_t sz, int id)
 }
 
 template <typename T>
-void copy_back(T *p, cl::sycl::buffer<T,1> &buf) {
-  using namespace cl::sycl;
+void copy_back(T *p, buffer<T,1> &buf) {
   const auto  r = access::mode::read;
   const auto hb = access::target::host_buffer;
   auto ha = buf.template get_access<r, hb>();
@@ -1069,10 +1073,6 @@ bool Kfusion::preprocessing(const uint16_t * inputDepth, const uint2 inSize) {
     
 #if USE_SYCL
   {
-    //using namespace cl::sycl;
-    using cl::sycl::range; using cl::sycl::buffer; using cl::sycl::handler;
-    using cl::sycl::item;
-    namespace access = cl::sycl::access;
     const range<1>  in_size{inSize.x*inSize.y};
     const range<1> out_size{outSize.x*outSize.y};
     // The const_casts overcome a SYCL buffer ctor bug causing a segfault
@@ -1159,8 +1159,8 @@ bool Kfusion::preprocessing(const uint16_t * inputDepth, const uint2 inSize) {
 
   }
   auto sd0 = ocl_ScaledDepth[0]->get_access<
-    cl::sycl::access::mode::read,
-    cl::sycl::access::target::host_buffer
+    access::mode::read,
+    access::target::host_buffer
   >();
   dbg_show(sd0, "ScaledDepth[0]", outSize.x * outSize.y, 1);
 #else
@@ -1252,7 +1252,6 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 	// half sample the input depth maps into the pyramid levels
 	for (unsigned int i = 1; i < iterations.size(); ++i) {
 #if USE_SYCL
-    using namespace cl::sycl;
 //    struct uint2 { size_t x, y; }; // SYCL uint x()/y() methods non-const!
 //    struct  int2 { int    x, y; }; // SYCL  int x()/y() methods non-const!
 		cl::sycl::uint2 outSize{computationSize.x / (int) ::pow(2, i),
@@ -1311,12 +1310,12 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 	}
 #if USE_SYCL
   auto sd0 = ocl_ScaledDepth[0]->get_access<
-    cl::sycl::access::mode::read,
-    cl::sycl::access::target::host_buffer
+    access::mode::read,
+    access::target::host_buffer
   >();
   auto sd1 = ocl_ScaledDepth[1]->get_access<
-    cl::sycl::access::mode::read,
-    cl::sycl::access::target::host_buffer
+    access::mode::read,
+    access::target::host_buffer
   >();
   dbg_show(sd0, "ScaledDepth[0]", (computationSize.x * computationSize.y) / (int)pow(2,0), 2);
   dbg_show(sd1, "ScaledDepth[1]", (computationSize.x * computationSize.y) / (int)pow(2,1), 2);
@@ -1330,7 +1329,6 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 	for (unsigned int i = 0; i < iterations.size(); ++i) {
 		Matrix4 invK = getInverseCameraMatrix(k / float(1 << i));
 #if USE_SYCL
-    using namespace cl::sycl;
     buffer<Matrix4,1> buf_invK(&invK,range<1>{1});
 		range<2> imageSize{localimagesize.x,localimagesize.y};
 
@@ -1404,12 +1402,12 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 	}
 #if USE_SYCL
   auto iv = ocl_inputVertex[0]->get_access<
-    cl::sycl::access::mode::read,
-    cl::sycl::access::target::host_buffer
+    access::mode::read,
+    access::target::host_buffer
   >();
   auto in = ocl_inputNormal[0]->get_access<
-    cl::sycl::access::mode::read,
-    cl::sycl::access::target::host_buffer
+    access::mode::read,
+    access::target::host_buffer
   >();
   dbg_show3(iv, "inputVertex[0]", (computationSize.x * computationSize.y) / (int)pow(2,0), 3);
   dbg_show3(in, "inputNormal[0]", (computationSize.x * computationSize.y) / (int)pow(2,0), 4);
@@ -1427,7 +1425,6 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 				computationSize.y / (int) pow(2, level));
 		for (int i = 0; i < iterations[level]; ++i) {
 #if USE_SYCL
-      using namespace cl::sycl;
       const auto rw = access::mode::read_write;
       range<2> imageSize{localimagesize.x,localimagesize.y};
 		  cl::sycl::uint2 outputSize{computationSize.x, computationSize.y};
@@ -1639,8 +1636,8 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 	}
 #if USE_SYCL
   auto tres = ocl_trackingResult->get_access<
-    cl::sycl::access::mode::read,
-    cl::sycl::access::target::host_buffer
+    access::mode::read,
+    access::target::host_buffer
   >();
   dbg_show_TrackData(tres, "trackingResult",
                      computationSize.x * computationSize.y, 5);
@@ -1682,7 +1679,6 @@ bool Kfusion::integration(float4 k, uint integration_rate, float mu,
 
 	if ((doIntegrate && ((frame % integration_rate) == 0)) || (frame <= 3)) {
 #if 0 // USE_SYCL
-    using namespace cl::sycl;
 		cl::sycl::uint2 depthSize{computationSize.x,computationSize.y};
 		const Matrix4 invTrack = inverse(pose);
 		const Matrix4 K = getCameraMatrix(k);
