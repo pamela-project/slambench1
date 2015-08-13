@@ -7,6 +7,26 @@
 
  */
 #include <SYCL/sycl.hpp>
+#define USE_SYCL 1
+#if USE_SYCL
+#define SYCL
+using cl::sycl::accessor; using cl::sycl::buffer;  using cl::sycl::handler;
+using cl::sycl::nd_range; using cl::sycl::range;
+using cl::sycl::nd_item;  using cl::sycl::item;
+using cl::sycl::float4;
+using cl::sycl::float3;
+using cl::sycl::float2;
+using cl::sycl::uint3;
+using cl::sycl::uchar4;
+using cl::sycl::short2;
+inline
+float3 make_float3(float x, float y, float z)         { return float3{x,y,z}; }
+inline
+uint3  make_uint3(unsigned x, unsigned y, unsigned z) { return uint3{x,y,z}; }
+inline float3 make_float3(float s) { return make_float3(s,s,s); }
+inline uint3  make_uint3(uint s)   { return make_uint3(s,s,s); }
+namespace access = cl::sycl::access;
+#endif // USE_SYCL
 #include <kernels.h>
 
 #ifdef __APPLE__
@@ -37,11 +57,6 @@
 
 #endif
 
-using cl::sycl::accessor; using cl::sycl::buffer;  using cl::sycl::handler;
-using cl::sycl::nd_range; using cl::sycl::range;
-using cl::sycl::nd_item;  using cl::sycl::item;
-namespace access = cl::sycl::access;
-
 // input once
 float * gaussian;
 
@@ -65,15 +80,15 @@ static_assert(std::is_standard_layout<TrackData>::value,"");
 cl::sycl::queue q(cl::sycl::intel_selector{});
 // needed? Depends on depth buffer location/lifetime
 // uint2 computationSizeBkp = make_uint2(0, 0);
-buffer<cl::sycl::float3,1>  *ocl_vertex         = NULL;
-buffer<cl::sycl::float3,1>  *ocl_normal         = NULL;
+buffer<float3,1>  *ocl_vertex         = NULL;
+buffer<float3,1>  *ocl_normal         = NULL;
 
 buffer<float,1>             *ocl_reduce_output_buffer = NULL;
 buffer<TrackData,1>         *ocl_trackingResult       = NULL;
 buffer<float,1>             *ocl_FloatDepth           = NULL;
 buffer<float,1>            **ocl_ScaledDepth          = NULL;
-buffer<cl::sycl::float3,1> **ocl_inputVertex          = NULL;
-buffer<cl::sycl::float3,1> **ocl_inputNormal          = NULL;
+buffer<float3,1> **ocl_inputVertex          = NULL;
+buffer<float3,1> **ocl_inputNormal          = NULL;
 //buffer<ushort,1> *ocl_depth_buffer = NULL; // cl_mem ocl_depth_buffer
 float *reduceOutputBuffer = NULL;
 
@@ -98,7 +113,7 @@ void Kfusion::languageSpecificConstructor() {
 
   const auto csize = computationSize.x * computationSize.y;
   using f_buf  = buffer<float,1>;
-  using f3_buf = buffer<cl::sycl::float3,1>;
+  using f3_buf = buffer<float3,1>;
 	ocl_FloatDepth = new f_buf(range<1>{csize});
 
   ocl_ScaledDepth = (f_buf**)  malloc(sizeof(f_buf*)  * iterations.size());
@@ -1001,8 +1016,6 @@ void renderVolumeKernel(uchar4* out, const uint2 depthSize, const Volume volume,
 	TOCK("renderVolumeKernel", depthSize.x * depthSize.y);
 }
 
-#define USE_SYCL 1
-
 template <typename T>
 void dbg_show(T p, const char *fname, size_t sz, int id)
 {
@@ -1339,14 +1352,14 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
       cgh.parallel_for<class T3>(imageSize, [depth,vertex,a_invK](item<2> ix) {
         Matrix4 &invK = a_invK[0]; // auto fails here when var used as an arg
         cl::sycl::uint2 pixel{ix[0],ix[1]};
-        cl::sycl::float3 vert{ix[0],ix[1],1.0f};
-        cl::sycl::float3 res{0,0,0};
+        float3 vert{ix[0],ix[1],1.0f};
+        float3 res{0,0,0};
 
         auto elem = depth[pixel.x() + ix.get_range()[0] * pixel.y()];
         if (elem > 0) {
-          cl::sycl::float3 tmp3{pixel.x(), pixel.y(), 1.f};
+          float3 tmp3{pixel.x(), pixel.y(), 1.f};
 //          res = elem * myrotate(invK, tmp3); // SYCL needs this (*) operator
-          cl::sycl::float3 rot = myrotate(invK, tmp3);
+          float3 rot = myrotate(invK, tmp3);
           res.x() = elem * rot.x();
           res.y() = elem * rot.y();
           res.z() = elem * rot.z();
@@ -1372,23 +1385,23 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
                                              (int)ix.get_range()[1]-1)};
 
         // Not const as the x(), y() etc. methods are not marked as const
-        /*const*/ cl::sycl::float3 left =
+        /*const*/ float3 left =
           vertex[vleft.x()  + ix.get_range()[0] * vleft.y()];
-        /*const*/ cl::sycl::float3 right = 
+        /*const*/ float3 right = 
           vertex[vright.x() + ix.get_range()[0] * vright.y()];
-        /*const*/ cl::sycl::float3 up = 
+        /*const*/ float3 up = 
           vertex[vup.x()    + ix.get_range()[0] * vup.y()];
-        /*const*/ cl::sycl::float3 down = 
+        /*const*/ float3 down = 
           vertex[vdown.x()  + ix.get_range()[0] * vdown.y()];
 
         if (left.z() == 0 || right.z() == 0|| up.z() == 0 || down.z() == 0) {
-          cl::sycl::float3 invalid3{INVALID,INVALID,INVALID};
+          float3 invalid3{INVALID,INVALID,INVALID};
           normal[pixel.x() + ix.get_range()[0] * pixel.y()] = invalid3;
           return;
         }
 
-        const cl::sycl::float3 dxv = right - left;
-        const cl::sycl::float3 dyv = down  - up;
+        const float3 dxv = right - left;
+        const float3 dyv = down  - up;
         normal[pixel.x() + ix.get_range()[0] * pixel.y()] =
           cl::sycl::normalize(cl::sycl::cross(dyv,dxv));
       });
@@ -1464,18 +1477,18 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
           cl::sycl::uint2 pixel{ix[0],ix[1]};
           TrackData &row = output[pixel.x() + outputSize.x() * pixel.y()];
 
-          cl::sycl::float3 inNormalPixel =
+          float3 inNormalPixel =
             inNormal[pixel.x() + ix.get_range()[0] * pixel.y()];
           if (inNormalPixel.x() == INVALID) {
             row.result = -1;
             return;
           }
 
-          cl::sycl::float3 inVertexPixel =
+          float3 inVertexPixel =
             inVertex[pixel.x() + ix.get_range()[0] * pixel.y()];
-          /*const*/ cl::sycl::float3 projectedVertex =
+          /*const*/ float3 projectedVertex =
             Mat4TimeFloat3(Ttrack, inVertexPixel);
-          /*const*/ cl::sycl::float3 projectedPos    =
+          /*const*/ float3 projectedPos    =
             Mat4TimeFloat3(view, projectedVertex);
           /*const*/ cl::sycl::float2 projPixel{
             projectedPos.x() / projectedPos.z() + 0.5f,
@@ -1487,17 +1500,17 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
           }
 
           /*const*/ cl::sycl::uint2 refPixel{projPixel.x(), projPixel.y()};
-          /*const*/ cl::sycl::float3 referenceNormal =
+          /*const*/ float3 referenceNormal =
             refNormal[refPixel.x() + outputSize.x() * refPixel.y()];
           if (referenceNormal.x() == INVALID) {
             row.result = -3;
             return;
           }
 
-          const cl::sycl::float3 diff =
+          const float3 diff =
             refVertex[refPixel.x() + outputSize.x() * refPixel.y()] -
             projectedVertex;
-          const cl::sycl::float3 projectedNormal = myrotate(Ttrack, inNormalPixel);
+          const float3 projectedNormal = myrotate(Ttrack, inNormalPixel);
           if (cl::sycl::length(diff) > dist_threshold) {
             row.result = -4;
             return;
@@ -1509,8 +1522,8 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 
           row.result = 1;
           row.error  = cl::sycl::dot(referenceNormal, diff);
-          *((cl::sycl::float3 *)(row.J + 0)) = referenceNormal; // row.J[0:2]
-          *((cl::sycl::float3 *)(row.J + 3)) =                  // row.J[3:5]
+          *((float3 *)(row.J + 0)) = referenceNormal; // row.J[0:2]
+          *((float3 *)(row.J + 3)) =                  // row.J[3:5]
             cl::sycl::cross(projectedVertex, referenceNormal);
         });
       });
@@ -1683,9 +1696,9 @@ bool Kfusion::integration(float4 k, uint integration_rate, float mu,
 		const Matrix4 invTrack = inverse(pose);
 		const Matrix4 K = getCameraMatrix(k);
 
-		const cl::sycl::float3 delta = myrotate(invTrack,
-				cl::sycl::float3{0, 0, volumeDimensions.z / volumeResolution.z});
-		const cl::sycl::float3 cameraDelta = myrotate(K, delta);
+		const float3 delta = myrotate(invTrack,
+				float3{0, 0, volumeDimensions.z / volumeResolution.z});
+		const float3 cameraDelta = myrotate(K, delta);
 
     //buffer<uint3,1> buf_v_size(&volumeResolution,range<1>{1});
 

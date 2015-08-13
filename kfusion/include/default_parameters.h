@@ -10,8 +10,10 @@
 #ifndef DEFAULT_PARAMETERS_H_
 #define DEFAULT_PARAMETERS_H_
 
+#ifndef SYCL
 #include <vector_types.h>
 #include <cutil_math.h>
+#endif // SYCL
 #include <vector>
 #include <sstream>
 #include <getopt.h>
@@ -33,9 +35,15 @@ const int default_compute_size_ratio = 1;
 const int default_integration_rate = 2;
 const int default_rendering_rate = 4;
 const int default_tracking_rate = 1;
+#ifdef SYCL
+/*const*/ uint3 default_volume_resolution = make_uint3(256, 256, 256);
+/*const*/ float3 default_volume_size = make_float3(2.f, 2.f, 2.f);
+/*const*/ float3 default_initial_pos_factor = make_float3(0.5f, 0.5f, 0.0f);
+#else
 const uint3 default_volume_resolution = make_uint3(256, 256, 256);
 const float3 default_volume_size = make_float3(2.f, 2.f, 2.f);
 const float3 default_initial_pos_factor = make_float3(0.5f, 0.5f, 0.0f);
+#endif // SYCL
 const bool default_no_gui = false;
 const bool default_render_volume_fullsize = false;
 const std::string default_dump_volume_file = "";
@@ -111,17 +119,29 @@ struct Configuration {
 		std ::cerr << "-l  (--icp-threshold)                : default is " << default_icp_threshold << std::endl;
 		std ::cerr << "-o  (--log-file) <filename>      : default is stdout               " << std::endl;
 		std ::cerr << "-m  (--mu)                       : default is " << default_mu << "               " << std::endl;
+#ifdef SYCL
+		std ::cerr << "-p  (--init-pose)                : default is " << default_initial_pos_factor.x() << "," << default_initial_pos_factor.y() << "," << default_initial_pos_factor.z() << "     " << std::endl;
+#else
 		std ::cerr << "-p  (--init-pose)                : default is " << default_initial_pos_factor.x << "," << default_initial_pos_factor.y << "," << default_initial_pos_factor.z << "     " << std::endl;
+#endif
 		std ::cerr << "-q  (--no-gui)                   : default is to display gui"<<std::endl;
 		std ::cerr << "-r  (--integration-rate)         : default is " << default_integration_rate << "     " << std::endl;
+#ifdef SYCL
+		std ::cerr << "-s  (--volume-size)              : default is " << default_volume_size.x() << "," << default_volume_size.y() << "," << default_volume_size.z() << "      " << std::endl;
+#else
 		std ::cerr << "-s  (--volume-size)              : default is " << default_volume_size.x << "," << default_volume_size.y << "," << default_volume_size.z << "      " << std::endl;
+#endif
 		std ::cerr << "-t  (--tracking-rate)            : default is " << default_tracking_rate << "     " << std::endl;
+#ifdef SYCL
+		std ::cerr << "-v  (--volume-resolution)        : default is " << default_volume_resolution.x() << "," << default_volume_resolution.y() << "," << default_volume_resolution.z() << "    " << std::endl;
+#else
 		std ::cerr << "-v  (--volume-resolution)        : default is " << default_volume_resolution.x << "," << default_volume_resolution.y << "," << default_volume_resolution.z << "    " << std::endl;
+#endif
 		std ::cerr << "-y  (--pyramid-levels)           : default is 10,5,4     " << std::endl;
 		std ::cerr << "-z  (--rendering-rate)   : default is " << default_rendering_rate << std::endl;
 	}
 	void print_values(std::ostream& out) {
-time_t rawtime;
+    time_t rawtime;
 		struct tm *timeinfo;
 		char buffer[80];
 		time(&rawtime);
@@ -152,6 +172,85 @@ time_t rawtime;
 		out << "rendering-rate: " << rendering_rate << std::endl;
 		out << "fps: " << fps << std::endl;
 }
+
+#ifdef SYCL
+	inline float3 atof3(char * optarg) {
+		float3 res;
+		std::istringstream dotargs(optarg);
+		std::string s;
+		if (getline(dotargs, s, ',')) {
+			res.x() = atof(s.c_str());
+		} else
+			return res;
+		if (getline(dotargs, s, ',')) {
+			res.y() = atof(s.c_str());
+		} else {
+			res.y() = res.x();
+			res.z() = res.y();
+			return res;
+		}
+		if (getline(dotargs, s, ',')) {
+			res.z() = atof(s.c_str());
+		} else {
+			res.z() = res.y();
+		}
+		return res;
+	}
+
+	inline uint3 atoi3(char * optarg) {
+		uint3 res;
+		std::istringstream dotargs(optarg);
+		std::string s;
+		if (getline(dotargs, s, ',')) {
+			res.x() = atoi(s.c_str());
+		} else
+			return res;
+		if (getline(dotargs, s, ',')) {
+			res.y() = atoi(s.c_str());
+		} else {
+			res.y() = res.x();
+			res.z() = res.y();
+			return res;
+		}
+		if (getline(dotargs, s, ',')) {
+			res.z() = atoi(s.c_str());
+		} else {
+			res.z() = res.y();
+		}
+		return res;
+	}
+
+	inline float4 atof4(char * optarg) {
+		float4 res;
+		std::istringstream dotargs(optarg);
+		std::string s;
+		if (getline(dotargs, s, ',')) {
+			res.x() = atof(s.c_str());
+		} else
+			return res;
+		if (getline(dotargs, s, ',')) {
+			res.y() = atof(s.c_str());
+		} else {
+			res.y() = res.x();
+			res.z() = res.y();
+			res.w() = res.z();
+			return res;
+		}
+		if (getline(dotargs, s, ',')) {
+			res.z() = atof(s.c_str());
+		} else {
+			res.z() = res.y();
+			res.w() = res.z();
+			return res;
+		}
+		if (getline(dotargs, s, ',')) {
+			res.w() = atof(s.c_str());
+		} else {
+			res.w() = res.z();
+		}
+		return res;
+	}
+#else
 	inline float3 atof3(char * optarg) {
 		float3 res;
 		std::istringstream dotargs(optarg);
@@ -228,6 +327,7 @@ time_t rawtime;
 		}
 		return res;
 	}
+#endif // SYCL
 
 	Configuration(unsigned int argc, char ** argv) {
 
@@ -310,9 +410,15 @@ time_t rawtime;
 			case 'k':    //   -k  (--camera)
 				this->camera = atof4(optarg);
 				this->camera_overrided = true;
+#ifdef SYCL
+				std::cerr << "update camera to " << this->camera.x() << ","
+						<< this->camera.y() << "," << this->camera.z() << ","
+						<< this->camera.w() << std::endl;
+#else
 				std::cerr << "update camera to " << this->camera.x << ","
 						<< this->camera.y << "," << this->camera.z << ","
 						<< this->camera.w << std::endl;
+#endif // SYCL
 				break;
 			case 'o':    //   -o  (--log-file)
 				this->log_file = optarg;
@@ -330,10 +436,17 @@ time_t rawtime;
 				break;
 			case 'p':    //   -p  (--init-pose)
 				this->initial_pos_factor = atof3(optarg);
+#ifdef SYCL
+				std::cerr << "update init_poseFactors to "
+						<< this->initial_pos_factor.x() << ","
+						<< this->initial_pos_factor.y() << ","
+						<< this->initial_pos_factor.z() << std::endl;
+#else
 				std::cerr << "update init_poseFactors to "
 						<< this->initial_pos_factor.x << ","
 						<< this->initial_pos_factor.y << ","
 						<< this->initial_pos_factor.z << std::endl;
+#endif // SYCL
 				break;
 			case 'q':
 				this->no_gui = true;
@@ -351,11 +464,19 @@ time_t rawtime;
 				break;
 			case 's':    //   -s  (--map-size)
 				this->volume_size = atof3(optarg);
+#ifdef SYCL
+				std::cerr << "update map_size to " << this->volume_size.x()
+						<< "mx" << this->volume_size.y() << "mx"
+						<< this->volume_size.z() << "m" << std::endl;
+				if ((this->volume_size.x() <= 0) || (this->volume_size.y() <= 0)
+						|| (this->volume_size.z() <= 0)) {
+#else
 				std::cerr << "update map_size to " << this->volume_size.x
 						<< "mx" << this->volume_size.y << "mx"
 						<< this->volume_size.z << "m" << std::endl;
 				if ((this->volume_size.x <= 0) || (this->volume_size.y <= 0)
 						|| (this->volume_size.z <= 0)) {
+#endif
 					std::cerr
 							<< "ERROR: --volume-size (-s) all dimensions must > 0 (was "
 							<< optarg << ")\n";
@@ -375,12 +496,21 @@ time_t rawtime;
 			case 'v':    //   -v  (--volumetric-size)
 				this->volume_resolution = atoi3(optarg);
 				std::cerr << "update volumetric_size to "
+#ifdef SYCL
+						<< this->volume_resolution.x() << "x"
+						<< this->volume_resolution.y() << "x"
+						<< this->volume_resolution.z() << std::endl;
+				if ((this->volume_resolution.x() <= 0)
+						|| (this->volume_resolution.y() <= 0)
+						|| (this->volume_resolution.z() <= 0)) {
+#else
 						<< this->volume_resolution.x << "x"
 						<< this->volume_resolution.y << "x"
 						<< this->volume_resolution.z << std::endl;
 				if ((this->volume_resolution.x <= 0)
 						|| (this->volume_resolution.y <= 0)
 						|| (this->volume_resolution.z <= 0)) {
+#endif
 					std::cerr
 							<< "ERROR: --volume-size (-s) all dimensions must > 0 (was "
 							<< optarg << ")\n";
