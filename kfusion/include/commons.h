@@ -141,17 +141,10 @@ inline uchar4 gs2rgb(double h) {
 			break;
 		}
 	}
-#ifdef SYCL
-	rgb.x() = r * 255;
-	rgb.y() = g * 255;
-	rgb.z() = b * 255;
-	rgb.w() = 0; // Only for padding purposes 
-#else
 	rgb.x = r * 255;
 	rgb.y = g * 255;
 	rgb.z = b * 255;
 	rgb.w = 0; // Only for padding purposes 
-#endif  // SYCL
 	return rgb;
 }
 

@@ -11,7 +11,11 @@
 #define _KERNELS_
 
 #include <cstdlib>
+#ifdef SYCL
+#include <sycl/commons.h> // myfloatN.x -> myfloatN.x() many times
+#else
 #include <commons.h>
+#endif // SYCL
 
 ////////////////////////// COMPUTATION KERNELS PROTOTYPES //////////////////////
 

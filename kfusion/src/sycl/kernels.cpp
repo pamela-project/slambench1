@@ -7,25 +7,43 @@
 
  */
 #include <SYCL/sycl.hpp>
-#define USE_SYCL 1
-#if USE_SYCL
-#define SYCL
 using cl::sycl::accessor; using cl::sycl::buffer;  using cl::sycl::handler;
 using cl::sycl::nd_range; using cl::sycl::range;
 using cl::sycl::nd_item;  using cl::sycl::item;
+namespace access = cl::sycl::access;
+#define USE_SYCL 1
+#if USE_SYCL
+#define SYCL
 using cl::sycl::float4;
 using cl::sycl::float3;
 using cl::sycl::float2;
 using cl::sycl::uint3;
+using cl::sycl::int3;
 using cl::sycl::uchar4;
 using cl::sycl::short2;
-inline
-float3 make_float3(float x, float y, float z)         { return float3{x,y,z}; }
+inline float3 floorf(float3 v) {
+  return float3{floorf(v.x()),floorf(v.y()),floorf(v.z())};
+}
+inline float  fracf(float v)  { return v - floorf(v); }
+inline float3 fracf(float3 v) {
+	return float3(fracf(v.x()), fracf(v.y()), fracf(v.z()));
+}
+inline float2 make_float2(float x, float y         )  { return float2{x,y}; }
+inline float3 make_float3(float x, float y, float z)  { return float3{x,y,z}; }
+inline float3 make_float3(float4 a) { return float3(a.x(), a.y(), a.z()); }
+inline float4 make_float4(float x, float y, float z, float w)  {
+  return float4{x,y,z,w};
+}
 inline
 uint3  make_uint3(unsigned x, unsigned y, unsigned z) { return uint3{x,y,z}; }
-inline float3 make_float3(float s) { return make_float3(s,s,s); }
+inline int3   make_int3(int x, int y, int z)          { return int3{x,y,z}; }
+inline int3   make_int3(float3 f)  { return int3{f.x(),f.y(),f.z()}; }
+inline int3   make_int3(uint3 s)   { return int3{s.x(),s.y(),s.z()}; }
+inline short2 make_short2(short x, short y)           { return short2{x,y}; }
+inline float2 make_float2(float f) { return make_float2(f,f); }
+inline float3 make_float3(float f) { return make_float3(f,f,f); }
 inline uint3  make_uint3(uint s)   { return make_uint3(s,s,s); }
-namespace access = cl::sycl::access;
+inline int3   make_int3(int s)     { return make_int3(s,s,s); }
 #endif // USE_SYCL
 #include <kernels.h>
 
