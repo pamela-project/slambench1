@@ -374,6 +374,12 @@ inline Matrix4 inverse(/*const*/ Matrix4 & A) {
 
 inline Matrix4 operator*(/*const*/ Matrix4 & A, /*const*/ Matrix4 & B) {
 	Matrix4 R;
+  static_assert(std::is_same<
+                  decltype(&R.data[0].x()),
+                  cl::sycl::swizzled_vec<float, 4, cl::sycl::detail::x> *
+                >::value,"");
+//  float *f = R.data[0].x();
+//  float *f = &R.data[0].m_data[0];
 	TooN::wrapMatrix<4, 4>(&R.data[0].x()) = TooN::wrapMatrix<4, 4>(&A.data[0].x())
 			* TooN::wrapMatrix<4, 4>(&B.data[0].x());
 	return R;
