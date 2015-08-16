@@ -372,6 +372,7 @@ inline Matrix4 inverse(const Matrix4 & A) {
 	return R;
 }
 
+// Problem
 inline Matrix4 operator*(const Matrix4 & A, const Matrix4 & B) {
 	Matrix4 R;
 	TooN::wrapMatrix<4, 4>(&R.data[0].x) = TooN::wrapMatrix<4, 4>(&A.data[0].x)
