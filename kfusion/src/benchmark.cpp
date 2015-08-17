@@ -7,12 +7,6 @@
 
  */
 
-#define SYCL
-#ifdef SYCL
-#include <sycl/kernels.h> // myfloatN.x -> myfloatN.x() many times
-#else
-#include <kernels.h>
-#endif // SYCL
 #include <interface.h>
 #include <stdint.h>
 #include <vector>

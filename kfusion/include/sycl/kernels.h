@@ -7,8 +7,8 @@
 
  */
 
-#ifndef _KERNELS_
-#define _KERNELS_
+#ifndef _SYCL_KERNELS_
+#define _SYCL_KERNELS_
 
 #include <cstdlib>
 #include <sycl/commons.h>
@@ -201,4 +201,4 @@ public:
 
 void synchroniseDevices(); // Synchronise CPU and GPU
 
-#endif
+#endif  // _SYCL_KERNELS_

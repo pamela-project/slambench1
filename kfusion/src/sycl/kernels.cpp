@@ -11,9 +11,10 @@ using cl::sycl::accessor; using cl::sycl::buffer;  using cl::sycl::handler;
 using cl::sycl::nd_range; using cl::sycl::range;
 using cl::sycl::nd_item;  using cl::sycl::item;
 namespace access = cl::sycl::access;
+#include <kernels.h>
+#ifdef SYCL
 #define USE_SYCL 1
-#if USE_SYCL
-#define SYCL
+#endif
 using cl::sycl::float2; using cl::sycl::float3; using cl::sycl::float4;
 using cl::sycl::int2;   using cl::sycl::int3;
 using cl::sycl::uint2;  using cl::sycl::uint3;
@@ -71,12 +72,6 @@ inline float3 operator*(float b, float3 a) {
 	return float3{b*a.x(), b*a.y(), b*a.z()};
 }
 inline uint2 operator*(uint b, uint2 a) { return uint2{b * a.x(), b * a.y()}; }
-#endif // USE_SYCL
-#ifdef SYCL
-#include <sycl/kernels.h> // myfloatN.x -> myfloatN.x() many times
-#else
-#include <kernels.h>
-#endif // SYCL
 
 #ifdef __APPLE__
 #include <mach/clock.h>
