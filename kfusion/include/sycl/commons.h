@@ -374,34 +374,9 @@ inline Matrix4 inverse(/*const*/ Matrix4 & A) {
 
 inline Matrix4 operator*(/*const*/ Matrix4 & A, /*const*/ Matrix4 & B) {
 	Matrix4 R;
-  static_assert(std::is_same<
-                  decltype(&R.data[0].x()),
-                  cl::sycl::swizzled_vec<float, 4, cl::sycl::detail::x> *
-                >::value,"");
-//  float *f = R.data[0].x();
-//  float *f = &R.data[0].m_data[0];
-  static_assert(std::is_same<
-                  TooN::Internal::MultiplyType<
-                    decltype(&A.data[0].x()),
-                    decltype(&B.data[0].x())
-                  >::type,
-                  TooN::These_Types_Do_Not_Form_A_Field<
-                    cl::sycl::swizzled_vec<float, 4, 0> *,
-                    cl::sycl::swizzled_vec<float, 4, 0> *
-                  >
-                >::value,"");
-  static_assert(std::is_same<
-                  TooN::Internal::MultiplyType<int, float>::type,
-                  float
-                >::value,"");
-//  TooN::Internal::MultiplyType<decltype(&A.data[0].x()),decltype(&B.data[0].x())>::type e = &e;
-  TooN::wrapMatrix<4, 4>(&R.data[0].x()) =
-    TooN::wrapMatrix<4, 4>(&A.data[0].x()) *
-    TooN::wrapMatrix<4, 4>(&B.data[0].x());
-//  float4 aa, bb, cc;
-//  TooN::wrapMatrix<4, 4>(&aa) =
-//    TooN::wrapMatrix<4, 4>(&bb) *
-//   TooN::wrapMatrix<4, 4>(&cc);
+  TooN::wrapMatrix<4, 4>(reinterpret_cast<float *>(&R)) =
+    TooN::wrapMatrix<4, 4>(reinterpret_cast<float *>(&A)) *
+    TooN::wrapMatrix<4, 4>(reinterpret_cast<float *>(&B));
   return R;
 }
 
