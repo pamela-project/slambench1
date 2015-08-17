@@ -11,7 +11,7 @@
 #define _KERNELS_
 
 #include <cstdlib>
-#include <commons.h>
+#include <sycl/commons.h>
 
 ////////////////////////// COMPUTATION KERNELS PROTOTYPES //////////////////////
 
@@ -155,9 +155,14 @@ public:
 		float zt = pose.data[2].w - _initPose.z;
 		return (make_float3(xt, yt, zt));
 	}
-	void computeFrame(const ushort * inputDepth, const uint2 inputSize,
+	inline void computeFrame(const ushort * inputDepth, const uint2 inputSize,
 			float4 k, uint integration_rate, uint tracking_rate,
-			  float icp_threshold, float mu, const uint frame) ;
+			float icp_threshold, float mu, const uint frame) {
+		preprocessing(inputDepth, inputSize);
+		_tracked = tracking(k, icp_threshold, tracking_rate, frame);
+		_integrated = integration(k, integration_rate, mu, frame);
+		raycasting(k, mu, frame);
+	}
 
 	bool preprocessing(const ushort * inputDepth, const uint2 inputSize);
 	bool tracking(float4 k, float icp_threshold, uint tracking_rate,
@@ -165,7 +170,7 @@ public:
 	bool raycasting(float4 k, float mu, uint frame);
 	bool integration(float4 k, uint integration_rate, float mu, uint frame);
 
-	void dumpVolume(const char* filename);
+	void dumpVolume(std::string filename);
 	void renderVolume(uchar4 * out, const uint2 outputSize, int frame, int rate,
 			float4 k, float mu);
 	void renderTrack(uchar4 * out, const uint2 outputSize);

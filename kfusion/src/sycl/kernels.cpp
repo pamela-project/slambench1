@@ -14,13 +14,11 @@ namespace access = cl::sycl::access;
 #define USE_SYCL 1
 #if USE_SYCL
 #define SYCL
-using cl::sycl::float4;
-using cl::sycl::float3;
-using cl::sycl::float2;
-using cl::sycl::uint3;
+using cl::sycl::float2; using cl::sycl::float3; using cl::sycl::float4;
 using cl::sycl::int3;
-using cl::sycl::uchar4;
+using cl::sycl::uint2;  using cl::sycl::uint3;
 using cl::sycl::short2;
+using cl::sycl::uchar3; using cl::sycl::uchar4;
 inline float3 floorf(float3 v) {
   return float3{floorf(v.x()),floorf(v.y()),floorf(v.z())};
 }
@@ -45,7 +43,11 @@ inline float3 make_float3(float f) { return make_float3(f,f,f); }
 inline uint3  make_uint3(uint s)   { return make_uint3(s,s,s); }
 inline int3   make_int3(int s)     { return make_int3(s,s,s); }
 #endif // USE_SYCL
+#ifdef SYCL
+#include <sycl/kernels.h> // myfloatN.x -> myfloatN.x() many times
+#else
 #include <kernels.h>
+#endif // SYCL
 
 #ifdef __APPLE__
 #include <mach/clock.h>
