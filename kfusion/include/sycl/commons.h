@@ -365,11 +365,13 @@ inline float4 operator*(const Matrix4 & M, const float4 & v) {
 }
 
 inline Matrix4 inverse(/*const*/ Matrix4 & A) {
-	static TooN::Matrix<4, 4, float> I = TooN::Identity;
-	TooN::Matrix<4, 4, float> temp = TooN::wrapMatrix<4, 4>(&A.data[0].x());
-	Matrix4 R;
-	TooN::wrapMatrix<4, 4>(&R.data[0].x()) = TooN::gaussian_elimination(temp, I);
-	return R;
+  static TooN::Matrix<4, 4, float> I = TooN::Identity;
+//  TooN::Matrix<4, 4, float> temp = TooN::wrapMatrix<4, 4>(&A.data[0].x());
+  TooN::Matrix<4, 4, float> temp =
+    TooN::wrapMatrix<4, 4>(reinterpret_cast<float *>(&A));
+  Matrix4 R;
+  TooN::wrapMatrix<4, 4>(&R.data[0].x()) = TooN::gaussian_elimination(temp, I);
+  return R;
 }
 
 inline Matrix4 operator*(/*const*/ Matrix4 & A, /*const*/ Matrix4 & B) {

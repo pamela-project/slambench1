@@ -98,14 +98,14 @@ private:
 public:
 	Kfusion(uint2 inputSize, uint3 volumeResolution, float3 volumeDimensions,
 			float3 initPose, std::vector<int> & pyramid) :
-			computationSize(make_uint2(inputSize.x, inputSize.y)) {
+			computationSize(make_uint2(inputSize.x(), inputSize.y())) {
 
 		this->_initPose = initPose;
 		this->volumeDimensions = volumeDimensions;
 		this->volumeResolution = volumeResolution;
 		pose = toMatrix4(
 				TooN::SE3<float>(
-						TooN::makeVector(initPose.x, initPose.y, initPose.z, 0,
+						TooN::makeVector(initPose.x(), initPose.y(), initPose.z(), 0,
 								0, 0)));
 		this->iterations.clear();
 		for (std::vector<int>::iterator it = pyramid.begin();
@@ -120,7 +120,7 @@ public:
 //Allow a kfusion object to be created with a pose which include orientation as well as position
 	Kfusion(uint2 inputSize, uint3 volumeResolution, float3 volumeDimensions,
 			Matrix4 initPose, std::vector<int> & pyramid) :
-			computationSize(make_uint2(inputSize.x, inputSize.y)) {
+			computationSize(make_uint2(inputSize.x(), inputSize.y())) {
 		this->_initPose = getPosition();
 		this->volumeDimensions = volumeDimensions;
 		this->volumeResolution = volumeResolution;
@@ -148,11 +148,11 @@ public:
 		return (_integrated);
 	}
 	float3 getPosition() {
-		//std::cerr << "InitPose =" << _initPose.x << "," << _initPose.y  <<"," << _initPose.z << "    ";
-		//std::cerr << "pose =" << pose.data[0].w << "," << pose.data[1].w  <<"," << pose.data[2].w << "    ";
-		float xt = pose.data[0].w - _initPose.x;
-		float yt = pose.data[1].w - _initPose.y;
-		float zt = pose.data[2].w - _initPose.z;
+		//std::cerr << "InitPose =" << _initPose.x() << "," << _initPose.y()  <<"," << _initPose.z() << "    ";
+		//std::cerr << "pose =" << pose.data[0].w() << "," << pose.data[1].w()  <<"," << pose.data[2].w() << "    ";
+		float xt = pose.data[0].w() - _initPose.x();
+		float yt = pose.data[1].w() - _initPose.y();
+		float zt = pose.data[2].w() - _initPose.z();
 		return (make_float3(xt, yt, zt));
 	}
 	inline void computeFrame(const ushort * inputDepth, const uint2 inputSize,
