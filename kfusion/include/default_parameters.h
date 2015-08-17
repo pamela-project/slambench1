@@ -10,7 +10,9 @@
 #ifndef DEFAULT_PARAMETERS_H_
 #define DEFAULT_PARAMETERS_H_
 
-#ifndef SYCL
+#ifdef SYCL
+#include <sycl_vec_maths.hpp>
+#else
 #include <vector_types.h>
 #include <cutil_math.h>
 #endif // SYCL
