@@ -7,6 +7,7 @@
 
  */
 
+#include <kernels.h>
 #include <interface.h>
 #include <stdint.h>
 #include <vector>
