@@ -6,11 +6,6 @@
  This code is licensed under the MIT License.
 
  */
-#include <SYCL/sycl.hpp>
-using cl::sycl::accessor; using cl::sycl::buffer;  using cl::sycl::handler;
-using cl::sycl::nd_range; using cl::sycl::range;
-using cl::sycl::nd_item;  using cl::sycl::item;
-namespace access = cl::sycl::access;
 #include <kernels.h>
 #ifdef SYCL
 #define USE_SYCL 1
@@ -1045,8 +1040,8 @@ void dbg_show_TrackData(T p, const char *fname, size_t sz, int id)
 
 template <typename T>
 void copy_back(T *p, buffer<T,1> &buf) {
-  const auto  r = access::mode::read;
-  const auto hb = access::target::host_buffer;
+  const auto  r = sycl_a::mode::read;
+  const auto hb = sycl_a::target::host_buffer;
   auto ha = buf.template get_access<r, hb>();
   const range<1> extents = buf.get_range();
 
@@ -1091,11 +1086,11 @@ bool Kfusion::preprocessing(const uint16_t * inputDepth, /*const*/ uint2 inSize)
     buffer<decltype(inSize),1>  buf_is(&inSize,range<1>{sizeof(inSize)});
     q.submit([&](handler &cgh) {
 
-      auto in      = ocl_depth_buffer.get_access<access::mode::read      >(cgh);
-      auto depth   =  ocl_FloatDepth->get_access<access::mode::read_write>(cgh);
-      auto a_ratio   = buf_ratio.get_access<access::mode::read>(cgh); //
-      auto a_outSize = buf_os.get_access<access::mode::read>(cgh); //
-      auto a_inSize  = buf_is.get_access<access::mode::read>(cgh); //
+      auto in      = ocl_depth_buffer.get_access<sycl_a::mode::read      >(cgh);
+      auto depth   =  ocl_FloatDepth->get_access<sycl_a::mode::read_write>(cgh);
+      auto a_ratio   = buf_ratio.get_access<sycl_a::mode::read>(cgh); //
+      auto a_outSize = buf_os.get_access<sycl_a::mode::read>(cgh); //
+      auto a_inSize  = buf_is.get_access<sycl_a::mode::read>(cgh); //
 
       cgh.parallel_for<class T0>(range<2>{outSize.x(),outSize.y()},
         [in,depth,a_ratio,a_inSize,a_outSize](item<2> ix) {
@@ -1118,11 +1113,11 @@ bool Kfusion::preprocessing(const uint16_t * inputDepth, /*const*/ uint2 inSize)
 
     q.submit([&](handler &cgh) {
 
-      auto out       = ocl_ScaledDepth[0]->get_access<access::mode::write>(cgh);
-      auto in        = ocl_FloatDepth->get_access<access::mode::read>(cgh);
-      auto gaussian  =    ocl_gaussian.get_access<access::mode::read>(cgh);
-      auto a_radius  =      buf_radius.get_access<access::mode::read>(cgh); //
-      auto a_e_delta =     buf_e_delta.get_access<access::mode::read>(cgh); //
+      auto out       = ocl_ScaledDepth[0]->get_access<sycl_a::mode::write>(cgh);
+      auto in        = ocl_FloatDepth->get_access<sycl_a::mode::read>(cgh);
+      auto gaussian  =    ocl_gaussian.get_access<sycl_a::mode::read>(cgh);
+      auto a_radius  =      buf_radius.get_access<sycl_a::mode::read>(cgh); //
+      auto a_e_delta =     buf_e_delta.get_access<sycl_a::mode::read>(cgh); //
    
       cgh.parallel_for<class T1>(range<2>{outSize.x(),outSize.y()},
         [in,out,gaussian,a_radius,a_e_delta](item<2> ix) { 
@@ -1166,8 +1161,8 @@ bool Kfusion::preprocessing(const uint16_t * inputDepth, /*const*/ uint2 inSize)
 
   }
   auto sd0 = ocl_ScaledDepth[0]->get_access<
-    access::mode::read,
-    access::target::host_buffer
+    sycl_a::mode::read,
+    sycl_a::target::host_buffer
   >();
   dbg_show(sd0, "ScaledDepth[0]", outSize.x() * outSize.y(), 1);
 #else
@@ -1274,11 +1269,11 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 
     q.submit([&](handler &cgh) {
 
-      auto out = ocl_ScaledDepth[i  ]->get_access<access::mode::write>(cgh);
-      auto in  = ocl_ScaledDepth[i-1]->get_access<access::mode::read>(cgh);
-      auto a_inSize = buf_inSize.get_access<access::mode::read>(cgh);
-      auto a_e_d    = buf_e_d.get_access<access::mode::read>(cgh);
-      auto a_r      = buf_r.get_access<access::mode::read>(cgh);
+      auto out = ocl_ScaledDepth[i  ]->get_access<sycl_a::mode::write>(cgh);
+      auto in  = ocl_ScaledDepth[i-1]->get_access<sycl_a::mode::read>(cgh);
+      auto a_inSize = buf_inSize.get_access<sycl_a::mode::read>(cgh);
+      auto a_e_d    = buf_e_d.get_access<sycl_a::mode::read>(cgh);
+      auto a_r      = buf_r.get_access<sycl_a::mode::read>(cgh);
 
       cgh.parallel_for<class T2>(range<2>{outSize.x(),outSize.y()},
         [in,out,a_inSize,a_e_d,a_r](item<2> ix) { 
@@ -1317,12 +1312,12 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 	}
 #if USE_SYCL
   auto sd0 = ocl_ScaledDepth[0]->get_access<
-    access::mode::read,
-    access::target::host_buffer
+    sycl_a::mode::read,
+    sycl_a::target::host_buffer
   >();
   auto sd1 = ocl_ScaledDepth[1]->get_access<
-    access::mode::read,
-    access::target::host_buffer
+    sycl_a::mode::read,
+    sycl_a::target::host_buffer
   >();
   dbg_show(sd0, "ScaledDepth[0]", (computationSize.x() * computationSize.y()) / (int)pow(2,0), 2);
   dbg_show(sd1, "ScaledDepth[1]", (computationSize.x() * computationSize.y()) / (int)pow(2,1), 2);
@@ -1342,9 +1337,9 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 		range<2> imageSize{localimagesize.x(),localimagesize.y()};
 
     q.submit([&](handler &cgh) {
-      auto depth  = ocl_ScaledDepth[i]->get_access<access::mode::read>(cgh);
-      auto vertex = ocl_inputVertex[i]->get_access<access::mode::read_write>(cgh);
-      auto a_invK =            buf_invK.get_access<access::mode::read>(cgh);
+      auto depth  = ocl_ScaledDepth[i]->get_access<sycl_a::mode::read>(cgh);
+      auto vertex = ocl_inputVertex[i]->get_access<sycl_a::mode::read_write>(cgh);
+      auto a_invK =            buf_invK.get_access<sycl_a::mode::read>(cgh);
       cgh.parallel_for<class T3>(imageSize, [depth,vertex,a_invK](item<2> ix) {
         Matrix4 &invK = a_invK[0]; // auto fails here when var used as an arg
         cl::sycl::uint2 pixel{ix[0],ix[1]};
@@ -1366,9 +1361,9 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
       });
     });
     q.submit([&](handler &cgh) {
-      auto normal = ocl_inputNormal[i]->get_access<access::mode::read_write>(cgh);
-      auto vertex = ocl_inputVertex[i]->get_access<access::mode::read>(cgh);
-      auto a_invK =            buf_invK.get_access<access::mode::read>(cgh);
+      auto normal = ocl_inputNormal[i]->get_access<sycl_a::mode::read_write>(cgh);
+      auto vertex = ocl_inputVertex[i]->get_access<sycl_a::mode::read>(cgh);
+      auto a_invK =            buf_invK.get_access<sycl_a::mode::read>(cgh);
       cgh.parallel_for<class T4>(imageSize, [normal,vertex,a_invK](item<2> ix) {
         cl::sycl::uint2  pixel{ix[0],ix[1]};
         cl::sycl::uint2  vleft{cl::sycl::max((int)(pixel.x())-1,0), pixel.y()};
@@ -1411,12 +1406,12 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 	}
 #if USE_SYCL
   auto iv = ocl_inputVertex[0]->get_access<
-    access::mode::read,
-    access::target::host_buffer
+    sycl_a::mode::read,
+    sycl_a::target::host_buffer
   >();
   auto in = ocl_inputNormal[0]->get_access<
-    access::mode::read,
-    access::target::host_buffer
+    sycl_a::mode::read,
+    sycl_a::target::host_buffer
   >();
   dbg_show3(iv, "inputVertex[0]", (computationSize.x() * computationSize.y()) / (int)pow(2,0), 3);
   dbg_show3(in, "inputNormal[0]", (computationSize.x() * computationSize.y()) / (int)pow(2,0), 4);
@@ -1437,7 +1432,7 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 				computationSize.y() / (int) pow(2, level));
 		for (int i = 0; i < iterations[level]; ++i) {
 #if USE_SYCL
-      const auto rw = access::mode::read_write;
+      const auto rw = sycl_a::mode::read_write;
       range<2> imageSize{localimagesize.x(),localimagesize.y()};
 		  cl::sycl::uint2 outputSize{computationSize.x(), computationSize.y()};
       buffer<cl::sycl::uint2,1> buf_outputSize(&outputSize,range<1>{1});
@@ -1453,14 +1448,14 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
         auto inNormal     = ocl_inputNormal[level]->get_access<rw>(cgh);
         auto inVertex     = ocl_inputVertex[level]->get_access<rw>(cgh);
         auto output       = ocl_trackingResult->get_access<rw>(cgh);
-        auto refVertex    = ocl_vertex->get_access<access::mode::read>(cgh);
-        auto refNormal    = ocl_normal->get_access<access::mode::read>(cgh);
-        auto a_outputSize = buf_outputSize.get_access<access::mode::read>(cgh);
-        auto a_pose       = buf_pose.get_access<access::mode::read>(cgh);
+        auto refVertex    = ocl_vertex->get_access<sycl_a::mode::read>(cgh);
+        auto refNormal    = ocl_normal->get_access<sycl_a::mode::read>(cgh);
+        auto a_outputSize = buf_outputSize.get_access<sycl_a::mode::read>(cgh);
+        auto a_pose       = buf_pose.get_access<sycl_a::mode::read>(cgh);
         auto a_projectReference =
-          buf_projectReference.get_access<access::mode::read>(cgh);
-        auto a_dist_threshold   = buf_dist_threshold.get_access<access::mode::read>(cgh); //
-        auto a_normal_threshold = buf_normal_threshold.get_access<access::mode::read>(cgh); //
+          buf_projectReference.get_access<sycl_a::mode::read>(cgh);
+        auto a_dist_threshold   = buf_dist_threshold.get_access<sycl_a::mode::read>(cgh); //
+        auto a_normal_threshold = buf_normal_threshold.get_access<sycl_a::mode::read>(cgh); //
 
         cgh.parallel_for<class T5>(
           imageSize,
@@ -1535,12 +1530,12 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
       buffer<cl::sycl::uint2,1>  buf_size( &size,range<1>{1});
 
       q.submit([&](handler &cgh) {
-        auto       J = ocl_trackingResult->get_access<access::mode::read>(cgh);
-        auto a_JSize = buf_JSize.get_access<access::mode::read>(cgh);
-        auto  a_size =  buf_size.get_access<access::mode::read>(cgh);
+        auto       J = ocl_trackingResult->get_access<sycl_a::mode::read>(cgh);
+        auto a_JSize = buf_JSize.get_access<sycl_a::mode::read>(cgh);
+        auto  a_size =  buf_size.get_access<sycl_a::mode::read>(cgh);
         const range<1> local_mem_size{size_of_group * 32};
-        auto out=ocl_reduce_output_buffer->get_access<access::mode::write>(cgh);
-        accessor<float, 1, rw, access::target::local> S(local_mem_size, cgh);
+        auto out=ocl_reduce_output_buffer->get_access<sycl_a::mode::write>(cgh);
+        accessor<float, 1, rw, sycl_a::target::local> S(local_mem_size, cgh);
 
         cgh.parallel_for<class T6>(ndr,[out,J,a_JSize,a_size,S](nd_item<1> ix) {
           auto &JSize = a_JSize[0];  //
@@ -1614,7 +1609,7 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
           for (int i = 0; i < 32; ++i)
             S[sline * 32 + i] = sums[i];
 
-          ix.barrier(access::fence_space::local);
+          ix.barrier(sycl_a::fence_space::local);
 
           // sum up columns and copy to global memory in the final 32 threads
           if (sline < 32) {
@@ -1648,8 +1643,8 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 	}
 #if USE_SYCL
   auto tres = ocl_trackingResult->get_access<
-    access::mode::read,
-    access::target::host_buffer
+    sycl_a::mode::read,
+    sycl_a::target::host_buffer
   >();
   dbg_show_TrackData(tres, "trackingResult",
                      computationSize.x() * computationSize.y(), 5);

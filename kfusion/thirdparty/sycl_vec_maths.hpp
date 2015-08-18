@@ -8,6 +8,12 @@
 
 */
 
+#include <SYCL/sycl.hpp>
+using cl::sycl::accessor; using cl::sycl::buffer;  using cl::sycl::handler;
+using cl::sycl::nd_range; using cl::sycl::range;
+using cl::sycl::nd_item;  using cl::sycl::item;
+namespace sycl_a = cl::sycl::access;
+
 using cl::sycl::float2; using cl::sycl::float3; using cl::sycl::float4;
 using cl::sycl::int2;   using cl::sycl::int3;
 using cl::sycl::uint2;  using cl::sycl::uint3;
