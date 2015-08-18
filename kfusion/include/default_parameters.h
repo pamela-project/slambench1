@@ -37,15 +37,12 @@ const int default_compute_size_ratio = 1;
 const int default_integration_rate = 2;
 const int default_rendering_rate = 4;
 const int default_tracking_rate = 1;
-#ifdef SYCL
-/*const*/ uint3 default_volume_resolution = make_uint3(256, 256, 256);
-/*const*/ float3 default_volume_size = make_float3(2.f, 2.f, 2.f);
-/*const*/ float3 default_initial_pos_factor = make_float3(0.5f, 0.5f, 0.0f);
-#else
+// These 3 did use .x() etc. which are all non-const, but...only const global
+// variables have internal linkage; so avoiding multiple definition errors.
+// So, m_data[N] is used instead; and thankfully only in this file.
 const uint3 default_volume_resolution = make_uint3(256, 256, 256);
 const float3 default_volume_size = make_float3(2.f, 2.f, 2.f);
 const float3 default_initial_pos_factor = make_float3(0.5f, 0.5f, 0.0f);
-#endif // SYCL
 const bool default_no_gui = false;
 const bool default_render_volume_fullsize = false;
 const std::string default_dump_volume_file = "";
@@ -122,20 +119,20 @@ struct Configuration {
 		std ::cerr << "-o  (--log-file) <filename>      : default is stdout               " << std::endl;
 		std ::cerr << "-m  (--mu)                       : default is " << default_mu << "               " << std::endl;
 #ifdef SYCL
-		std ::cerr << "-p  (--init-pose)                : default is " << default_initial_pos_factor.x() << "," << default_initial_pos_factor.y() << "," << default_initial_pos_factor.z() << "     " << std::endl;
+		std ::cerr << "-p  (--init-pose)                : default is " << default_initial_pos_factor.m_data[0] << "," << default_initial_pos_factor.m_data[1] << "," << default_initial_pos_factor.m_data[2] << "     " << std::endl;
 #else
 		std ::cerr << "-p  (--init-pose)                : default is " << default_initial_pos_factor.x << "," << default_initial_pos_factor.y << "," << default_initial_pos_factor.z << "     " << std::endl;
 #endif
 		std ::cerr << "-q  (--no-gui)                   : default is to display gui"<<std::endl;
 		std ::cerr << "-r  (--integration-rate)         : default is " << default_integration_rate << "     " << std::endl;
 #ifdef SYCL
-		std ::cerr << "-s  (--volume-size)              : default is " << default_volume_size.x() << "," << default_volume_size.y() << "," << default_volume_size.z() << "      " << std::endl;
+		std ::cerr << "-s  (--volume-size)              : default is " << default_volume_size.m_data[0] << "," << default_volume_size.m_data[1] << "," << default_volume_size.m_data[2] << "      " << std::endl;
 #else
 		std ::cerr << "-s  (--volume-size)              : default is " << default_volume_size.x << "," << default_volume_size.y << "," << default_volume_size.z << "      " << std::endl;
 #endif
 		std ::cerr << "-t  (--tracking-rate)            : default is " << default_tracking_rate << "     " << std::endl;
 #ifdef SYCL
-		std ::cerr << "-v  (--volume-resolution)        : default is " << default_volume_resolution.x() << "," << default_volume_resolution.y() << "," << default_volume_resolution.z() << "    " << std::endl;
+		std ::cerr << "-v  (--volume-resolution)        : default is " << default_volume_resolution.m_data[0] << "," << default_volume_resolution.m_data[1] << "," << default_volume_resolution.m_data[2] << "    " << std::endl;
 #else
 		std ::cerr << "-v  (--volume-resolution)        : default is " << default_volume_resolution.x << "," << default_volume_resolution.y << "," << default_volume_resolution.z << "    " << std::endl;
 #endif

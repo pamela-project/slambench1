@@ -9,8 +9,8 @@
 
  */
 
-#ifndef _COMMONS_
-#define _COMMONS_
+#ifndef _SYCL_COMMONS_
+#define _SYCL_COMMONS_
 
 #if defined(__GNUC__)
 // circumvent packaging problems in gcc 4.7.0
