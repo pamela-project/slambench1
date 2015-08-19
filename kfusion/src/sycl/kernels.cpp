@@ -742,15 +742,15 @@ void trackKernel(TrackData* output, const float3* inVertex,
 	TOCK("trackKernel", inSize_x * inSize_y);
 }
 
-void mm2metersKernel(float * out, uint2 outSize, const ushort * in,
-		uint2 inSize) {
+void mm2metersKernel(float *out, uint2 outSize, const ushort *in, uint2 inSize)
+{
 	TICK();
 #ifdef SYCL
 	const uint inSize_x  = inSize.x();  const uint inSize_y  = inSize.y();
 	const uint outSize_x = outSize.x(); const uint outSize_y = outSize.y();
 #else
 	const uint inSize_x  = inSize.x;  const uint inSize_y  = inSize.y;
-	const uint outSize_x = outSize.x; const uint outSize_y = outSize_y;
+	const uint outSize_x = outSize.x; const uint outSize_y = outSize.y;
 #endif
 
 	// Check for unsupported conditions
