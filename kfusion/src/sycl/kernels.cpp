@@ -7,9 +7,6 @@
 
  */
 #include <kernels.h>
-#ifdef SYCL
-#define USE_SYCL 1
-#endif
 
 #ifdef __APPLE__
 #include <mach/clock.h>
@@ -57,9 +54,10 @@ Matrix4 raycastPose;
 float3 ** inputVertex;
 float3 ** inputNormal;
 
+#ifdef SYCL
 // sycl specific
-static_assert(std::is_standard_layout<TrackData>::value,"");
 cl::sycl::queue q(cl::sycl::intel_selector{});
+static_assert(std::is_standard_layout<TrackData>::value,"");
 // needed? Depends on depth buffer location/lifetime
 // uint2 computationSizeBkp = make_uint2(0, 0);
 buffer<float3,1>  *ocl_vertex         = NULL;
@@ -77,6 +75,7 @@ float *reduceOutputBuffer = NULL;
 // reduction parameters
 static const size_t size_of_group = 64;
 static const size_t number_of_groups = 8;
+#endif
 
 bool print_kernel_timing = false;
 #ifdef __APPLE__
@@ -93,11 +92,13 @@ void Kfusion::languageSpecificConstructor() {
 	if (getenv("KERNEL_TIMINGS"))
 		print_kernel_timing = true;
 
-#ifdef USE_SYCL
+#ifdef SYCL
   const auto csize = computationSize.x() * computationSize.y();
 #else
-  const auto csize = computationSize.x * computationSize.y;
+  const auto csize = computationSize.x   * computationSize.y;
 #endif
+
+#ifdef SYCL
   using f_buf  = buffer<float,1>;
   using f3_buf = buffer<float3,1>;
 	ocl_FloatDepth = new f_buf(range<1>{csize});
@@ -120,6 +121,7 @@ void Kfusion::languageSpecificConstructor() {
 	reduceOutputBuffer = (float*) malloc(number_of_groups * 32 * sizeof(float));
   ocl_reduce_output_buffer =
     new f_buf(reduceOutputBuffer, range<1>{32 * number_of_groups});
+#endif
 
 	// internal buffers to initialize
 	reductionoutput = (float*) calloc(sizeof(float) * 8 * 32, 1);
@@ -155,6 +157,7 @@ void Kfusion::languageSpecificConstructor() {
 
 Kfusion::~Kfusion() {
 
+#ifdef SYCL
 	if (reduceOutputBuffer)
 		free(reduceOutputBuffer);
 	reduceOutputBuffer = NULL;
@@ -204,6 +207,7 @@ Kfusion::~Kfusion() {
 		delete ocl_trackingResult;
 		ocl_trackingResult = NULL;
   }
+#endif
 
 	free(reductionoutput);
 	for (unsigned int i = 0; i < iterations.size(); ++i) {
@@ -233,6 +237,7 @@ void clean() {
 ;
 // stub
 
+#ifdef SYCL
 void initVolumeKernel(Volume volume) {
 	TICK();
 	for (unsigned int x = 0; x < volume.size.x(); x++)
@@ -245,17 +250,37 @@ void initVolumeKernel(Volume volume) {
 		}
 	TOCK("initVolumeKernel", volume.size.x() * volume.size.y() * volume.size.z());
 }
+#else
+void initVolumeKernel(Volume volume) {
+	TICK();
+	for (unsigned int x = 0; x < volume.size.x; x++)
+		for (unsigned int y = 0; y < volume.size.y; y++) {
+			for (unsigned int z = 0; z < volume.size.z; z++) {
+				//std::cout <<  x << " " << y << " " << z <<"\n";
+        /*const*/ float2 w{1.0f, 0.0f};
+				volume.setints(x, y, z, w /*make_float2(1.0f, 0.0f)*/); // w = nonconst
+			}
+		}
+	TOCK("initVolumeKernel", volume.size.x * volume.size.y * volume.size.z);
+}
+#endif
 
 void bilateralFilterKernel(float* out, const float* in, uint2 size,
 		const float * gaussian, float e_d, int r) {
 	TICK()
 		uint y;
 		float e_d_squared_2 = e_d * e_d * 2;
+#ifdef SYCL
+	const uint size_x = size.x(); const uint size_y = size.y();
+#else
+	const uint size_x = size.x;   const uint size_y = size.y;
+#endif
+
 #pragma omp parallel for \
 	    shared(out),private(y)   
-		for (y = 0; y < size.y(); y++) {
-			for (uint x = 0; x < size.x(); x++) {
-				uint pos = x + y * size.x();
+		for (y = 0; y < size_y; y++) {
+			for (uint x = 0; x < size_x; x++) {
+				uint pos = x + y * size_x;
 				if (in[pos] == 0) {
 					out[pos] = 0;
 					continue;
@@ -268,9 +293,13 @@ void bilateralFilterKernel(float* out, const float* in, uint2 size,
 
 				for (int i = -r; i <= r; ++i) {
 					for (int j = -r; j <= r; ++j) {
-						uint2 curPos = make_uint2(clamp(x + i, 0u, size.x() - 1),
-								clamp(y + j, 0u, size.y() - 1));
-						const float curPix = in[curPos.x() + curPos.y() * size.x()];
+						uint2 curPos = make_uint2(clamp(x + i, 0u, size_x - 1),
+                                      clamp(y + j, 0u, size_y - 1));
+#ifdef SYCL
+						const float curPix = in[curPos.x() + curPos.y() * size_x];
+#else
+						const float curPix = in[curPos.x   + curPos.y   * size_x];
+#endif
 						if (curPix > 0) {
 							const float mod = sq(curPix - center);
 							const float factor = gaussian[i + r]
@@ -284,57 +313,80 @@ void bilateralFilterKernel(float* out, const float* in, uint2 size,
 				out[pos] = t / sum;
 			}
 		}
-		TOCK("bilateralFilterKernel", size.x() * size.y());
+		TOCK("bilateralFilterKernel", size_x * size_y);
 }
 
 void depth2vertexKernel(float3* vertex, const float * depth, uint2 imageSize,
 		const Matrix4 invK) {
 	TICK();
 	unsigned int x, y;
+#ifdef SYCL
+	const uint imgSize_x = imageSize.x(); const uint imgSize_y = imageSize.y();
+#else
+	const uint imgSize_x = imageSize.x;   const uint imgSize_y = imageSize.y;
+#endif
+
 #pragma omp parallel for \
          shared(vertex), private(x, y)
-	for (y = 0; y < imageSize.y(); y++) {
-		for (x = 0; x < imageSize.x(); x++) {
+	for (y = 0; y < imgSize_y; y++) {
+		for (x = 0; x < imgSize_x; x++) {
 
-			if (depth[x + y * imageSize.x()] > 0) {
-				vertex[x + y * imageSize.x()] = depth[x + y * imageSize.x()]
+			if (depth[x + y * imgSize_x] > 0) {
+				vertex[x + y * imgSize_x] = depth[x + y * imgSize_x]
 						* (rotate(invK, make_float3(x, y, 1.f)));
 // float * float3
 			} else {
-				vertex[x + y * imageSize.x()] = make_float3(0);
+				vertex[x + y * imgSize_x] = make_float3(0);
 			}
 		}
 	}
-	TOCK("depth2vertexKernel", imageSize.x() * imageSize.y());
+	TOCK("depth2vertexKernel", imgSize_x * imgSize_y);
 }
 
 void vertex2normalKernel(float3 * out, const float3 * in, uint2 imageSize) {
 	TICK();
 	unsigned int x, y;
+#ifdef SYCL
+	const uint imgSize_x = imageSize.x(); const uint imgSize_y = imageSize.y();
+#else
+	const uint imgSize_x = imageSize.x;   const uint imgSize_y = imageSize.y;
+#endif
 #pragma omp 0 // parallel for \
         shared(out), private(x,y)
-	for (y = 0; y < imageSize.y(); y++) {
-		for (x = 0; x < imageSize.x(); x++) {
-			/*const*/ uint2 pleft  = make_uint2(max(int(x)-1, 0), y);
-			/*const*/ uint2 pright = make_uint2(min(int(x)+1, (int)imageSize.x()-1), y);
+	for (y = 0; y < imgSize_y; y++) {
+		for (x = 0; x < imgSize_x; x++) {
+			/*const*/ uint2 pleft  = make_uint2(max(int(x)-1,0),                y);
+			/*const*/ uint2 pright = make_uint2(min(int(x)+1,(int)imgSize_x-1), y);
 			/*const*/ uint2 pup    = make_uint2(x, max(int(y)-1, 0));
-			/*const*/ uint2 pdown  = make_uint2(x, min(int(y)+1, ((int)imageSize.y())-1));
+			/*const*/ uint2 pdown  = make_uint2(x, min(int(y)+1, ((int)imgSize_y)-1));
 
-			/*const*/ float3 left  = in[pleft.x()  + imageSize.x() * pleft.y()];
-			/*const*/ float3 right = in[pright.x() + imageSize.x() * pright.y()];
-			/*const*/ float3 up    = in[pup.x()    + imageSize.x() * pup.y()];
-			/*const*/ float3 down  = in[pdown.x()  + imageSize.x() * pdown.y()];
+#ifdef SYCL
+			/*const*/ float3 left  = in[pleft.x()  + imgSize_x * pleft.y()];
+			/*const*/ float3 right = in[pright.x() + imgSize_x * pright.y()];
+			/*const*/ float3 up    = in[pup.x()    + imgSize_x * pup.y()];
+			/*const*/ float3 down  = in[pdown.x()  + imgSize_x * pdown.y()];
 
 			if (left.z() == 0 || right.z() == 0 || up.z() == 0 || down.z() == 0) {
-				out[x + y * imageSize.x()].x() = INVALID;
+				out[x + y * imgSize_x].x() = INVALID;
 				continue;
 			}
+#else
+			const float3 left  = in[pleft.x  + imgSize_x * pleft.y];
+			const float3 right = in[pright.x + imgSize_x * pright.y];
+			const float3 up    = in[pup.x    + imgSize_x * pup.y];
+			const float3 down  = in[pdown.x  + imgSize_x * pdown.y];
+
+			if (left.z == 0 || right.z == 0 || up.z == 0 || down.z == 0) {
+				out[x + y * imgSize_x].x = INVALID;
+				continue;
+			}
+#endif
 			const float3 dxv = right - left;
 			const float3 dyv = down - up;
-			out[x + y * imageSize.x()] = normalize(cross(dyv, dxv)); // switched dx and dy to get factor -1
+			out[x + y * imgSize_x] = normalize(cross(dyv, dxv)); // switched dx and dy to get factor -1
 		}
 	}
-	TOCK("vertex2normalKernel", imageSize.x() * imageSize.y());
+	TOCK("vertex2normalKernel", imgSize_x * imgSize_y);
 }
 
 void new_reduce(int blockIndex, float * out, TrackData* J, /*const*/ uint2 Jsize,
@@ -381,12 +433,19 @@ void new_reduce(int blockIndex, float * out, TrackData* J, /*const*/ uint2 Jsize
 	sums29 = 0.0f;
 	sums30 = 0.0f;
 	sums31 = 0.0f;
+#ifdef SYCL
+	const uint size_x  = size.x(); const uint size_y = size.y();
+  const uint Jsize_x = Jsize.x();
+#else
+	const uint size_x  = size.x;   const uint size_y = size.y;
+  const uint Jsize_x = Jsize.x;
+#endif
 // comment me out to try coarse grain parallelism 
 #pragma omp parallel for reduction(+:sums0,sums1,sums2,sums3,sums4,sums5,sums6,sums7,sums8,sums9,sums10,sums11,sums12,sums13,sums14,sums15,sums16,sums17,sums18,sums19,sums20,sums21,sums22,sums23,sums24,sums25,sums26,sums27,sums28,sums29,sums30,sums31)
-	for (uint y = blockIndex; y < size.y(); y += 8) {
-		for (uint x = 0; x < size.x(); x++) {
+	for (uint y = blockIndex; y < size_y; y += 8) {
+		for (uint x = 0; x < size_x; x++) {
 
-			const TrackData & row = J[(x + y * Jsize.x())]; // ...
+			const TrackData & row = J[(x + y * Jsize_x)]; // ...
 			if (row.result < 1) {
 				// accesses sums[28..31]
 				/*(sums+28)[1]*/sums29 += row.result == -4 ? 1 : 0;
@@ -589,47 +648,81 @@ void trackKernel(TrackData* output, const float3* inVertex,
 		/*const*/ Matrix4 view, const float dist_threshold,
 		const float normal_threshold) {
 	TICK();
-	uint2 pixel = make_uint2(0, 0);
+	//uint2 pixel = make_uint2(0, 0);
 	unsigned int pixely, pixelx;
+#ifdef SYCL
+	const uint inSize_x  = inSize.x();  const uint inSize_y  = inSize.y();
+	const uint refSize_x = refSize.x(); const uint refSize_y = refSize.y();
+#else
+	const uint inSize_x  = inSize.x;   const uint inSize_y  = inSize.y;
+	const uint refSize_x = refSize.x;  const uint refSize_y = refSize.y;
+#endif
 #pragma omp parallel for \
 	    shared(output), private(pixel,pixelx,pixely)
-	for (pixely = 0; pixely < inSize.y(); pixely++) {
-		for (pixelx = 0; pixelx < inSize.x(); pixelx++) {
-			pixel.x() = pixelx;
-			pixel.y() = pixely;
+	for (pixely = 0; pixely < inSize_y; pixely++) {
+		for (pixelx = 0; pixelx < inSize_x; pixelx++) {
+			//pixel.x() = pixelx;
+			//pixel.y() = pixely;
 
-			TrackData & row = output[pixel.x() + pixel.y() * refSize.x()];
+			TrackData & row = output[pixelx + pixely * refSize_x];
 
-			if (inNormal[pixel.x() + pixel.y() * inSize.x()].x() == INVALID) {
+#ifdef SYCL
+			if (inNormal[pixelx + pixely * inSize_x].x() == INVALID) {
 				row.result = -1;
 				continue;
 			}
 
 			/*const*/ float3 projectedVertex = Ttrack
-					* inVertex[pixel.x() + pixel.y() * inSize.x()]; // Mat * float3
+					* inVertex[pixelx + pixely * inSize_x]; // Mat * float3
 			/*const*/ float3 projectedPos = view * projectedVertex;
 			/*const*/ float2 projPixel = make_float2(
 					projectedPos.x() / projectedPos.z() + 0.5f,
 					projectedPos.y() / projectedPos.z() + 0.5f);
-			if (projPixel.x() < 0 || projPixel.x() > refSize.x() - 1
-					|| projPixel.y() < 0 || projPixel.y() > refSize.y() - 1) {
+			if (projPixel.x() < 0 || projPixel.x() > refSize_x - 1
+					|| projPixel.y() < 0 || projPixel.y() > refSize_y - 1) {
 				row.result = -2;
 				continue;
 			}
 
-			/*const*/ uint2 refPixel = make_uint2(projPixel.x(), projPixel.y());
-			/*const*/ float3 referenceNormal = refNormal[refPixel.x()
-					+ refPixel.y() * refSize.x()];
+			const uint refPixel_x = projPixel.x();
+			const uint refPixel_y = projPixel.y();
+#else
+			if (inNormal[pixelx + pixely * inSize_x].x   == INVALID) {
+				row.result = -1;
+				continue;
+			}
 
+			const float3 projectedVertex = Ttrack
+					* inVertex[pixelx + pixely * inSize_x]; // Mat * float3
+			const float3 projectedPos = view * projectedVertex;
+			const float2 projPixel = make_float2(
+					projectedPos.x / projectedPos.z + 0.5f,
+					projectedPos.y / projectedPos.z + 0.5f);
+			if (projPixel.x < 0 || projPixel.x > refSize_x - 1
+					|| projPixel.y < 0 || projPixel.y > refSize_y - 1) {
+				row.result = -2;
+				continue;
+			}
+
+			const uint refPixel_x = projPixel.x;
+			const uint refPixel_y = projPixel.y;
+#endif
+			/*const*/ float3 referenceNormal = refNormal[refPixel_x
+					+ refPixel_y * refSize_x];
+
+#ifdef SYCL
 			if (referenceNormal.x() == INVALID) {
+#else
+			if (referenceNormal.x   == INVALID) {
+#endif
 				row.result = -3;
 				continue;
 			}
 
-			const float3 diff = refVertex[refPixel.x() + refPixel.y() * refSize.x()]
+			const float3 diff = refVertex[refPixel_x + refPixel_y * refSize_x]
 					- projectedVertex;
 			const float3 projectedNormal = rotate(Ttrack,
-					inNormal[pixel.x() + pixel.y() * inSize.x()]);
+					inNormal[pixelx + pixely * inSize_x]);
 
 			if (length(diff) > dist_threshold) {
 				row.result = -4;
@@ -646,81 +739,100 @@ void trackKernel(TrackData* output, const float3* inVertex,
       ((float3 *) row.J)[1] = cross(projectedVertex, referenceNormal);
 		}
 	}
-	TOCK("trackKernel", inSize.x() * inSize.y());
+	TOCK("trackKernel", inSize_x * inSize_y);
 }
 
 void mm2metersKernel(float * out, uint2 outSize, const ushort * in,
 		uint2 inSize) {
 	TICK();
+#ifdef SYCL
+	const uint inSize_x  = inSize.x();  const uint inSize_y  = inSize.y();
+	const uint outSize_x = outSize.x(); const uint outSize_y = outSize.y();
+#else
+	const uint inSize_x  = inSize.x;  const uint inSize_y  = inSize.y;
+	const uint outSize_x = outSize.x; const uint outSize_y = outSize_y;
+#endif
+
 	// Check for unsupported conditions
-	if ((inSize.x() < outSize.x()) || (inSize.y() < outSize.y())) {
+	if ((inSize_x < outSize_x) || (inSize_y < outSize_y)) {
 		std::cerr << "Invalid ratio." << std::endl;
 		exit(1);
 	}
-	if ((inSize.x() % outSize.x() != 0) || (inSize.y() % outSize.y() != 0)) {
+	if ((inSize_x % outSize_x != 0) || (inSize_y % outSize_y != 0)) {
 		std::cerr << "Invalid ratio." << std::endl;
 		exit(1);
 	}
-	if ((inSize.x() / outSize.x() != inSize.y() / outSize.y())) {
+	if ((inSize_x / outSize_x != inSize_y / outSize_y)) {
 		std::cerr << "Invalid ratio." << std::endl;
 		exit(1);
 	}
 
-	int ratio = inSize.x() / outSize.x();
+	int ratio = inSize_x / outSize_x;
 	unsigned int y;
 #pragma omp parallel for \
         shared(out), private(y)
-	for (y = 0; y < outSize.y(); y++)
-		for (unsigned int x = 0; x < outSize.x(); x++) {
-			out[x + outSize.x() * y] = in[x * ratio + inSize.x() * y * ratio]
+	for (y = 0; y < outSize_y; y++)
+		for (unsigned int x = 0; x < outSize_x; x++) {
+			out[x + outSize_x * y] = in[x * ratio + inSize_x * y * ratio]
 					/ 1000.0f;
 		}
-	TOCK("mm2metersKernel", outSize.x() * outSize.y());
+	TOCK("mm2metersKernel", outSize_x * outSize_y);
 }
 
 void halfSampleRobustImageKernel(float* out, const float* in, uint2 inSize,
 		const float e_d, const int r) {
 	TICK();
-	uint2 outSize = make_uint2(inSize.x() / 2, inSize.y() / 2);
+//	uint2 outSize = make_uint2(inSize.x() / 2, inSize.y() / 2);
+#ifdef SYCL
+	const uint inSize_x  = inSize.x(); const uint inSize_y = inSize.y();
+#else
+	const uint inSize_x  = inSize.x;   const uint inSize_y = inSize.y;
+#endif
+	const uint outSize_x = inSize_x / 2;
+  const uint outSize_y = inSize_y / 2;
 	unsigned int y;
 #pragma omp parallel for \
         shared(out), private(y)
-	for (y = 0; y < outSize.y(); y++) {
-		for (unsigned int x = 0; x < outSize.x(); x++) {
-			uint2 pixel = make_uint2(x, y);
-			/*const*/ uint2 centerPixel = 2 * pixel;
+	for (y = 0; y < outSize_y; y++) {
+		for (unsigned int x = 0; x < outSize_x; x++) {
+//			uint2 pixel = make_uint2(x, y);
+//			/*const*/ uint2 centerPixel = 2 * pixel;
+      const uint centerPixel_x = 2 * x;
+      const uint centerPixel_y = 2 * y;
 
 			float sum = 0.0f;
 			float t = 0.0f;
-			const float center = in[centerPixel.x()
-					+ centerPixel.y() * inSize.x()];
+			const float center = in[centerPixel_x + centerPixel_y * inSize_x];
 			for (int i = -r + 1; i <= r; ++i) {
 				for (int j = -r + 1; j <= r; ++j) {
 					uint2 cur = make_uint2(
 							clamp(
-									make_int2(centerPixel.x() + j,
-											centerPixel.y() + i), make_int2(0),
-									make_int2(2 * outSize.x() - 1,
-											2 * outSize.y() - 1)));
-					float current = in[cur.x() + cur.y() * inSize.x()];
+									make_int2(centerPixel_x + j, centerPixel_y + i), make_int2(0),
+									make_int2(2 * outSize_x - 1, 2 * outSize_y - 1)));
+#ifdef SYCL
+					float current = in[cur.x() + cur.y() * inSize_x];
+#else
+					float current = in[cur.x   + cur.y   * inSize_x];
+#endif
 					if (fabsf(current - center) < e_d) {
 						sum += 1.0f;
 						t += current;
 					}
 				}
 			}
-			out[pixel.x() + pixel.y() * outSize.x()] = t / sum;
+			out[x + y * outSize_x] = t / sum;
 		}
 	}
-	TOCK("halfSampleRobustImageKernel", outSize.x() * outSize.y());
+	TOCK("halfSampleRobustImageKernel", outSize_x * outSize_y);
 }
 
+#ifdef SYCL
 void integrateKernel(Volume vol, const float* depth, uint2 depthSize,
 		/*const*/ Matrix4 invTrack, /*const*/ Matrix4 K, const float mu,
 		const float maxweight) {
 	TICK();
-	const float3 delta = rotate(invTrack,
-			make_float3(0, 0, vol.dim.z() / vol.size.z()));
+	const float3 delta =
+    rotate(invTrack, make_float3(0, 0, vol.dim.z() / vol.size.z()));
 	const float3 cameraDelta = rotate(K, delta);
 	unsigned int y;
 #pragma omp parallel for \
@@ -744,16 +856,12 @@ void integrateKernel(Volume vol, const float* depth, uint2 depthSize,
 				/*const*/ uint2 px = make_uint2(pixel.x(), pixel.y());
 				if (depth[px.x() + px.y() * depthSize.x()] == 0)
 					continue;
-				const float diff =
-						(depth[px.x() + px.y() * depthSize.x()] - cameraX.z())
-								* std::sqrt(
-										1 + sq(pos.x() / pos.z())
-												+ sq(pos.y() / pos.z()));
+				const float diff = (depth[px.x()+px.y()*depthSize.x()] - cameraX.z()) *
+              std::sqrt(1 + sq(pos.x() / pos.z()) + sq(pos.y() / pos.z()));
 				if (diff > -mu) {
 					const float sdf = fminf(1.f, diff / mu);
 					float2 data = vol[pix];
-					data.x() = clamp((data.y() * data.x() + sdf) / (data.y() + 1), -1.f,
-							1.f);
+					data.x() = clamp((data.y()*data.x()+sdf) / (data.y() + 1), -1.f, 1.f);
 					data.y() = fminf(data.y() + 1, maxweight);
 					vol.set(pix, data);
 				}
@@ -761,12 +869,60 @@ void integrateKernel(Volume vol, const float* depth, uint2 depthSize,
 		}
 	TOCK("integrateKernel", vol.size.x() * vol.size.y());
 }
+#else
+void integrateKernel(Volume vol, const float* depth, uint2 depthSize,
+		/*const*/ Matrix4 invTrack, /*const*/ Matrix4 K, const float mu,
+		const float maxweight) {
+	TICK();
+	const float3 delta =
+    rotate(invTrack, make_float3(0, 0, vol.dim.z / vol.size.z));
+	const float3 cameraDelta = rotate(K, delta);
+	unsigned int y;
+#pragma omp parallel for \
+        shared(vol), private(y)
+	for (y = 0; y < vol.size.y; y++)
+		for (unsigned int x = 0; x < vol.size.x; x++) {
+
+			uint3 pix = make_uint3(x, y, 0); //pix.x() = x;pix.y() = y;
+			float3 pos = invTrack * vol.pos(pix);
+			float3 cameraX = K * pos;
+
+			for (pix.z = 0; pix.z < vol.size.z;
+					++pix.z,pos += delta,cameraX += cameraDelta) {
+				if (pos.z < 0.0001f) // some near plane constraint
+					continue;
+				const float2 pixel = make_float2(cameraX.x / cameraX.z + 0.5f,
+						cameraX.y / cameraX.z + 0.5f);
+				if (pixel.x < 0 || pixel.x > depthSize.x - 1 || pixel.y < 0
+						|| pixel.y > depthSize.y - 1)
+					continue;
+				const uint2 px = make_uint2(pixel.x, pixel.y);
+				if (depth[px.x + px.y * depthSize.x] == 0)
+					continue;
+				const float diff = (depth[px.x + px.y * depthSize.x] - cameraX.z) *
+              std::sqrt(1 + sq(pos.x/pos.z) + sq(pos.y/pos.z));
+				if (diff > -mu) {
+					const float sdf = fminf(1.f, diff / mu);
+					float2 data = vol[pix];
+					data.x = clamp((data.y * data.x + sdf) / (data.y + 1), -1.f, 1.f);
+					data.y = fminf(data.y + 1, maxweight);
+					vol.set(pix, data);
+				}
+			}
+		}
+	TOCK("integrateKernel", vol.size.x   * vol.size.y);
+}
+#endif
 float4 raycast(/*const*/ Volume volume, /*const*/ uint2 pos, const Matrix4 view,
 		const float nearPlane, const float farPlane, const float step,
 		const float largestep) {
 
 	const float3 origin = get_translation(view);
+#ifdef SYCL
 	const float3 direction = rotate(view, make_float3(pos.x(), pos.y(), 1.f));
+#else
+	const float3 direction = rotate(view, make_float3(pos.x,   pos.y,   1.f));
+#endif
 
 	// intersect ray with a box
 	// http://www.siggraph.org/education/materials/HyperGraph/raytrace/rtinter3.htm
@@ -780,10 +936,15 @@ float4 raycast(/*const*/ Volume volume, /*const*/ uint2 pos, const Matrix4 view,
 	/*const*/ float3 tmax = fmaxf(ttop, tbot);
 
 	// find the largest tmin and the smallest tmax
-	const float largest_tmin = fmaxf(fmaxf(tmin.x(), tmin.y()),
-			fmaxf(tmin.x(), tmin.z()));
-	const float smallest_tmax = fminf(fminf(tmax.x(), tmax.y()),
-			fminf(tmax.x(), tmax.z()));
+#ifdef SYCL
+	const float largest_tmin =
+    fmaxf(fmaxf(tmin.x(), tmin.y()), fmaxf(tmin.x(), tmin.z()));
+	const float smallest_tmax =
+    fminf(fminf(tmax.x(), tmax.y()), fminf(tmax.x(), tmax.z()));
+#else
+	const float largest_tmin  = fmaxf(fmaxf(tmin.x,tmin.y),fmaxf(tmin.x,tmin.z));
+	const float smallest_tmax = fminf(fminf(tmax.x,tmax.y),fminf(tmax.x,tmax.z));
+#endif
 
 	// check against near and far plane
 	const float tnear = fmaxf(largest_tmin, nearPlane);
@@ -793,15 +954,21 @@ float4 raycast(/*const*/ Volume volume, /*const*/ uint2 pos, const Matrix4 view,
 		// first walk with largesteps until we found a hit
 		float t = tnear;
 		float stepsize = largestep;
-		//float f_t = volume.interp(origin + direction * t); interp is nonconst
+#ifdef SYCL
     float3 tmp{origin + direction * t};
-		float f_t = volume.interp(tmp);
+		float f_t = volume.interp(tmp); // interp is nonconst
+#else
+		float f_t = volume.interp(origin + direction * t);
+#endif
 		float f_tt = 0;
 		if (f_t > 0) { // ups, if we were already in it, then don't render anything here
 			for (; t < tfar; t += stepsize) {
-				// f_tt = volume.interp(origin + direction * t); // interp is nonconst
+#ifdef SYCL
         float3 tmp{origin + direction * t};
-				f_tt = volume.interp(tmp);
+				f_tt = volume.interp(tmp);   // interp is nonconst
+#else
+				f_tt = volume.interp(origin + direction * t);
+#endif
 				if (f_tt < 0)                  // got it, jump out of inner loop
 					break;
 				if (f_tt < 0.8f)               // coming closer, reduce stepsize
@@ -817,6 +984,7 @@ float4 raycast(/*const*/ Volume volume, /*const*/ uint2 pos, const Matrix4 view,
 	return make_float4(0);
 
 }
+#ifdef SYCL
 void raycastKernel(float3* vertex, float3* normal, uint2 inputSize,
 		/*const*/ Volume integration, const Matrix4 view, const float nearPlane,
 		const float farPlane, const float step, const float largestep) {
@@ -851,6 +1019,39 @@ void raycastKernel(float3* vertex, float3* normal, uint2 inputSize,
 		}
 	TOCK("raycastKernel", inputSize.x() * inputSize.y());
 }
+#else
+void raycastKernel(float3* vertex, float3* normal, uint2 inputSize,
+		/*const*/ Volume integration, const Matrix4 view, const float nearPlane,
+		const float farPlane, const float step, const float largestep) {
+	TICK();
+	unsigned int y;
+#pragma omp parallel for \
+	    shared(normal, vertex), private(y)
+	for (y = 0; y < inputSize.y; y++)
+		for (unsigned int x = 0; x < inputSize.x; x++) {
+
+			uint2 pos = make_uint2(x, y);
+
+			const float4 hit = raycast(integration, pos, view, nearPlane,
+					farPlane, step, largestep);
+			if (hit.w > 0.0) {
+				vertex[pos.x + pos.y * inputSize.x] = make_float3(hit);
+				float3 surfNorm = integration.grad(make_float3(hit));
+				if (length(surfNorm) == 0) {
+					//normal[pos] = normalize(surfNorm); // APN added
+					normal[pos.x + pos.y * inputSize.x].x = INVALID;
+				} else {
+					normal[pos.x + pos.y * inputSize.x] = normalize(surfNorm);
+				}
+			} else {
+				//std::cerr<< "RAYCAST MISS "<<  pos.x << " " << pos.y <<"  " << hit.w() <<"\n";
+				vertex[pos.x + pos.y * inputSize.x] = make_float3(0);
+				normal[pos.x + pos.y * inputSize.x] = make_float3(INVALID, 0, 0);
+			}
+		}
+	TOCK("raycastKernel", inputSize.x * inputSize.y);
+}
+#endif
 
 bool updatePoseKernel(Matrix4 & pose, const float * output,
 		float icp_threshold) {
@@ -880,7 +1081,11 @@ bool checkPoseKernel(Matrix4 & pose, Matrix4 oldPose, const float * output,
 	TooN::Matrix<8, 32, const float, TooN::Reference::RowMajor> values(output);
 
 	if ((std::sqrt(values(0, 0) / values(0, 28)) > 2e-2)
+#ifdef SYCL
 			|| (values(0, 28) / (imageSize.x() * imageSize.y()) < track_threshold)) {
+#else
+			|| (values(0, 28) / (imageSize.x   * imageSize.y  ) < track_threshold)) {
+#endif
 		pose = oldPose;
 		return false;
 	} else {
@@ -889,6 +1094,7 @@ bool checkPoseKernel(Matrix4 & pose, Matrix4 oldPose, const float * output,
 
 }
 
+#ifdef SYCL
 void renderNormalKernel(uchar3* out, const float3* normal, uint2 normalSize) {
 	TICK();
 	unsigned int y;
@@ -896,31 +1102,55 @@ void renderNormalKernel(uchar3* out, const float3* normal, uint2 normalSize) {
         shared(out), private(y)
 	for (y = 0; y < normalSize.y(); y++)
 		for (unsigned int x = 0; x < normalSize.x(); x++) {
-			uint pos = (x + y * normalSize.x());
+			uint pos = x + y * normalSize.x();
 			float3 n = normal[pos];
 			if (n.x() == -2) {
 				out[pos] = make_uchar3(0, 0, 0);
 			} else {
 				n = normalize(n);
-				out[pos] = make_uchar3(n.x() * 128 + 128, n.y() * 128 + 128,
-						n.z() * 128 + 128);
+				out[pos] = make_uchar3(n.x()*128+128, n.y()*128+128, n.z()*128+128);
 			}
 		}
 	TOCK("renderNormalKernel", normalSize.x() * normalSize.y());
 }
+#else
+void renderNormalKernel(uchar3* out, const float3* normal, uint2 normalSize) {
+	TICK();
+	unsigned int y;
+#pragma omp parallel for \
+        shared(out), private(y)
+	for (y = 0; y < normalSize.y; y++)
+		for (unsigned int x = 0; x < normalSize.x; x++) {
+			uint pos = x + y * normalSize.x;
+			float3 n = normal[pos];
+			if (n.x == -2) {
+				out[pos] = make_uchar3(0, 0, 0);
+			} else {
+				n = normalize(n);
+				out[pos] = make_uchar3(n.x*128+128, n.y*128+128, n.z*128+128);
+			}
+		}
+	TOCK("renderNormalKernel", normalSize.x * normalSize.y);
+}
+#endif
 
 void renderDepthKernel(uchar4* out, float * depth, uint2 depthSize,
 		const float nearPlane, const float farPlane) {
 	TICK();
 
 	float rangeScale = 1 / (farPlane - nearPlane);
+#ifdef SYCL
+  const uint depthSize_x = depthSize.x();const uint depthSize_y = depthSize.y();
+#else
+  const uint depthSize_x = depthSize.x;  const uint depthSize_y = depthSize.y;
+#endif
 
 	unsigned int y;
 #pragma omp parallel for \
         shared(out), private(y)
-	for (y = 0; y < depthSize.y(); y++) {
-		int rowOffeset = y * depthSize.x();
-		for (unsigned int x = 0; x < depthSize.x(); x++) {
+	for (y = 0; y < depthSize_y; y++) {
+		int rowOffeset = y * depthSize_x;
+		for (unsigned int x = 0; x < depthSize_x; x++) {
 
 			unsigned int pos = rowOffeset + x;
 
@@ -936,18 +1166,23 @@ void renderDepthKernel(uchar4* out, float * depth, uint2 depthSize,
 			}
 		}
 	}
-	TOCK("renderDepthKernel", depthSize.x() * depthSize.y());
+	TOCK("renderDepthKernel", depthSize_x * depthSize_y);
 }
 
 void renderTrackKernel(uchar4* out, const TrackData* data, uint2 outSize) {
 	TICK();
+#ifdef SYCL
+  const uint outSize_x = outSize.x(); const uint outSize_y = outSize.y();
+#else
+  const uint outSize_x = outSize.x;   const uint outSize_y = outSize.y;
+#endif
 
 	unsigned int y;
 #pragma omp parallel for \
         shared(out), private(y)
-	for (y = 0; y < outSize.y(); y++)
-		for (unsigned int x = 0; x < outSize.x(); x++) {
-			uint pos = x + y * outSize.x();
+	for (y = 0; y < outSize_y; y++)
+		for (unsigned int x = 0; x < outSize_x; x++) {
+			uint pos = x + y * outSize_x;
 			switch (data[pos].result) {
 			case 1:
 				out[pos] = make_uchar4(128, 128, 128, 0);  // ok	 GREY
@@ -972,7 +1207,7 @@ void renderTrackKernel(uchar4* out, const TrackData* data, uint2 outSize) {
 				break;
 			}
 		}
-	TOCK("renderTrackKernel", outSize.x() * outSize.y());
+	TOCK("renderTrackKernel", outSize_x * outSize_y);
 }
 
 void renderVolumeKernel(uchar4* out, /*const*/ uint2 depthSize, /*const*/ Volume volume,
@@ -980,34 +1215,46 @@ void renderVolumeKernel(uchar4* out, /*const*/ uint2 depthSize, /*const*/ Volume
 		const float step, const float largestep, const float3 light,
 		const float3 ambient) {
 	TICK();
+#ifdef SYCL
+  const uint depthSize_x = depthSize.x();const uint depthSize_y = depthSize.y();
+#else
+  const uint depthSize_x = depthSize.x;  const uint depthSize_y = depthSize.y;
+#endif
 	unsigned int y;
 #pragma omp parallel for \
         shared(out), private(y)
-	for (y = 0; y < depthSize.y(); y++) {
-		for (unsigned int x = 0; x < depthSize.x(); x++) {
-			const uint pos = x + y * depthSize.x();
+	for (y = 0; y < depthSize_y; y++) {
+		for (unsigned int x = 0; x < depthSize_x; x++) {
+			const uint pos = x + y * depthSize_x;
 
 			float4 hit = raycast(volume, make_uint2(x, y), view, nearPlane,
 					farPlane, step, largestep);
+#ifdef SYCL
 			if (hit.w() > 0) {
+#else
+			if (hit.w   > 0) {
+#endif
 				/*const*/ float3 test = make_float3(hit);
 				const float3 surfNorm = volume.grad(test);
 				if (length(surfNorm) > 0) {
 					const float3 diff = normalize(light - test);
-					const float dir = fmaxf(dot(normalize(surfNorm), diff),
-							0.f);
-					/*const*/ float3 col = clamp(make_float3(dir) + ambient, 0.f,
-							1.f) * 255;
-					out[pos] = make_uchar4(col.x(), col.y(), col.z(), 0); // The forth value is a padding to align memory
+					const float dir = fmaxf(dot(normalize(surfNorm), diff), 0.f);
+#ifdef SYCL
+					/*const*/ float3 col = clamp(make_float3(dir)+ambient,0.f,1.f) * 255;
+					out[pos] = make_uchar4(col.x(), col.y(), col.z(), 0); // arg 4 = pad
+#else
+					const float3 col = clamp(make_float3(dir)+ambient,0.f,1.f) * 255;
+					out[pos] = make_uchar4(col.x, col.y, col.z, 0);       // arg 4 = pad
+#endif
 				} else {
-					out[pos] = make_uchar4(0, 0, 0, 0); // The forth value is a padding to align memory
+					out[pos] = make_uchar4(0, 0, 0, 0);                   // ""
 				}
 			} else {
-				out[pos] = make_uchar4(0, 0, 0, 0); // The forth value is a padding to align memory
+				out[pos] = make_uchar4(0, 0, 0, 0);                     // ""
 			}
 		}
 	}
-	TOCK("renderVolumeKernel", depthSize.x() * depthSize.y());
+	TOCK("renderVolumeKernel", depthSize_x * depthSize_y);
 }
 
 template <typename T>
@@ -1024,7 +1271,11 @@ void dbg_show3(T p, const char *fname, size_t sz, int id)
 {
   float total{0};
   for (size_t i = 0; i < sz; i++)
+#ifdef SYCL
     total += p[i].x() + p[i].y() + p[i].z();
+#else
+    total += p[i].x   + p[i].y   + p[i].z;
+#endif
   printf("(%d) sum of %s: %g\n", id, fname, total);
 }
 
@@ -1038,6 +1289,7 @@ void dbg_show_TrackData(T p, const char *fname, size_t sz, int id)
   printf("(%d) sum of %s: %g\n", id, fname, total);
 }
 
+#ifdef SYCL
 template <typename T>
 void copy_back(T *p, buffer<T,1> &buf) {
   const auto  r = sycl_a::mode::read;
@@ -1050,31 +1302,41 @@ void copy_back(T *p, buffer<T,1> &buf) {
     p[i] = ha[i];
   }
 }
+#endif
 
 bool Kfusion::preprocessing(const uint16_t * inputDepth, /*const*/ uint2 inSize) {
 
 	// bilateral_filter(ScaledDepth[0], inputDepth, inputSize , gaussian, e_delta, radius);
 	uint2 outSize = computationSize;
+#ifdef SYCL
+	const uint inSize_x  = inSize.x(); const uint inSize_y = inSize.y();
+	const uint outSize_x = computationSize.x();
+  const uint outSize_y = computationSize.y();
+#else
+	const uint inSize_x  = inSize.x;   const uint inSize_y  = inSize.y;
+	const uint outSize_x = computationSize.x;
+  const uint outSize_y = computationSize.y;
+#endif
 
 	// Check for unsupported conditions
-	if ((inSize.x() < outSize.x()) || (inSize.y() < outSize.y())) {
+	if ((inSize_x < outSize_x) || (inSize_y < outSize_y)) {
 		std::cerr << "Invalid ratio." << std::endl;
 		exit(1);
 	}
-	if ((inSize.x() % outSize.x() != 0) || (inSize.y() % outSize.y() != 0)) {
+	if ((inSize_x % outSize_x != 0) || (inSize_y % outSize_y != 0)) {
 		std::cerr << "Invalid ratio." << std::endl;
 		exit(1);
 	}
-	if ((inSize.x() / outSize.x() != inSize.y() / outSize.y())) {
+	if ((inSize_x / outSize_x != inSize_y / outSize_y)) {
 		std::cerr << "Invalid ratio." << std::endl;
 		exit(1);
 	}
 
-	int ratio = inSize.x() / outSize.x();
+	int ratio = inSize_x / outSize_x;
 
-  dbg_show(ScaledDepth[0], "ScaledDepth[0]", outSize.x() * outSize.y(), 0);
+  dbg_show(ScaledDepth[0], "ScaledDepth[0]", outSize_x * outSize_y, 0);
     
-#if USE_SYCL
+#ifdef SYCL
   {
     const range<1>  in_size{inSize.x()*inSize.y()};
     const range<1> out_size{outSize.x()*outSize.y()};
@@ -1171,7 +1433,7 @@ bool Kfusion::preprocessing(const uint16_t * inputDepth, /*const*/ uint2 inSize)
   bilateralFilterKernel(ScaledDepth[0], floatDepth, computationSize, gaussian,
     e_delta, radius);
 
-  dbg_show(ScaledDepth[0], "ScaledDepth[0]", outSize.x() * outSize.y(), 1);
+  dbg_show(ScaledDepth[0], "ScaledDepth[0]", outSize_x * outSize_y, 1);
 #endif
 
 
@@ -1230,6 +1492,7 @@ bool Kfusion::preprocessing(const uint16_t * inputDepth, /*const*/ uint2 inSize)
 	return true;
 }
 
+#ifdef SYCL
 template <typename F3>
 inline F3 myrotate(/*const*/ Matrix4 M, const F3 v) {
 	return F3{cl::sycl::dot(F3{M.data[0].x(), M.data[0].y(), M.data[0].z()}, v),
@@ -1244,6 +1507,7 @@ inline F3 Mat4TimeFloat3(/*const*/ Matrix4 M, const F3 v) {
      cl::sycl::dot(F3{M.data[1].x(), M.data[1].y(), M.data[1].z()}, v) + M.data[1].w(),
      cl::sycl::dot(F3{M.data[2].x(), M.data[2].y(), M.data[2].z()}, v) + M.data[2].w()};
 }
+#endif
 
 bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 		uint frame) {
@@ -1253,7 +1517,7 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 
 	// half sample the input depth maps into the pyramid levels
 	for (unsigned int i = 1; i < iterations.size(); ++i) {
-#if USE_SYCL
+#ifdef SYCL
 //    struct uint2 { size_t x, y; }; // SYCL uint x()/y() methods non-const!
 //    struct  int2 { int    x, y; }; // SYCL  int x()/y() methods non-const!
 		cl::sycl::uint2 outSize{computationSize.x() / (int) ::pow(2, i),
@@ -1306,11 +1570,11 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
     });
 #else
 		halfSampleRobustImageKernel(ScaledDepth[i], ScaledDepth[i - 1],
-				make_uint2(computationSize.x() / (int) pow(2, i - 1),
-						computationSize.y() / (int) pow(2, i - 1)), e_delta * 3, 1);
+				make_uint2(computationSize.x / (int) pow(2, i - 1),
+						computationSize.y / (int) pow(2, i - 1)), e_delta * 3, 1);
 #endif
 	}
-#if USE_SYCL
+#ifdef SYCL
   auto sd0 = ocl_ScaledDepth[0]->get_access<
     sycl_a::mode::read,
     sycl_a::target::host_buffer
@@ -1322,17 +1586,16 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
   dbg_show(sd0, "ScaledDepth[0]", (computationSize.x() * computationSize.y()) / (int)pow(2,0), 2);
   dbg_show(sd1, "ScaledDepth[1]", (computationSize.x() * computationSize.y()) / (int)pow(2,1), 2);
 #else
-  dbg_show(ScaledDepth[0], "ScaledDepth[0]", (computationSize.x() * computationSize.y()) / (int)pow(2,0), 2);
-  dbg_show(ScaledDepth[1], "ScaledDepth[1]", (computationSize.x() * computationSize.y()) / (int)pow(2,1), 2);
+  dbg_show(ScaledDepth[0], "ScaledDepth[0]", (computationSize.x   * computationSize.y) / (int)pow(2,0), 2);
+  dbg_show(ScaledDepth[1], "ScaledDepth[1]", (computationSize.x * computationSize.y) / (int)pow(2,1), 2);
 #endif
 
 	// prepare the 3D information from the input depth maps
 	uint2 localimagesize = computationSize;
 	for (unsigned int i = 0; i < iterations.size(); ++i) {
-		//Matrix4 invK = getInverseCameraMatrix(k / float(1 << i)); // need nonconst
+#ifdef SYCL
 		float4 tmp{k / float(1 << i)};
 		Matrix4 invK = getInverseCameraMatrix(tmp);
-#if USE_SYCL
     buffer<Matrix4,1> buf_invK(&invK,range<1>{1});
 		range<2> imageSize{localimagesize.x(),localimagesize.y()};
 
@@ -1397,14 +1660,15 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
           cl::sycl::normalize(cl::sycl::cross(dyv,dxv));
       });
     });
-#else
-		depth2vertexKernel(inputVertex[i], ScaledDepth[i], localimagesize,
-				invK);
-		vertex2normalKernel(inputNormal[i], inputVertex[i], localimagesize);
-#endif
 		localimagesize = make_uint2(localimagesize.x() / 2, localimagesize.y() / 2);
+#else
+		Matrix4 invK = getInverseCameraMatrix(k / float(1 << i));
+		depth2vertexKernel(inputVertex[i], ScaledDepth[i], localimagesize, invK);
+		vertex2normalKernel(inputNormal[i], inputVertex[i], localimagesize);
+		localimagesize = make_uint2(localimagesize.x / 2, localimagesize.y / 2);
+#endif
 	}
-#if USE_SYCL
+#ifdef SYCL
   auto iv = ocl_inputVertex[0]->get_access<
     sycl_a::mode::read,
     sycl_a::target::host_buffer
@@ -1416,8 +1680,8 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
   dbg_show3(iv, "inputVertex[0]", (computationSize.x() * computationSize.y()) / (int)pow(2,0), 3);
   dbg_show3(in, "inputNormal[0]", (computationSize.x() * computationSize.y()) / (int)pow(2,0), 4);
 #else
-  dbg_show3(inputVertex[0], "inputVertex[0]", (computationSize.x() * computationSize.y()) / (int)pow(2,0), 3);
-  dbg_show3(inputNormal[0], "inputNormal[0]", (computationSize.x() * computationSize.y()) / (int)pow(2,0), 4);
+  dbg_show3(inputVertex[0], "inputVertex[0]", (computationSize.x * computationSize.y) / (int)pow(2,0), 3);
+  dbg_show3(inputNormal[0], "inputNormal[0]", (computationSize.x * computationSize.y) / (int)pow(2,0), 4);
 #endif
 
 	oldPose = pose;
@@ -1428,10 +1692,15 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 
 	for (int level = iterations.size() - 1; level >= 0; --level) {
 		uint2 localimagesize = make_uint2(
+#ifdef SYCL
 				computationSize.x() / (int) pow(2, level),
 				computationSize.y() / (int) pow(2, level));
+#else
+				computationSize.x / (int) pow(2, level),
+				computationSize.y / (int) pow(2, level));
+#endif
 		for (int i = 0; i < iterations[level]; ++i) {
-#if USE_SYCL
+#ifdef SYCL
       const auto rw = sycl_a::mode::read_write;
       range<2> imageSize{localimagesize.x(),localimagesize.y()};
 		  cl::sycl::uint2 outputSize{computationSize.x(), computationSize.y()};
@@ -1641,7 +1910,7 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 
 		}
 	}
-#if USE_SYCL
+#ifdef SYCL
   auto tres = ocl_trackingResult->get_access<
     sycl_a::mode::read,
     sycl_a::target::host_buffer
@@ -1652,7 +1921,7 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 			track_threshold);
 #else
   dbg_show_TrackData(trackingResult, "trackingResult",
-                     computationSize.x() * computationSize.y(), 5);
+                     computationSize.x * computationSize.y, 5);
 	return checkPoseKernel(pose, oldPose, reductionoutput, computationSize,
 			track_threshold);
 #endif
@@ -1674,19 +1943,18 @@ bool Kfusion::raycasting(float4 k, float mu, uint frame) {
 
 }
 
-bool Kfusion::integration(float4 k, uint integration_rate, float mu,
-		uint frame) {
-
-#if USE_SYCL
-	bool doIntegrate = checkPoseKernel(pose, oldPose, reductionoutput,
+bool Kfusion::integration(float4 k, uint integration_rate, float mu, uint frame)
+{
+#ifdef SYCL
+	bool doIntegrate = checkPoseKernel(pose, oldPose, reduceOutputBuffer,
 			computationSize, track_threshold);
 #else
-	bool doIntegrate = checkPoseKernel(pose, oldPose, reduceOutputBuffer,
+	bool doIntegrate = checkPoseKernel(pose, oldPose, reductionoutput,
 			computationSize, track_threshold);
 #endif
 
 	if ((doIntegrate && ((frame % integration_rate) == 0)) || (frame <= 3)) {
-#if 0 // USE_SYCL
+#if 0 // SYCL
 		cl::sycl::uint2 depthSize{computationSize.x(),computationSize.y()};
 		const Matrix4 invTrack = inverse(pose);
 		const Matrix4 K = getCameraMatrix(k);
@@ -1732,9 +2000,14 @@ void Kfusion::dumpVolume(std::string filename) {
 		exit(1);
 	}
 
+#ifdef SYCL
+	const unsigned vol_size = volume.size.x() * volume.size.y() * volume.size.z();
+#else
+	const unsigned vol_size = volume.size.x   * volume.size.y   * volume.size.z;
+#endif
+
 	// Dump on file without the y component of the short2 variable
-	for (unsigned int i = 0; i < volume.size.x() * volume.size.y() * volume.size.z();
-			i++) {
+	for (unsigned int i = 0; i < vol_size; i++) {
 		fDumpFile.write((char *) (volume.data + i), sizeof(short));
 	}
 
