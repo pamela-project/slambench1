@@ -332,16 +332,18 @@ struct TrackData {
 	float J[6];
 };
 
+// SYCL's host dot implementation is missing
 inline /*__host__      __device__*/ float3 operator*(/*const*/ Matrix4 & M,
 		const float3 & v) {
-	return make_float3(dot(make_float3(M.data[0]), v) + M.data[0].w(),
-			dot(make_float3(M.data[1]), v) + M.data[1].w(),
-			dot(make_float3(M.data[2]), v) + M.data[2].w());
+	return make_float3(my_dot(make_float3(M.data[0]), v) + M.data[0].w(),
+                     my_dot(make_float3(M.data[1]), v) + M.data[1].w(),
+                     my_dot(make_float3(M.data[2]), v) + M.data[2].w());
 }
 
 inline float3 rotate(const Matrix4 & M, const float3 & v) {
-	return make_float3(dot(make_float3(M.data[0]), v),
-			dot(make_float3(M.data[1]), v), dot(make_float3(M.data[2]), v));
+  return make_float3(my_dot(make_float3(M.data[0]), v),
+                     my_dot(make_float3(M.data[1]), v),
+                     my_dot(make_float3(M.data[2]), v));
 }
 
 inline Matrix4 getCameraMatrix(/*const*/ float4 & k) {
@@ -362,8 +364,10 @@ inline Matrix4 getInverseCameraMatrix(/*const*/ float4 & k) {
 	return invK;
 }
 inline float4 operator*(const Matrix4 & M, const float4 & v) {
-	return make_float4(dot(M.data[0], v), dot(M.data[1], v), dot(M.data[2], v),
-			dot(M.data[3], v));
+	return make_float4(my_dot(M.data[0], v),
+                     my_dot(M.data[1], v),
+                     my_dot(M.data[2], v),
+                     my_dot(M.data[3], v));
 }
 
 inline Matrix4 inverse(/*const*/ Matrix4 & A) {

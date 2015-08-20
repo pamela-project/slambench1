@@ -1509,7 +1509,6 @@ inline F3 Mat4TimeFloat3(/*const*/ Matrix4 M, const F3 v) {
 }
 #endif
 
-#if 0
 bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 		uint frame) {
 
@@ -1927,27 +1926,6 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 			track_threshold);
 #endif
 }
-#else
-bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
-		uint frame) {
-
-  auto sd0 = ocl_ScaledDepth[0]->get_access<
-    sycl_a::mode::read,
-    sycl_a::target::host_buffer
-  >();
-  auto sd1 = ocl_ScaledDepth[1]->get_access<
-    sycl_a::mode::read,
-    sycl_a::target::host_buffer
-  >();
-  dbg_show(sd0, "ScaledDepth[0]", (computationSize.x() * computationSize.y()) / (int)pow(2,0), 2);
-  dbg_show(sd1, "ScaledDepth[1]", (computationSize.x() * computationSize.y()) / (int)pow(2,1), 2);
-
-  Matrix4 tmpB = inverse(raycastPose);
-
-  printf("-> %d %d\n", computationSize.m_data[0], iterations.size());
-  return false;
-}
-#endif
 
 bool Kfusion::raycasting(float4 k, float mu, uint frame) {
 

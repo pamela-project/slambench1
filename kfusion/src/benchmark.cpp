@@ -169,16 +169,13 @@ int main(int argc, char ** argv) {
 
 		timings[2] = tock();
 
-    printf("benchmark 1\n");
 		bool tracked = kfusion.tracking(camera, config.icp_threshold,
 				config.tracking_rate, frame);
-    printf("benchmark 2\n");
 
 		timings[3] = tock();
 
 		bool integrated = kfusion.integration(camera, config.integration_rate,
 				config.mu, frame);
-    printf("benchmark 3\n");
 
 		timings[4] = tock();
 

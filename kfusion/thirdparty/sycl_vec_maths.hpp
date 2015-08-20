@@ -71,5 +71,11 @@ inline float3 operator*(float b, float3 a) {
 	return float3{b*a.x(), b*a.y(), b*a.z()};
 }
 inline uint2 operator*(uint b, uint2 a) { return uint2{b * a.x(), b * a.y()}; }
+inline float my_dot(float3 a, float3 b) {
+  return a.x() * b.x() + a.y() * b.y() + a.z() * b.z();
+}
+inline float my_dot(float4 a, float4 b) {
+  return a.x() * b.x() + a.y() * b.y() + a.z() * b.z() + a.w() * b.w();
+}
 
 #endif // _SYCL_VEC_MATHS_
