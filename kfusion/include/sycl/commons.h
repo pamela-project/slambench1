@@ -372,7 +372,9 @@ inline Matrix4 inverse(/*const*/ Matrix4 & A) {
   TooN::Matrix<4, 4, float> temp =
     TooN::wrapMatrix<4, 4>(reinterpret_cast<float *>(&A));
   Matrix4 R;
-  TooN::wrapMatrix<4, 4>(&R.data[0].x()) = TooN::gaussian_elimination(temp, I);
+//This approach gives a segmentation fault:
+//TooN::wrapMatrix<4, 4>(&R.data[0].x()) = TooN::gaussian_elimination(temp, I);
+  TooN::wrapMatrix<4, 4>(reinterpret_cast<float *>(&R)) = TooN::gaussian_elimination(temp, I);
   return R;
 }
 
@@ -414,7 +416,8 @@ template<typename P>
 inline Matrix4 toMatrix4(const TooN::SE3<P> & p) {
 	const TooN::Matrix<4, 4, float> I = TooN::Identity;
 	Matrix4 R;
-	TooN::wrapMatrix<4, 4>(&R.data[0].x()) = p * I;
+//	TooN::wrapMatrix<4, 4>(&R.data[0].x()) = p * I;
+	TooN::wrapMatrix<4, 4>(reinterpret_cast<float *>(&R)) = p * I;
 	return R;
 }
 
