@@ -234,8 +234,8 @@ public:
 	ReaderType getType() {
 		return (READER_RAW);
 	}
-	inline bool readNextDepthFrame(uchar3* raw_rgb,
-			unsigned short int * depthMap) {
+	inline bool readNextDepthFrame(uchar3* raw_rgb, unsigned short int *depthMap)
+  {
 
 		int total = 0;
 		int expected_size = 0;
@@ -290,8 +290,10 @@ public:
 		if (total != expected_size) {
 			std::cout << "End of file" << (total == 0 ? "" : "(garbage found)")
 					<< "." << std::endl;
+      printf("     interface.h readNextDepthFrame false.\n");
 			return false;
 		} else {
+      printf("     interface.h readNextDepthFrame true.\n");
 			return true;
 		}
 	}

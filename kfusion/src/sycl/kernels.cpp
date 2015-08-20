@@ -40,7 +40,11 @@
 float * gaussian;
 
 // inter-frame
-Volume volume;
+#ifdef SYCL
+Volume<0> volume;
+#else
+Volume    volume;
+#endif
 float3 * vertex;
 float3 * normal;
 
@@ -62,6 +66,7 @@ static_assert(std::is_standard_layout<TrackData>::value,"");
 // uint2 computationSizeBkp = make_uint2(0, 0);
 buffer<float3,1>  *ocl_vertex         = NULL;
 buffer<float3,1>  *ocl_normal         = NULL;
+buffer<short2,1>  *ocl_volume_data    = NULL;
 
 buffer<float,1>             *ocl_reduce_output_buffer = NULL;
 buffer<TrackData,1>         *ocl_trackingResult       = NULL;
@@ -151,6 +156,12 @@ void Kfusion::languageSpecificConstructor() {
 	}
 	// ********* END : Generate the gaussian *************
 
+#ifdef SYCL
+  const auto vsize = volumeResolution.x() *
+                     volumeResolution.y() * volumeResolution.z();
+  ocl_volume_data = new buffer<short2>(range<1>{vsize});
+#endif
+
 	volume.init(volumeResolution, volumeDimensions);
 	reset();
 }
@@ -199,6 +210,10 @@ Kfusion::~Kfusion() {
 		delete ocl_normal;
 		ocl_normal = NULL;
   }
+	if (ocl_volume_data) {
+		delete ocl_volume_data;
+		ocl_volume_data = NULL;
+  }
 	if (ocl_reduce_output_buffer) {
 	  delete ocl_reduce_output_buffer;
 	  ocl_reduce_output_buffer = NULL;
@@ -238,7 +253,8 @@ void clean() {
 // stub
 
 #ifdef SYCL
-void initVolumeKernel(Volume volume) {
+template <int N>
+void initVolumeKernel(Volume<N> volume) {
 	TICK();
 	for (unsigned int x = 0; x < volume.size.x(); x++)
 		for (unsigned int y = 0; y < volume.size.y(); y++) {
@@ -827,7 +843,8 @@ void halfSampleRobustImageKernel(float* out, const float* in, uint2 inSize,
 }
 
 #ifdef SYCL
-void integrateKernel(Volume vol, const float* depth, uint2 depthSize,
+template <int N>
+void integrateKernel(Volume<N> vol, const float* depth, uint2 depthSize,
 		/*const*/ Matrix4 invTrack, /*const*/ Matrix4 K, const float mu,
 		const float maxweight) {
 	TICK();
@@ -913,9 +930,15 @@ void integrateKernel(Volume vol, const float* depth, uint2 depthSize,
 	TOCK("integrateKernel", vol.size.x   * vol.size.y);
 }
 #endif
-float4 raycast(/*const*/ Volume volume, /*const*/ uint2 pos, const Matrix4 view,
-		const float nearPlane, const float farPlane, const float step,
-		const float largestep) {
+
+#ifdef SYCL
+template <int N>
+float4 raycast(/*const*/ Volume<N> volume,
+#else
+float4 raycast(const     Volume    volume,
+#endif
+    /*const*/ uint2 pos, const Matrix4 view, const float nearPlane,
+    const float farPlane, const float step, const float largestep) {
 
 	const float3 origin = get_translation(view);
 #ifdef SYCL
@@ -985,8 +1008,9 @@ float4 raycast(/*const*/ Volume volume, /*const*/ uint2 pos, const Matrix4 view,
 
 }
 #ifdef SYCL
+template <int N>
 void raycastKernel(float3* vertex, float3* normal, uint2 inputSize,
-		/*const*/ Volume integration, const Matrix4 view, const float nearPlane,
+		/*const*/ Volume<N> integration, const Matrix4 view, const float nearPlane,
 		const float farPlane, const float step, const float largestep) {
 	TICK();
 	unsigned int y;
@@ -1053,8 +1077,8 @@ void raycastKernel(float3* vertex, float3* normal, uint2 inputSize,
 }
 #endif
 
-bool updatePoseKernel(Matrix4 & pose, const float * output,
-		float icp_threshold) {
+bool updatePoseKernel(Matrix4 & pose, const float * output, float icp_threshold)
+{
 	bool res = false;
 	TICK();
 	// Update the pose regarding the tracking result
@@ -1210,10 +1234,16 @@ void renderTrackKernel(uchar4* out, const TrackData* data, uint2 outSize) {
 	TOCK("renderTrackKernel", outSize_x * outSize_y);
 }
 
-void renderVolumeKernel(uchar4* out, /*const*/ uint2 depthSize, /*const*/ Volume volume,
-		const Matrix4 view, const float nearPlane, const float farPlane,
-		const float step, const float largestep, const float3 light,
-		const float3 ambient) {
+#ifdef SYCL
+template <int N>
+void renderVolumeKernel(uchar4* out, /*const*/ uint2 depthSize,
+    /*const*/ Volume<N> volume,
+#else
+void renderVolumeKernel(uchar4* out, const uint2 depthSize, const Volume volume,
+#endif
+    const Matrix4 view, const float nearPlane,
+    const float farPlane, const float step, const float largestep,
+    const float3 light, const float3 ambient) {
 	TICK();
 #ifdef SYCL
   const uint depthSize_x = depthSize.x();const uint depthSize_y = depthSize.y();
@@ -1495,9 +1525,9 @@ bool Kfusion::preprocessing(const uint16_t * inputDepth, /*const*/ uint2 inSize)
 #ifdef SYCL
 template <typename F3>
 inline F3 myrotate(/*const*/ Matrix4 M, const F3 v) {
-	return F3{cl::sycl::dot(F3{M.data[0].x(), M.data[0].y(), M.data[0].z()}, v),
-            cl::sycl::dot(F3{M.data[1].x(), M.data[1].y(), M.data[1].z()}, v),
-            cl::sycl::dot(F3{M.data[2].x(), M.data[2].y(), M.data[2].z()}, v)};
+	return F3{my_dot(F3{M.data[0].x(), M.data[0].y(), M.data[0].z()}, v),
+            my_dot(F3{M.data[1].x(), M.data[1].y(), M.data[1].z()}, v),
+            my_dot(F3{M.data[2].x(), M.data[2].y(), M.data[2].z()}, v)};
 }
 
 template <typename F3>
@@ -1506,6 +1536,13 @@ inline F3 Mat4TimeFloat3(/*const*/ Matrix4 M, const F3 v) {
   F3{cl::sycl::dot(F3{M.data[0].x(), M.data[0].y(), M.data[0].z()}, v) + M.data[0].w(),
      cl::sycl::dot(F3{M.data[1].x(), M.data[1].y(), M.data[1].z()}, v) + M.data[1].w(),
      cl::sycl::dot(F3{M.data[2].x(), M.data[2].y(), M.data[2].z()}, v) + M.data[2].w()};
+}
+
+template <int N>
+inline float3 posVolume(/*const*/ Volume<N> v, /*const*/ uint3 p) {
+	return float3{(p.x() + 0.5f) * v.dim.x() / v.size.x(),
+                (p.y() + 0.5f) * v.dim.y() / v.size.y(),
+                (p.z() + 0.5f) * v.dim.z() / v.size.z()};
 }
 #endif
 
@@ -1954,7 +1991,7 @@ bool Kfusion::integration(float4 k, uint integration_rate, float mu, uint frame)
 #endif
 
 	if ((doIntegrate && ((frame % integration_rate) == 0)) || (frame <= 3)) {
-#if 0 // SYCL
+#ifdef SYCL
 		cl::sycl::uint2 depthSize{computationSize.x(),computationSize.y()};
 		const Matrix4 invTrack = inverse(pose);
 		const Matrix4 K = getCameraMatrix(k);
@@ -1963,12 +2000,37 @@ bool Kfusion::integration(float4 k, uint integration_rate, float mu, uint frame)
 				float3{0, 0, volumeDimensions.z() / volumeResolution.z()});
 		const float3 cameraDelta = myrotate(K, delta);
 
-    //buffer<uint3,1> buf_v_size(&volumeResolution,range<1>{1});
+    //decltype(radius)  stack_radius  = radius; 
+    buffer<uint3, 1>  buf_v_size  (&volumeResolution,range<1>{1});
+    buffer<float3,1>  buf_v_dim   (&volumeDimensions,range<1>{1});
+    buffer<Matrix4,1> buf_K       (&K,               range<1>{1});
+    buffer<Matrix4,1> buf_invTrack(&invTrack,        range<1>{1});
 
     range<2> globalWorksize{volumeResolution.x(), volumeResolution.y()};
     q.submit([&](handler &cgh) {
-      cgh.parallel_for<class T7>(globalWorksize, [](item<2> ix) {
-	     // Volume vol; /*vol.data = v_data;*/ vol.size = v_size; vol.dim = v_dim;
+
+      auto a_v_size   =   buf_v_size.get_access<sycl_a::mode::read>(cgh);
+      auto a_v_dim    =    buf_v_dim.get_access<sycl_a::mode::read>(cgh);
+      auto a_K        =        buf_K.get_access<sycl_a::mode::read>(cgh);
+      auto a_invTrack = buf_invTrack.get_access<sycl_a::mode::read>(cgh);
+      auto a_v_data =ocl_volume_data->get_access<sycl_a::mode::read_write>(cgh);
+
+      cgh.parallel_for<class T7>(globalWorksize,
+        [a_v_data,a_v_size,a_v_dim,a_K,a_invTrack](item<2> ix)
+      {
+        auto v_size   = a_v_size[0];   //
+        auto v_dim    = a_v_dim[0];    //
+        auto K        = a_K[0];        //
+        auto invTrack = a_invTrack[0]; //
+        auto v_data   = &a_v_data[0];   //
+
+        Volume<1> vol; /*vol.data = v_data;*/ vol.size = v_size; vol.dim = v_dim;
+
+        uint3 pix{ix[0],ix[1],0};
+        const int sizex = ix.get_range()[0];
+
+        float3 pos     = Mat4TimeFloat3(invTrack, posVolume(vol,pix));
+        float3 cameraX = Mat4TimeFloat3(K, pos);
       });
     });
 #else
