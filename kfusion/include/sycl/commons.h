@@ -150,11 +150,11 @@ inline uchar4 gs2rgb(double h) {
 	return rgb;
 }
 
-template <int N>
+template <typename T>
 struct Volume {
 	uint3 size;
 	float3 dim;
-  addr_t<short2,N> * data;
+  T data;
   //  short2 * data;
 
 	Volume() {
@@ -582,9 +582,9 @@ void writeposfile(std::string prefix, int idx, Matrix4 m, uint) {
 
 	pFile.close();
 }
-template <int N>
+template <typename T>
 inline
-void writeVolume(std::string filename, Volume<N> v) {
+void writeVolume(std::string filename, Volume<T> v) {
 
 	std::ofstream fDumpFile;
 	fDumpFile.open(filename.c_str(), std::ios::out | std::ios::binary);

@@ -78,28 +78,4 @@ inline float my_dot(float4 a, float4 b) {
   return a.x() * b.x() + a.y() * b.y() + a.z() * b.z() + a.w() * b.w();
 }
 
-// Address spaces
-
-template <typename, int>
-  struct addr;
-
-template <typename T>
-struct addr<T,0> { using type = __attribute__((address_space(0))) T; };
-
-template <typename T>
-struct addr<T,1> { using type = __attribute__((address_space(1))) T; };
-
-template <typename T>
-struct addr<T,2> { using type = __attribute__((address_space(2))) T; };
-
-template <typename T>
-struct addr<T,3> { using type = __attribute__((address_space(3))) T; };
-
-template <typename T, int N>
-using addr_t = typename addr<T,N>::type;
-
-static_assert(std::is_same<       int *   ,addr_t<int *,0>>::value,"");
-static_assert(std::is_same<addr_t<int *,0>,addr_t<int *,0>>::value,"");
-static_assert(std::is_same<addr_t<int *,1>,addr_t<int *,1>>::value,"");
-
 #endif // _SYCL_VEC_MATHS_

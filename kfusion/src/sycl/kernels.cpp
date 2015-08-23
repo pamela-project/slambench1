@@ -41,7 +41,7 @@ float * gaussian;
 
 // inter-frame
 #ifdef SYCL
-Volume<0> volume;
+Volume<cl::sycl::short2 *> volume;
 #else
 Volume    volume;
 #endif
@@ -253,8 +253,8 @@ void clean() {
 // stub
 
 #ifdef SYCL
-template <int N>
-void initVolumeKernel(Volume<N> volume) {
+template <typename T>
+void initVolumeKernel(Volume<T> volume) {
 	TICK();
 	for (unsigned int x = 0; x < volume.size.x(); x++)
 		for (unsigned int y = 0; y < volume.size.y(); y++) {
@@ -843,8 +843,8 @@ void halfSampleRobustImageKernel(float* out, const float* in, uint2 inSize,
 }
 
 #ifdef SYCL
-template <int N>
-void integrateKernel(Volume<N> vol, const float* depth, uint2 depthSize,
+template <typename T>
+void integrateKernel(Volume<T> vol, const float* depth, uint2 depthSize,
 		/*const*/ Matrix4 invTrack, /*const*/ Matrix4 K, const float mu,
 		const float maxweight) {
 	TICK();
@@ -932,8 +932,8 @@ void integrateKernel(Volume vol, const float* depth, uint2 depthSize,
 #endif
 
 #ifdef SYCL
-template <int N>
-float4 raycast(/*const*/ Volume<N> volume,
+template <typename T>
+float4 raycast(/*const*/ Volume<T> volume,
 #else
 float4 raycast(const     Volume    volume,
 #endif
@@ -1008,9 +1008,9 @@ float4 raycast(const     Volume    volume,
 
 }
 #ifdef SYCL
-template <int N>
+template <typename T>
 void raycastKernel(float3* vertex, float3* normal, uint2 inputSize,
-		/*const*/ Volume<N> integration, const Matrix4 view, const float nearPlane,
+		/*const*/ Volume<T> integration, const Matrix4 view, const float nearPlane,
 		const float farPlane, const float step, const float largestep) {
 	TICK();
 	unsigned int y;
@@ -1235,9 +1235,9 @@ void renderTrackKernel(uchar4* out, const TrackData* data, uint2 outSize) {
 }
 
 #ifdef SYCL
-template <int N>
+template <typename T>
 void renderVolumeKernel(uchar4* out, /*const*/ uint2 depthSize,
-    /*const*/ Volume<N> volume,
+    /*const*/ Volume<T> volume,
 #else
 void renderVolumeKernel(uchar4* out, const uint2 depthSize, const Volume volume,
 #endif
@@ -1538,22 +1538,22 @@ inline F3 Mat4TimeFloat3(/*const*/ Matrix4 M, const F3 v) {
      cl::sycl::dot(F3{M.data[2].x(), M.data[2].y(), M.data[2].z()}, v) + M.data[2].w()};
 }
 
-template <int N>
-inline void setVolume(Volume<N> v, uint3 pos, float2 d) {
+template <typename T>
+inline void setVolume(Volume<T> v, uint3 pos, float2 d) {
 	v.data[pos.x() +
          pos.y() * v.size.x() +
          pos.z() * v.size.x() * v.size.y()] = short2{d.x() * 32766.0f, d.y()};
 }
 
-template <int N>
-inline float3 posVolume(/*const*/ Volume<N> v, /*const*/ uint3 p) {
+template <typename T>
+inline float3 posVolume(/*const*/ Volume<T> v, /*const*/ uint3 p) {
 	return float3{(p.x() + 0.5f) * v.dim.x() / v.size.x(),
                 (p.y() + 0.5f) * v.dim.y() / v.size.y(),
                 (p.z() + 0.5f) * v.dim.z() / v.size.z()};
 }
 
-template <int N>
-inline float2 getVolume(/*const*/ Volume<N> v, /*const*/ uint3 pos) {
+template <typename T>
+inline float2 getVolume(/*const*/ Volume<T> v, /*const*/ uint3 pos) {
   /*const*/ short2 d = v.data[pos.x() +   // Making d a ref fixes it.
                               pos.y() * v.size.x() +
                               pos.z() * v.size.x() * v.size.y()];
@@ -2057,7 +2057,7 @@ bool Kfusion::integration(float4 k, uint integration_rate, float mu, uint frame)
         auto mu          = a_mu[0];          //
         auto maxweight   = a_maxweight[0];   //
 
-        Volume<1> vol; vol.data = v_data; vol.size = v_size; vol.dim = v_dim;
+        Volume<decltype(&v_data)> vol; vol.data = v_data; vol.size = v_size; vol.dim = v_dim;
 
         uint3 pix{ix[0],ix[1],0};
         const int sizex = ix.get_range()[0];

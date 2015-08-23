@@ -15,8 +15,8 @@
 
 ////////////////////////// COMPUTATION KERNELS PROTOTYPES //////////////////////
 
-template <int N>
-void initVolumeKernel(Volume<N> volume);
+template <typename T>
+void initVolumeKernel(Volume<T> volume);
 
 void bilateralFilterKernel(float* out, const float* in, uint2 inSize,
 		const float * gaussian, float e_d, int r);
@@ -47,14 +47,14 @@ bool updatePoseKernel(Matrix4 & pose, const float * output,
 bool checkPoseKernel(Matrix4 & pose, Matrix4 oldPose, const float * output,
 		uint2 imageSize, float track_threshold);
 
-template <int N>
-void integrateKernel(Volume<N> vol, const float* depth, uint2 imageSize,
+template <typename T>
+void integrateKernel(Volume<T> vol, const float* depth, uint2 imageSize,
 		const Matrix4 invTrack, const Matrix4 K, const float mu,
 		const float maxweight);
 
-template <int N>
+template <typename T>
 void raycastKernel(float3* vertex, float3* normal, uint2 inputSize,
-		const Volume<N> integration, const Matrix4 view, const float nearPlane,
+		const Volume<T> integration, const Matrix4 view, const float nearPlane,
 		const float farPlane, const float step, const float largestep);
 
 ////////////////////////// RENDER KERNELS PROTOTYPES //////////////////////
@@ -66,15 +66,15 @@ void renderNormaKernell(uchar3* out, const float3* normal, uint2 normalSize);
 
 void renderTrackKernel(uchar4* out, const TrackData* data, uint2 outSize);
 
-template <int N>
+template <typename T>
 void renderVolumeKernel(uchar4* out, const uint2 depthSize,
-    const Volume<N> volume, const Matrix4 view,
+    const Volume<T> volume, const Matrix4 view,
     const float nearPlane, const float farPlane, const float step,
     const float largestep, const float3 light, const float3 ambient);
 
 ////////////////////////// MULTI-KERNELS PROTOTYPES //////////////////////
-template <int N>
-void computeFrame(Volume<N> & integration, float3 * vertex, float3 * normal,
+template <typename T>
+void computeFrame(Volume<T> & integration, float3 * vertex, float3 * normal,
 		TrackData * trackingResult, Matrix4 & pose, const float * inputDepth,
 		const uint2 inputSize, const float * gaussian,
 		const std::vector<int> iterations, float4 k, const uint frame);
