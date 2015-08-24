@@ -1979,16 +1979,151 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 #endif
 }
 
+template <typename T>
+inline float3 grad(float3 pos, const Volume<T> v) {
+  return float3{0,0,0};
+}
+
+template <typename T>
+cl::sycl::float4 raycast_sycl(/*const*/ Volume<T>  v,
+                         /*const*/ cl::sycl::uint2 pos,
+                         const Matrix4 view, const float nearPlane,
+                         const float farPlane, const float step,
+                         const float largestep)
+{
+  const float3 origin = get_translation(view);
+  /*const*/ float3 direction = myrotate(view, float3{pos.x(), pos.y(), 1.f});
+
+	// intersect ray with a box
+	//
+	// www.siggraph.org/education/materials/HyperGraph/raytrace/rtinter3.htm
+	// compute intersection of ray with all six bbox planes
+  const float3 invR{1.0f/direction.x(), 1.0f/direction.y(), 1.0f/direction.z()};
+  const float3 tbot = -1 * invR * origin;
+	const float3 ttop = invR * (v.dim - origin);
+
+  // re-order intersections to find smallest and largest on each axis
+  /*const*/ float3 tmin = fmin(ttop, tbot);
+  /*const*/ float3 tmax = fmax(ttop, tbot);
+
+	// find the largest tmin and the smallest tmax
+	const float largest_tmin  = fmax(fmax(tmin.x(), tmin.y()),
+                                   fmax(tmin.x(), tmin.z()));
+	const float smallest_tmax = fmin(fmin(tmax.x(), tmax.y()),
+                                   fmin(tmax.x(), tmax.z()));
+
+	// check against near and far plane
+	const float tnear = fmax(largest_tmin, nearPlane);
+	const float tfar  = fmin(smallest_tmax, farPlane);
+
+  if (tnear < tfar) {
+    // first walk with largesteps until we found a hit
+    float t        = tnear;
+    float stepsize = largestep;
+//    float f_t      = interp(origin + direction * t, v);
+    float f_t      = v.interp(origin + direction * t);
+    float f_tt     = 0;
+    if (f_t > 0) {  // oops, if we're already in it, don't render anything here
+      for (; t < tfar; t += stepsize) {
+        f_tt = interp(origin + direction * t, v);
+        if (f_tt < 0)               // got it, jump out of inner loop
+          break;
+        if (f_tt < 0.8f)            // coming closer, reduce stepsize
+          stepsize = step;
+        f_t = f_tt;
+      }
+      if (f_tt < 0) {               // got it, calculate accurate intersection
+        t = t + stepsize * f_tt / (f_t - f_tt);
+        float3 tmp{origin + direction * t};
+        return float4{tmp.x(),tmp.y(),tmp.z(),t};
+      }
+    }
+  }
+
+  return float4{0,0,0,0};
+}
+
 bool Kfusion::raycasting(float4 k, float mu, uint frame) {
 
 	bool doRaycast = false;
+	float largestep = mu * 0.75f;
 
 	if (frame > 2) {
+#ifdef SYCL
 		raycastPose = pose;
-    Matrix4 tmp = getInverseCameraMatrix(k);
+    Matrix4 tmp = getInverseCameraMatrix(k); // operator * needs nonconst
+		const Matrix4 view = raycastPose * tmp;
+
+    float stack_nearPlane = nearPlane; 
+    float stack_farPlane  = farPlane; 
+    float stack_step      = step;
+    buffer<uint3, 1>  buf_v_size     (&volumeResolution,          range<1>{1});
+    buffer<float3,1>  buf_v_dim      (&volumeDimensions,          range<1>{1});
+    buffer<Matrix4,1> buf_view       (const_cast<Matrix4*>(&view),range<1>{1});
+    buffer<float,1>   buf_nearPlane  (&stack_nearPlane,           range<1>{1});
+    buffer<float,1>   buf_farPlane   (&stack_farPlane,            range<1>{1});
+    buffer<float,1>   buf_step       (&step,                      range<1>{1});
+    buffer<float,1>   buf_largestep  (&largestep,                 range<1>{1});
+
+    range<2> RaycastglobalWorksize{computationSize.x(), computationSize.y()};
+    q.submit([&](handler &cgh) {
+
+      auto a_pos3D       =ocl_vertex->get_access<sycl_a::mode::read_write>(cgh);
+      auto a_normal      =ocl_normal->get_access<sycl_a::mode::read_write>(cgh);
+      auto a_v_size      =       buf_v_size.get_access<sycl_a::mode::read>(cgh);
+      auto a_v_dim       =        buf_v_dim.get_access<sycl_a::mode::read>(cgh);
+      auto a_view        =         buf_view.get_access<sycl_a::mode::read>(cgh);
+      auto a_v_data =ocl_volume_data->get_access<sycl_a::mode::read_write>(cgh);
+      auto a_nearPlane   =    buf_nearPlane.get_access<sycl_a::mode::read>(cgh);
+      auto a_farPlane    =     buf_farPlane.get_access<sycl_a::mode::read>(cgh);
+      auto a_step        =         buf_step.get_access<sycl_a::mode::read>(cgh);
+      auto a_largestep   =    buf_largestep.get_access<sycl_a::mode::read>(cgh);
+
+      cgh.parallel_for<class T8>(RaycastglobalWorksize,
+        [a_pos3D,a_normal,a_v_data,a_v_size,a_v_dim,a_view,
+         a_nearPlane,a_farPlane,a_step,a_largestep]
+        (item<2> ix)
+      {
+        auto pos3D       = a_pos3D;          //
+        auto normal      = a_normal;         //
+        auto v_data      = &a_v_data[0];     //
+        auto v_size      = a_v_size[0];      //
+        auto v_dim       = a_v_dim[0];       //
+        auto view        = a_view[0];        //
+        auto nearPlane   = a_nearPlane[0];   //
+        auto farPlane    = a_farPlane[0];    //
+        auto largestep   = a_largestep[0];   //
+        auto      step   = a_step[0];        //
+
+        /*const*/ Volume<decltype(&v_data[0])> volume;//{v_size,v_dim,v_data};
+        volume.data = &v_data[0]; volume.size = v_size; volume.dim = v_dim;
+        uint2 pos{ix[0],ix[1]};
+        const int sizex = ix.get_range()[0];
+
+        /*const*/ float4 hit =
+          raycast_sycl(volume, pos, view, nearPlane, farPlane, step, largestep);
+        const float3 test{hit.x(),hit.y(),hit.z()}; // as_float3(hit);
+
+        if (hit.w() > 0.0f) {
+          pos3D[pos.x() + sizex * pos.y()] = test;
+          float3 surfNorm = grad(test,volume);
+          if (cl::sycl::length(surfNorm) == 0) {
+            normal[pos.x() + sizex * pos.y()] = float3{INVALID,INVALID,INVALID};
+          } else {
+            normal[pos.x() + sizex * pos.y()] = cl::sycl::normalize(surfNorm);
+          }
+        } else {
+          pos3D [pos.x() + sizex * pos.y()] = float3{0,0,0};
+          normal[pos.x() + sizex * pos.y()] = float3{INVALID,INVALID,INVALID};
+        }
+      });
+    });
+#else
+		raycastPose = pose;
 		raycastKernel(vertex, normal, computationSize, volume,
-				raycastPose * tmp /*getInverseCameraMatrix(k)*/, nearPlane, farPlane,
+				raycastPose * getInverseCameraMatrix(k), nearPlane, farPlane,
 				step, 0.75f * mu);
+#endif
 	}
 
 	return doRaycast;
@@ -2058,8 +2193,7 @@ bool Kfusion::integration(float4 k, uint integration_rate, float mu, uint frame)
         auto maxweight   = a_maxweight[0];   //
 
         Volume<decltype(&v_data[0])> vol;
-        vol.data = &v_data[0];
-        vol.size = v_size; vol.dim = v_dim;
+        vol.data = &v_data[0]; vol.size = v_size; vol.dim = v_dim;
 
         uint3 pix{ix[0],ix[1],0};
         const int sizex = ix.get_range()[0];
