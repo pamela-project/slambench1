@@ -2057,7 +2057,9 @@ bool Kfusion::integration(float4 k, uint integration_rate, float mu, uint frame)
         auto mu          = a_mu[0];          //
         auto maxweight   = a_maxweight[0];   //
 
-        Volume<decltype(&v_data)> vol; vol.data = v_data; vol.size = v_size; vol.dim = v_dim;
+        Volume<decltype(&v_data[0])> vol;
+        vol.data = &v_data[0];
+        vol.size = v_size; vol.dim = v_dim;
 
         uint3 pix{ix[0],ix[1],0};
         const int sizex = ix.get_range()[0];
