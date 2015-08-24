@@ -1980,8 +1980,152 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 }
 
 template <typename T>
-inline float3 grad(float3 pos, const Volume<T> v) {
-  return float3{0,0,0};
+inline float vs(/*const*/ uint3 pos, /*const*/ Volume<T> v) {
+	return v.data[pos.x() +
+                pos.y() * v.size.x() +
+                pos.z() * v.size.x() * v.size.y()].x();
+}
+
+template <typename T>
+inline float interp(/*const*/ float3 pos, /*const*/ Volume<T> v) {
+	const float3 scaled_pos = {(pos.x() * v.size.x() / v.dim.x()) - 0.5f,
+                             (pos.y() * v.size.y() / v.dim.y()) - 0.5f,
+                             (pos.z() * v.size.z() / v.dim.z()) - 0.5f};
+//	float3 basef{0,0,0};
+  float3 tmp = cl::sycl::floor(scaled_pos);
+	const int3 base{tmp.x(),tmp.y(),tmp.z()};
+//	const float3 factor{cl::sycl::fract(scaled_pos, (float3 *) &basef)};
+  /*const*/ float3 factor =
+    cl::sycl::fmin(scaled_pos - cl::sycl::floor(scaled_pos), 0x1.fffffep-1f);
+  //float3 basef = cl::sycl::floor(scaled_pos);
+
+  /*const*/ int3 lower = max(base, int3{0,0,0});
+  /*const*/ int3 upper = min(base + int3{1,1,1},
+                             int3{v.size.x()-1,v.size.y()-1,v.size.z()-1});
+	return (((vs(uint3{lower.x(), lower.y(), lower.z()}, v) * (1 - factor.x())
+			+ vs(uint3{upper.x(), lower.y(), lower.z()}, v) * factor.x())
+			* (1 - factor.y())
+			+ (vs(uint3{lower.x(), upper.y(), lower.z()}, v) * (1 - factor.x())
+					+ vs(uint3{upper.x(), upper.y(), lower.z()}, v) * factor.x())
+					* factor.y()) * (1 - factor.z())
+			+ ((vs(uint3{lower.x(), lower.y(), upper.z()}, v) * (1 - factor.x())
+					+ vs(uint3{upper.x(), lower.y(), upper.z()}, v) * factor.x())
+					* (1 - factor.y())
+					+ (vs(uint3{lower.x(), upper.y(), upper.z()}, v)
+							* (1 - factor.x())
+							+ vs(uint3{upper.x(), upper.y(), upper.z()}, v)
+									* factor.x()) * factor.y()) * factor.z())
+			* 0.00003051944088f;
+  return 0;
+}
+
+template <typename T>
+inline float3 grad(float3 pos, /*const*/ Volume<T> v) {
+	/*const*/ float3 scaled_pos = {(pos.x() * v.size.x() / v.dim.x()) - 0.5f,
+                                 (pos.y() * v.size.y() / v.dim.y()) - 0.5f,
+                                 (pos.z() * v.size.z() / v.dim.z()) - 0.5f};
+	const int3 base{cl::sycl::floor(scaled_pos.x()),
+                  cl::sycl::floor(scaled_pos.y()),
+			            cl::sycl::floor(scaled_pos.z())};
+	//const float3 basef{0,0,0};
+	//const float3 factor = (float3) fract(scaled_pos, (float3 *) &basef);
+  /*const*/ float3 factor =
+    cl::sycl::fmin(scaled_pos - cl::sycl::floor(scaled_pos), 0x1.fffffep-1f);
+  //float3 basef = cl::sycl::floor(scaled_pos);
+
+  const int3 vsm1{static_cast<int>(v.size.x()) - 1,
+                  static_cast<int>(v.size.y()) - 1,
+                  static_cast<int>(v.size.z()) - 1};
+	/*const*/ int3 lower_lower = max(base - int3{1,1,1}, int3{0,0,0});
+	/*const*/ int3 lower_upper = max(base,               int3{0,0,0});
+	/*const*/ int3 upper_lower = min(base + int3{1,1,1}, vsm1);
+	/*const*/ int3 upper_upper = min(base + int3{2,2,2}, vsm1);
+	/*const*/ int3 lower       = lower_upper;
+	/*const*/ int3 upper       = upper_lower;
+
+	float3 gradient;
+
+	gradient.x() = (((vs(uint3{upper_lower.x(), lower.y(), lower.z()}, v)
+			- vs(uint3{lower_lower.x(), lower.y(), lower.z()}, v)) * (1 - factor.x())
+			+ (vs(uint3{upper_upper.x(), lower.y(), lower.z()}, v)
+					- vs(uint3{lower_upper.x(), lower.y(), lower.z()}, v))
+					* factor.x()) * (1 - factor.y())
+			+ ((vs(uint3{upper_lower.x(), upper.y(), lower.z()}, v)
+					- vs(uint3{lower_lower.x(), upper.y(), lower.z()}, v))
+					* (1 - factor.x())
+					+ (vs(uint3{upper_upper.x(), upper.y(), lower.z()}, v)
+							- vs(uint3{lower_upper.x(), upper.y(), lower.z()}, v))
+							* factor.x()) * factor.y()) * (1 - factor.z())
+			+ (((vs(uint3{upper_lower.x(), lower.y(), upper.z()}, v)
+					- vs(uint3{lower_lower.x(), lower.y(), upper.z()}, v))
+					* (1 - factor.x())
+					+ (vs(uint3{upper_upper.x(), lower.y(), upper.z()}, v)
+							- vs(uint3{lower_upper.x(), lower.y(), upper.z()}, v))
+							* factor.x()) * (1 - factor.y())
+					+ ((vs(uint3{upper_lower.x(), upper.y(), upper.z()}, v)
+							- vs(uint3{lower_lower.x(), upper.y(), upper.z()}, v))
+							* (1 - factor.x())
+							+ (vs(uint3{upper_upper.x(), upper.y(), upper.z()}, v)
+									- vs(
+											uint3{lower_upper.x(), upper.y(),
+													upper.z()}, v)) * factor.x())
+							* factor.y()) * factor.z();
+
+	gradient.y() = (((vs(uint3{lower.x(), upper_lower.y(), lower.z()}, v)
+			- vs(uint3{lower.x(), lower_lower.y(), lower.z()}, v)) * (1 - factor.x())
+			+ (vs(uint3{upper.x(), upper_lower.y(), lower.z()}, v)
+					- vs(uint3{upper.x(), lower_lower.y(), lower.z()}, v))
+					* factor.x()) * (1 - factor.y())
+			+ ((vs(uint3{lower.x(), upper_upper.y(), lower.z()}, v)
+					- vs(uint3{lower.x(), lower_upper.y(), lower.z()}, v))
+					* (1 - factor.x())
+					+ (vs(uint3{upper.x(), upper_upper.y(), lower.z()}, v)
+							- vs(uint3{upper.x(), lower_upper.y(), lower.z()}, v))
+							* factor.x()) * factor.y()) * (1 - factor.z())
+			+ (((vs(uint3{lower.x(), upper_lower.y(), upper.z()}, v)
+					- vs(uint3{lower.x(), lower_lower.y(), upper.z()}, v))
+					* (1 - factor.x())
+					+ (vs(uint3{upper.x(), upper_lower.y(), upper.z()}, v)
+							- vs(uint3{upper.x(), lower_lower.y(), upper.z()}, v))
+							* factor.x()) * (1 - factor.y())
+					+ ((vs(uint3{lower.x(), upper_upper.y(), upper.z()}, v)
+							- vs(uint3{lower.x(), lower_upper.y(), upper.z()}, v))
+							* (1 - factor.x())
+							+ (vs(uint3{upper.x(), upper_upper.y(), upper.z()}, v)
+									- vs(
+											uint3{upper.x(), lower_upper.y(),
+													upper.z()}, v)) * factor.x())
+							* factor.y()) * factor.z();
+
+	gradient.z() = (((vs(uint3{lower.x(), lower.y(), upper_lower.z()}, v)
+			- vs(uint3{lower.x(), lower.y(), lower_lower.z()}, v)) * (1 - factor.x())
+			+ (vs(uint3{upper.x(), lower.y(), upper_lower.z()}, v)
+					- vs(uint3{upper.x(), lower.y(), lower_lower.z()}, v))
+					* factor.x()) * (1 - factor.y())
+			+ ((vs(uint3{lower.x(), upper.y(), upper_lower.z()}, v)
+					- vs(uint3{lower.x(), upper.y(), lower_lower.z()}, v))
+					* (1 - factor.x())
+					+ (vs(uint3{upper.x(), upper.y(), upper_lower.z()}, v)
+							- vs(uint3{upper.x(), upper.y(), lower_lower.z()}, v))
+							* factor.x()) * factor.y()) * (1 - factor.z())
+			+ (((vs(uint3{lower.x(), lower.y(), upper_upper.z()}, v)
+					- vs(uint3{lower.x(), lower.y(), lower_upper.z()}, v))
+					* (1 - factor.x())
+					+ (vs(uint3{upper.x(), lower.y(), upper_upper.z()}, v)
+							- vs(uint3{upper.x(), lower.y(), lower_upper.z()}, v))
+							* factor.x()) * (1 - factor.y())
+					+ ((vs(uint3{lower.x(), upper.y(), upper_upper.z()}, v)
+							- vs(uint3{lower.x(), upper.y(), lower_upper.z()}, v))
+							* (1 - factor.x())
+							+ (vs(uint3{upper.x(), upper.y(), upper_upper.z()}, v)
+									- vs(
+											uint3{upper.x(), upper.y(),
+													lower_upper.z()}, v))
+									* factor.x()) * factor.y()) * factor.z();
+
+	return gradient * float3{v.dim.x() / v.size.x(),
+                           v.dim.y() / v.size.y(),
+                           v.dim.z() / v.size.z()} * (0.5f * 0.00003051944088f);
 }
 
 template <typename T>
@@ -2020,8 +2164,7 @@ cl::sycl::float4 raycast_sycl(/*const*/ Volume<T>  v,
     // first walk with largesteps until we found a hit
     float t        = tnear;
     float stepsize = largestep;
-//    float f_t      = interp(origin + direction * t, v);
-    float f_t      = v.interp(origin + direction * t);
+    float f_t      = interp(origin + direction * t, v);
     float f_tt     = 0;
     if (f_t > 0) {  // oops, if we're already in it, don't render anything here
       for (; t < tfar; t += stepsize) {
