@@ -1280,47 +1280,60 @@ void renderTrackKernel(uchar4* out, const TrackData* data, uint2 outSize) {
 #endif
 
 #ifdef SYCL
-template <typename T>
-void renderVolumeKernel(uchar4* out, /*const*/ uint2 depthSize,
-    /*const*/ Volume<T> volume,
+template <typename T, typename U>
+void renderVolumeKernel(item<2> ix, T *render, U *v_data, const uint3 v_size,
+                        const float3 v_dim, const Matrix4 view,
+                        const float nearPlane, const float farPlane,
+                        const float step, const float largestep,
+                        const float3 light, const float3 ambient)
+{
+	/*const*/ Volume<U *> v;//{v_size,v_dim,v_data};
+  v.data = v_data; v.size = v_size; v.dim = v_dim;
+
+	/*const*/ uint2 pos{ix[0],ix[1]};
+  const int sizex = ix.get_range()[0];
+
+  float4 hit = raycast(v, pos, view, nearPlane, farPlane,step, largestep);
+
+	if (hit.w() > 0) {
+    const float3 test{hit.x(),hit.y(),hit.z()}; // as_float3(hit);
+		float3 surfNorm   = grad(test,v);
+
+		if (length(surfNorm) > 0) {
+      const float3 diff    = normalize(light - test);
+      const float dir      = fmaxf(dot(normalize(surfNorm), diff), 0.f);
+      /*const*/ float3 col = clamp(make_float3(dir)+ambient,0.f,1.f) * 255;
+      render[pos.x() + sizex * pos.y()] = uchar4{col.x(),col.y(),col.z(),0};
+		} else {
+      render[pos.x() + sizex * pos.y()] = uchar4{0,0,0,0};
+		}
+	} else {
+      render[pos.x() + sizex * pos.y()] = uchar4{0,0,0,0};
+	}
+}
 #else
 void renderVolumeKernel(uchar4* out, const uint2 depthSize, const Volume volume,
-#endif
     const Matrix4 view, const float nearPlane,
     const float farPlane, const float step, const float largestep,
     const float3 light, const float3 ambient) {
 	TICK();
-#ifdef SYCL
-  const uint depthSize_x = depthSize.x();const uint depthSize_y = depthSize.y();
-#else
-  const uint depthSize_x = depthSize.x;  const uint depthSize_y = depthSize.y;
-#endif
 	unsigned int y;
 #pragma omp parallel for \
         shared(out), private(y)
-	for (y = 0; y < depthSize_y; y++) {
-		for (unsigned int x = 0; x < depthSize_x; x++) {
-			const uint pos = x + y * depthSize_x;
+	for (y = 0; y < depthSize.y(); y++) {
+		for (unsigned int x = 0; x < depthSize.x(); x++) {
+			const uint pos = x + y * depthSize.x();
 
 			float4 hit = raycast(volume, make_uint2(x, y), view, nearPlane,
 					farPlane, step, largestep);
-#ifdef SYCL
-			if (hit.w() > 0) {
-#else
-			if (hit.w   > 0) {
-#endif
-				/*const*/ float3 test = make_float3(hit);
+			if (hit.w > 0) {
+				const float3 test     = make_float3(hit);
 				const float3 surfNorm = volume.grad(test);
 				if (length(surfNorm) > 0) {
 					const float3 diff = normalize(light - test);
-					const float dir = fmaxf(dot(normalize(surfNorm), diff), 0.f);
-#ifdef SYCL
-					/*const*/ float3 col = clamp(make_float3(dir)+ambient,0.f,1.f) * 255;
-					out[pos] = make_uchar4(col.x(), col.y(), col.z(), 0); // arg 4 = pad
-#else
-					const float3 col = clamp(make_float3(dir)+ambient,0.f,1.f) * 255;
+					const float dir   = fmaxf(dot(normalize(surfNorm), diff), 0.f);
+					const float3 col  = clamp(make_float3(dir)+ambient,0.f,1.f) * 255;
 					out[pos] = make_uchar4(col.x, col.y, col.z, 0);       // arg 4 = pad
-#endif
 				} else {
 					out[pos] = make_uchar4(0, 0, 0, 0);                   // ""
 				}
@@ -1329,8 +1342,9 @@ void renderVolumeKernel(uchar4* out, const uint2 depthSize, const Volume volume,
 			}
 		}
 	}
-	TOCK("renderVolumeKernel", depthSize_x * depthSize_y);
+	TOCK("renderVolumeKernel", depthSize.x() * depthSize.y());
 }
+#endif
 
 template <typename T>
 void dbg_show(T p, const char *fname, size_t sz, int id)
@@ -2468,12 +2482,60 @@ void Kfusion::dumpVolume(std::string filename) {
 }
 
 void Kfusion::renderVolume(uchar4 * out, uint2 outputSize, int frame,
-		int raycast_rendering_rate, float4 k, float largestep) {
+                           int raycast_rendering_rate, float4 k,
+                           float largestep)
+{
 	if (frame % raycast_rendering_rate == 0) {
-    Matrix4 tmp = getInverseCameraMatrix(k); // operator * needs nonconst
+#ifdef SYCL
+  float        stack_step      = step;
+  float        stack_nearPlane = nearPlane; 
+  float        stack_farPlane  = farPlane; 
+  const float3 stack_light     = light;
+  const float3 stack_ambient   = ambient;
+  Matrix4 imat = getInverseCameraMatrix(k); // operator * needs nonconst
+	Matrix4 view = *(this->viewPose) * imat;
+    const auto r = range<1>{outputSize.x() * outputSize.y()};
+	buffer<uchar4,1>  ocl_output_render_buffer(out,r);
+  buffer<uint3, 1>  buf_v_size   (&volumeResolution,          range<1>{1});
+  buffer<float3,1>  buf_v_dim    (&volumeDimensions,          range<1>{1});
+  buffer<Matrix4,1> buf_view     (&view,                      range<1>{1});
+  buffer<float,1>   buf_nearPlane(&stack_nearPlane,           range<1>{1});
+  buffer<float,1>   buf_farPlane (&stack_farPlane,            range<1>{1});
+  buffer<float,1>   buf_step     (&step,                      range<1>{1});
+  buffer<float,1>   buf_largestep(&largestep,                 range<1>{1});
+  buffer<float3,1>  buf_light  (const_cast<float3 *>(&stack_light),range<1>{1});
+  buffer<float3,1> buf_ambient(const_cast<float3*>(&stack_ambient),range<1>{1});
+
+  q.submit([&](handler &cgh) {
+
+    auto out   = ocl_output_render_buffer.get_access<sycl_a::mode::write>(cgh);
+    auto a_v_data = ocl_volume_data->get_access<sycl_a::mode::read_write>(cgh);
+    auto a_v_size      =        buf_v_size.get_access<sycl_a::mode::read>(cgh);
+    auto a_v_dim       =         buf_v_dim.get_access<sycl_a::mode::read>(cgh);
+    auto a_view                 = buf_view.get_access<sycl_a::mode::read>(cgh);
+    auto a_nearPlane    =    buf_nearPlane.get_access<sycl_a::mode::read>(cgh);
+    auto a_farPlane     =     buf_farPlane.get_access<sycl_a::mode::read>(cgh);
+    auto a_step        =          buf_step.get_access<sycl_a::mode::read>(cgh);
+    auto a_largestep   =     buf_largestep.get_access<sycl_a::mode::read>(cgh);
+    auto a_light         =       buf_light.get_access<sycl_a::mode::read>(cgh);
+    auto a_ambient         =   buf_ambient.get_access<sycl_a::mode::read>(cgh);
+
+    range<2> globalWorksize{computationSize.x(), computationSize.y()};
+    cgh.parallel_for<class T11>(globalWorksize,
+      [out,a_v_data,a_v_size,a_v_dim,a_view,a_nearPlane,a_farPlane,a_step,
+       a_largestep,a_light,a_ambient]
+      (item<2> ix)
+    {
+      renderVolumeKernel(ix, &out[0], &a_v_data[0], a_v_size[0], a_v_dim[0],
+                         a_view[0], a_nearPlane[0], a_farPlane[0], a_step[0],
+                         a_largestep[0], a_light[0], a_ambient[0]);
+    });
+  });
+#else
 		renderVolumeKernel(out, outputSize, volume,
-				*(this->viewPose) * /*getInverseCameraMatrix(k)*/ tmp, nearPlane,
-				farPlane * 2.0f, step, largestep, light, ambient);
+				*(this->viewPose) * getInverseCameraMatrix(k), nearPlane,
+				farPlane * 2.0f, step, largestep, light, ambient); // why * by 2.0f ?
+#endif
   }
 }
 
