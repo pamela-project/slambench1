@@ -163,6 +163,7 @@ int main(int argc, char ** argv) {
 		float zt = pose.data[2].w - init_pose.z;
 #endif
 
+/*
 		timings[1] = tock();
 
 		kfusion.preprocessing(inputDepth, inputSize);
@@ -187,7 +188,10 @@ int main(int argc, char ** argv) {
 		kfusion.renderTrack(trackRender, computationSize);
 		kfusion.renderVolume(volumeRender, computationSize, frame,
 				config.rendering_rate, camera, 0.75 * config.mu);
+*/
 
+    bool tracked = false, integrated = true, raycast = false;
+    //printf("%d %d %d <<<<<<<<<<<<<<<<<<<<<<\n", tracked, integrated, raycast);
 		timings[6] = tock();
 
 		*logstream << frame << "\t" << timings[1] - timings[0] << "\t" //  acquisition
