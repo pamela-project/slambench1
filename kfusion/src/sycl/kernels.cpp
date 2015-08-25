@@ -1158,23 +1158,52 @@ void renderNormalKernel(uchar3* out, const float3* normal, uint2 normalSize) {
 }
 #endif
 
+#ifdef SYCL
+template <typename T, typename U>   // templates abstract over address spaces
+void renderDepthKernel(item<2> ix, T *out, U const *depth,
+                       const float nearPlane, const float farPlane)
+{
+	const int posx = ix[0];
+	const int posy = ix[1];
+  const int sizex = ix.get_range()[0];
+	float d = depth[posx + sizex * posy];
+	if (d < nearPlane)
+    out[posx + sizex * posy] = uchar4{255,255,255,0};
+	else {
+		if (d > farPlane)
+      out[posx + sizex * posy] = uchar4{0,0,0,0};
+		else {
+			float h = (d - nearPlane) / (farPlane - nearPlane);
+			h *= 6.0f;
+			const int sextant = (int)h;
+			const float fract = h - sextant;
+			const float mid1  = 0.25f + (0.5f*fract);
+			const float mid2  = 0.75f - (0.5f*fract);
+			switch (sextant)
+			{
+        case 0: out[posx + sizex * posy] = uchar4{191, 255*mid1, 64, 0}; break;
+        case 1: out[posx + sizex * posy] = uchar4{255*mid2, 191, 64, 0}; break;
+        case 2: out[posx + sizex * posy] = uchar4{64, 191, 255*mid1, 0}; break;
+        case 3: out[posx + sizex * posy] = uchar4{64, 255*mid2, 191, 0}; break;
+        case 4: out[posx + sizex * posy] = uchar4{255*mid1, 64, 191, 0}; break;
+        case 5: out[posx + sizex * posy] = uchar4{191, 64, 255*mid2, 0}; break;
+			}
+		}
+	}
+}
+#else
 void renderDepthKernel(uchar4* out, float * depth, uint2 depthSize,
 		const float nearPlane, const float farPlane) {
 	TICK();
 
 	float rangeScale = 1 / (farPlane - nearPlane);
-#ifdef SYCL
-  const uint depthSize_x = depthSize.x();const uint depthSize_y = depthSize.y();
-#else
-  const uint depthSize_x = depthSize.x;  const uint depthSize_y = depthSize.y;
-#endif
 
 	unsigned int y;
 #pragma omp parallel for \
         shared(out), private(y)
-	for (y = 0; y < depthSize_y; y++) {
-		int rowOffeset = y * depthSize_x;
-		for (unsigned int x = 0; x < depthSize_x; x++) {
+	for (y = 0; y < depthSize.y(); y++) {
+		int rowOffeset = y * depthSize.x();
+		for (unsigned int x = 0; x < depthSize.x(); x++) {
 
 			unsigned int pos = rowOffeset + x;
 
@@ -1190,8 +1219,9 @@ void renderDepthKernel(uchar4* out, float * depth, uint2 depthSize,
 			}
 		}
 	}
-	TOCK("renderDepthKernel", depthSize_x * depthSize_y);
+	TOCK("renderDepthKernel", depthSize.x() * depthSize.y());
 }
+#endif
 
 void renderTrackKernel(uchar4* out, const TrackData* data, uint2 outSize) {
 	TICK();
@@ -2208,7 +2238,6 @@ bool Kfusion::raycasting(float4 k, float mu, uint frame) {
     buffer<float,1>   buf_step       (&step,                      range<1>{1});
     buffer<float,1>   buf_largestep  (&largestep,                 range<1>{1});
 
-    range<2> RaycastglobalWorksize{computationSize.x(), computationSize.y()};
     q.submit([&](handler &cgh) {
 
       auto a_pos3D       =ocl_vertex->get_access<sycl_a::mode::read_write>(cgh);
@@ -2222,6 +2251,7 @@ bool Kfusion::raycasting(float4 k, float mu, uint frame) {
       auto a_step        =         buf_step.get_access<sycl_a::mode::read>(cgh);
       auto a_largestep   =    buf_largestep.get_access<sycl_a::mode::read>(cgh);
 
+      range<2> RaycastglobalWorksize{computationSize.x(), computationSize.y()};
       cgh.parallel_for<class T8>(RaycastglobalWorksize,
         [a_pos3D,a_normal,a_v_data,a_v_size,a_v_dim,a_view,
          a_nearPlane,a_farPlane,a_step,a_largestep]
@@ -2437,7 +2467,33 @@ void Kfusion::renderTrack(uchar4 * out, uint2 outputSize) {
 }
 
 void Kfusion::renderDepth(uchar4 * out, uint2 outputSize) {
+#ifdef SYCL
+  float stack_nearPlane = nearPlane; 
+  float stack_farPlane  = farPlane; 
+  buffer<float,1>  buf_nearPlane(&stack_nearPlane,           range<1>{1});
+  buffer<float,1>  buf_farPlane (&stack_farPlane,            range<1>{1});
+  const auto r = range<1>{outputSize.x() * outputSize.y()};
+	buffer<uchar4,1> ocl_output_render_buffer(out,r);
+
+  q.submit([&](handler &cgh) {
+
+    auto out   = ocl_output_render_buffer.get_access<sycl_a::mode::write>(cgh);
+    auto depth          =  ocl_FloatDepth->get_access<sycl_a::mode::read>(cgh);
+    auto a_nearPlane    =    buf_nearPlane.get_access<sycl_a::mode::read>(cgh);
+    auto a_farPlane     =     buf_farPlane.get_access<sycl_a::mode::read>(cgh);
+
+    range<2> globalWorksize{computationSize.x(), computationSize.y()};
+    cgh.parallel_for<class T9>(globalWorksize,
+      [out,depth,a_nearPlane,a_farPlane] (item<2> ix)
+    {
+      auto nearPlane   = a_nearPlane[0]; //
+      auto farPlane    = a_farPlane[0];  //
+      renderDepthKernel(ix, &out[0], &depth[0], nearPlane, farPlane);
+    });
+  });
+#else
 	renderDepthKernel(out, floatDepth, outputSize, nearPlane, farPlane);
+#endif
 }
 
 void synchroniseDevices() {
