@@ -1223,20 +1223,34 @@ void renderDepthKernel(uchar4* out, float * depth, uint2 depthSize,
 }
 #endif
 
+#ifdef SYCL
+template <typename T, typename U>
+void renderTrackKernel(item<2> ix, T * out, const U * data) {
+
+	const int posx  = ix[0];
+	const int posy  = ix[1];
+  const int sizex = ix.get_range()[0];
+
+	switch (data[posx + sizex * posy].result) {
+		case  1: out[posx + sizex * posy] = uchar4{128, 128, 128, 0}; break;
+		case -1: out[posx + sizex * posy] = uchar4{000, 000, 000, 0}; break;
+		case -2: out[posx + sizex * posy] = uchar4{255, 000, 000, 0}; break;
+		case -3: out[posx + sizex * posy] = uchar4{000, 255, 000, 0}; break;
+		case -4: out[posx + sizex * posy] = uchar4{000, 000, 255, 0}; break;
+		case -5: out[posx + sizex * posy] = uchar4{255, 255, 000, 0}; break;
+		default: out[posx + sizex * posy] = uchar4{255, 128, 128, 0}; break;
+	}
+}
+#else
 void renderTrackKernel(uchar4* out, const TrackData* data, uint2 outSize) {
 	TICK();
-#ifdef SYCL
-  const uint outSize_x = outSize.x(); const uint outSize_y = outSize.y();
-#else
-  const uint outSize_x = outSize.x;   const uint outSize_y = outSize.y;
-#endif
 
 	unsigned int y;
 #pragma omp parallel for \
         shared(out), private(y)
-	for (y = 0; y < outSize_y; y++)
-		for (unsigned int x = 0; x < outSize_x; x++) {
-			uint pos = x + y * outSize_x;
+	for (y = 0; y < outSize.y(); y++)
+		for (unsigned int x = 0; x < outSize.x(); x++) {
+			uint pos = x + y * outSize.x();
 			switch (data[pos].result) {
 			case 1:
 				out[pos] = make_uchar4(128, 128, 128, 0);  // ok	 GREY
@@ -1261,8 +1275,9 @@ void renderTrackKernel(uchar4* out, const TrackData* data, uint2 outSize) {
 				break;
 			}
 		}
-	TOCK("renderTrackKernel", outSize_x * outSize_y);
+	TOCK("renderTrackKernel", outSize.x() * outSize.y());
 }
+#endif
 
 #ifdef SYCL
 template <typename T>
@@ -2463,7 +2478,25 @@ void Kfusion::renderVolume(uchar4 * out, uint2 outputSize, int frame,
 }
 
 void Kfusion::renderTrack(uchar4 * out, uint2 outputSize) {
+#ifdef SYCL
+  const auto r = range<1>{outputSize.x() * outputSize.y()};
+	buffer<uchar4,1> ocl_output_render_buffer(out,r);
+
+  q.submit([&](handler &cgh) {
+
+    auto out    = ocl_output_render_buffer.get_access<sycl_a::mode::write>(cgh);
+    auto trackingResult=ocl_trackingResult->get_access<sycl_a::mode::read>(cgh);
+
+    range<2> globalWorksize{computationSize.x(), computationSize.y()};
+    cgh.parallel_for<class T10>(globalWorksize,
+      [out,trackingResult] (item<2> ix)
+    {
+	    renderTrackKernel(ix, &out[0], &trackingResult[0]);
+    });
+  });
+#else
 	renderTrackKernel(out, trackingResult, outputSize);
+#endif
 }
 
 void Kfusion::renderDepth(uchar4 * out, uint2 outputSize) {
