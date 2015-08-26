@@ -290,10 +290,8 @@ public:
 		if (total != expected_size) {
 			std::cout << "End of file" << (total == 0 ? "" : "(garbage found)")
 					<< "." << std::endl;
-      printf("     interface.h readNextDepthFrame false.\n");
 			return false;
 		} else {
-      printf("     interface.h readNextDepthFrame true.\n");
 			return true;
 		}
 	}

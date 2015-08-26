@@ -233,7 +233,8 @@ public:
 #else
 		unsigned int size_of_frame = (sizeof(unsigned int) * 4
 				+ _size.x() * _size.y() * sizeof(unsigned short int)
-				+ _size.x() * _size.y() * sizeof(uchar3));
+				+ _size.x() * _size.y() * 3/*sizeof(uchar3)*/);
+    // sizeof an openCL/SYCL uchar3 is 4, but a simple struct is expected here
 #endif
 		fseek(_pFile, size_of_frame * _frame, SEEK_SET);
 
@@ -276,10 +277,8 @@ public:
 		if (total != expected_size) {
 			std::cout << "End of file" << (total == 0 ? "" : "(garbage found)")
 					<< "." << std::endl;
-      printf("sycl/interface.h readNextDepthFrame false.\n");
 			return false;
 		} else {
-      printf("sycl/interface.h readNextDepthFrame true.\n");
 			return true;
 		}
 	}
