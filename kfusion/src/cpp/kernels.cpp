@@ -7,9 +7,6 @@
 
  */
 #include <kernels.h>
-#ifdef SYCL
-static_assert(false,"SYCL (kernels.h) shouldn't be defined for a cpp build.");
-#endif
 
 #ifdef __APPLE__
 #include <mach/clock.h>

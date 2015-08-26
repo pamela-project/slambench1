@@ -1201,9 +1201,9 @@ void renderDepthKernel(uchar4* out, float * depth, uint2 depthSize,
 	unsigned int y;
 #pragma omp parallel for \
         shared(out), private(y)
-	for (y = 0; y < depthSize.y(); y++) {
-		int rowOffeset = y * depthSize.x();
-		for (unsigned int x = 0; x < depthSize.x(); x++) {
+	for (y = 0; y < depthSize.y; y++) {
+		int rowOffeset = y * depthSize.x;
+		for (unsigned int x = 0; x < depthSize.x; x++) {
 
 			unsigned int pos = rowOffeset + x;
 
@@ -1219,7 +1219,7 @@ void renderDepthKernel(uchar4* out, float * depth, uint2 depthSize,
 			}
 		}
 	}
-	TOCK("renderDepthKernel", depthSize.x() * depthSize.y());
+	TOCK("renderDepthKernel", depthSize.x * depthSize.y);
 }
 #endif
 
@@ -1248,9 +1248,9 @@ void renderTrackKernel(uchar4* out, const TrackData* data, uint2 outSize) {
 	unsigned int y;
 #pragma omp parallel for \
         shared(out), private(y)
-	for (y = 0; y < outSize.y(); y++)
-		for (unsigned int x = 0; x < outSize.x(); x++) {
-			uint pos = x + y * outSize.x();
+	for (y = 0; y < outSize.y; y++)
+		for (unsigned int x = 0; x < outSize.x; x++) {
+			uint pos = x + y * outSize.x;
 			switch (data[pos].result) {
 			case 1:
 				out[pos] = make_uchar4(128, 128, 128, 0);  // ok	 GREY
@@ -1275,7 +1275,7 @@ void renderTrackKernel(uchar4* out, const TrackData* data, uint2 outSize) {
 				break;
 			}
 		}
-	TOCK("renderTrackKernel", outSize.x() * outSize.y());
+	TOCK("renderTrackKernel", outSize.x * outSize.y);
 }
 #endif
 
@@ -1320,9 +1320,9 @@ void renderVolumeKernel(uchar4* out, const uint2 depthSize, const Volume volume,
 	unsigned int y;
 #pragma omp parallel for \
         shared(out), private(y)
-	for (y = 0; y < depthSize.y(); y++) {
-		for (unsigned int x = 0; x < depthSize.x(); x++) {
-			const uint pos = x + y * depthSize.x();
+	for (y = 0; y < depthSize.y; y++) {
+		for (unsigned int x = 0; x < depthSize.x; x++) {
+			const uint pos = x + y * depthSize.x;
 
 			float4 hit = raycast(volume, make_uint2(x, y), view, nearPlane,
 					farPlane, step, largestep);
@@ -1342,7 +1342,7 @@ void renderVolumeKernel(uchar4* out, const uint2 depthSize, const Volume volume,
 			}
 		}
 	}
-	TOCK("renderVolumeKernel", depthSize.x() * depthSize.y());
+	TOCK("renderVolumeKernel", depthSize.x * depthSize.y);
 }
 #endif
 
@@ -1731,6 +1731,8 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
         }
 
         // cl::sycl::vstore3(res, pixel.x() + ix.get_range()[0] * pixel.y(),vertex); 	// vertex[pixel] = 
+        // This use of 4*32 bits data is fine; but if copied back, ensure data
+        // is similarly aligned
         vertex[pixel.x() + ix.get_range()[0] * pixel.y()] = res;
       });
     });
@@ -2038,6 +2040,7 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 #endif
 }
 
+#ifdef SYCL
 template <typename T>
 inline float vs(/*const*/ uint3 pos, /*const*/ Volume<T> v) {
 	return v.data[pos.x() +
@@ -2244,6 +2247,7 @@ cl::sycl::float4 raycast_sycl(/*const*/ Volume<T>  v,
 
   return float4{0,0,0,0};
 }
+#endif
 
 bool Kfusion::raycasting(float4 k, float mu, uint frame) {
 

@@ -41,7 +41,7 @@ set(common_compile_flags "")
 if    (SYCL_FOUND)    # For this, CXX must also be set to syclcc
   add_library(${appname}-sycl  src/sycl/kernels.cpp)
   target_link_libraries(${appname}-sycl   ${common_libraries})	
-  add_definitions( -DSYCL )
+#  add_definitions( -DSYCL )
   add_version(${appname} sycl "" "") # Paths 
 endif (SYCL_FOUND)
 

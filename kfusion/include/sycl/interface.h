@@ -234,7 +234,7 @@ public:
 		unsigned int size_of_frame = (sizeof(unsigned int) * 4
 				+ _size.x() * _size.y() * sizeof(unsigned short int)
 				+ _size.x() * _size.y() * 3/*sizeof(uchar3)*/);
-    // sizeof an openCL/SYCL uchar3 is 4, but a simple struct is expected here
+    // PGK: sizeof an openCL/SYCL uchar3 is 4, but disk data is chunked in 3s
 #endif
 		fseek(_pFile, size_of_frame * _frame, SEEK_SET);
 
