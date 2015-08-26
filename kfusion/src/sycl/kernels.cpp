@@ -1423,7 +1423,15 @@ bool Kfusion::preprocessing(const uint16_t * inputDepth, /*const*/ uint2 inSize)
 
 	int ratio = inSize_x / outSize_x;
 
+#ifdef SYCL
+  auto sd0a = ocl_ScaledDepth[0]->get_access<
+    sycl_a::mode::read,
+    sycl_a::target::host_buffer
+  >();
+  dbg_show(sd0a, "ScaledDepth[0]", outSize_x * outSize_y, 0);
+#else
   dbg_show(ScaledDepth[0], "ScaledDepth[0]", outSize_x * outSize_y, 0);
+#endif
     
 #ifdef SYCL
   {
@@ -1511,11 +1519,11 @@ bool Kfusion::preprocessing(const uint16_t * inputDepth, /*const*/ uint2 inSize)
     });
 
   }
-  auto sd0 = ocl_ScaledDepth[0]->get_access<
+  auto sd0b = ocl_ScaledDepth[0]->get_access<
     sycl_a::mode::read,
     sycl_a::target::host_buffer
   >();
-  dbg_show(sd0, "ScaledDepth[0]", outSize.x() * outSize.y(), 1);
+  dbg_show(sd0b, "ScaledDepth[0]", outSize.x() * outSize.y(), 1);
 #else
 
   mm2metersKernel(floatDepth, computationSize, inputDepth, inSize);
