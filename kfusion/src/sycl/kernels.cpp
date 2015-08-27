@@ -740,10 +740,6 @@ void trackKernel(TrackData* output, const float3* inVertex,
 			const float3 projectedNormal = rotate(Ttrack,
 					inNormal[pixelx + pixely * inSize_x]);
 
-          const auto rr = 1;//length(diff);
-          row.J[0] = rr; row.J[1] = rr; row.J[2] = rr;
-          row.J[3] = rr; row.J[4] = rr; row.J[5] = rr;
-          continue;
 			if (length(diff) > dist_threshold) {
 				row.result = -4;
 				continue;
@@ -1815,9 +1811,8 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
   Matrix4 tmpB = inverse(raycastPose);
 	const Matrix4 projectReference = tmpA * tmpB;
 
-  // iterations: a vector<int> set to {4,5,10} in Kfusion ctor (kernels.h)
-  // for (int level = iterations.size() - 1; level >= 0; --level) {
-  int level = iterations.size() - 1; {  // just 1 iter
+  // iterations: a vector<int> set to {10,5,4} in Kfusion ctor (kernels.h)
+  for (int level = iterations.size() - 1; level >= 0; --level) {
 		uint2 localimagesize = make_uint2(
 #ifdef SYCL
 				computationSize.x() / (int) pow(2, level),
@@ -1826,8 +1821,7 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 				computationSize.x / (int) pow(2, level),
 				computationSize.y / (int) pow(2, level));
 #endif
-//    for (int i = 0; i < iterations[level]; ++i) {
-    for (int i = 0; i < 1; ++i) {      // just 1 iter
+    for (int i = 0; i < iterations[level]; ++i) {  // i<4,i<5,i<10
 #ifdef SYCL
       const auto rw = sycl_a::mode::read_write;
       range<2> imageSize{localimagesize.x(),localimagesize.y()};
@@ -1902,10 +1896,7 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
             refVertex[refPixel.x() + outputSize.x() * refPixel.y()] -
             projectedVertex;
           const float3 projectedNormal = myrotate(Ttrack, inNormalPixel);
-          const auto rr = 1;//cl::sycl::length(diff);
-          row.J[0] = rr; row.J[1] = rr; row.J[2] = rr;
-          row.J[3] = rr; row.J[4] = rr; row.J[5] = rr;
-          return;
+
           if (cl::sycl::length(diff) > dist_threshold) {
             row.result = -4;
             return;  // !!!!!!!!!!!!
@@ -1923,7 +1914,6 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
         });
       });
 
-#if 0
       const    range<1> nitems{size_of_group * number_of_groups};
       const nd_range<1> ndr{nd_range<1>(nitems, range<1>{size_of_group})};
       cl::sycl::uint2 JSize{computationSize.x(), computationSize.y()};
@@ -2021,7 +2011,6 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
           }
         });
       });
-#endif
 
 //      copy_back(reduceOutputBuffer, *ocl_reduce_output_buffer);
 //      memcpy(reductionoutput,
@@ -2035,8 +2024,8 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 					localimagesize, vertex, normal, computationSize, pose,
 					projectReference, dist_threshold, normal_threshold);
 
-			//reduceKernel(reductionoutput, trackingResult, computationSize,
-			//		localimagesize);
+			reduceKernel(reductionoutput, trackingResult, computationSize,
+					localimagesize);
 
 			if (updatePoseKernel(pose, reductionoutput, icp_threshold))
 				break;
@@ -2051,11 +2040,18 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
   >();
   dbg_show_TrackData(tres, "trackingResult",
                      computationSize.x() * computationSize.y(), 5);
+
+  auto red = ocl_reduce_output_buffer->get_access<
+    sycl_a::mode::read,
+    sycl_a::target::host_buffer
+  >();
+  dbg_show(red,"reduceOutputBuffer",32*number_of_groups/*8*/,6);
 	return checkPoseKernel(pose, oldPose, reduceOutputBuffer, computationSize,
 			track_threshold);
 #else
   dbg_show_TrackData(trackingResult, "trackingResult",
                      computationSize.x * computationSize.y, 5);
+  dbg_show(reductionoutput,"reductionoutput",32*8,6);
 	return checkPoseKernel(pose, oldPose, reductionoutput, computationSize,
 			track_threshold);
 #endif
