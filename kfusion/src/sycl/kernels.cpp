@@ -41,9 +41,9 @@ float * gaussian;
 
 // inter-frame
 #ifdef SYCL
-Volume<cl::sycl::short2 *> volume;
+Volume<short2 *> volume;
 #else
-Volume    volume;
+Volume           volume;
 #endif
 float3 * vertex;
 float3 * normal;
@@ -75,6 +75,10 @@ buffer<float,1>            **ocl_ScaledDepth          = NULL;
 buffer<float3,1> **ocl_inputVertex          = NULL;
 buffer<float3,1> **ocl_inputNormal          = NULL;
 //buffer<ushort,1> *ocl_depth_buffer = NULL; // cl_mem ocl_depth_buffer
+/////////// todo 
+
+// cl_mem ocl_output_render_buffer = NULL; // Common buffer for rendering track, depth and volume
+// buffer<uchar4,1> *ocl_output_render_buffer;
 float *reduceOutputBuffer = NULL;
 
 // reduction parameters
@@ -91,6 +95,17 @@ bool print_kernel_timing = false;
 	struct timespec tick_clockData;
 	struct timespec tock_clockData;
 #endif
+
+template <typename T>
+void initVolumeKernel(item<3> ix, T *data)
+{
+	uint x = ix[0]; uint y = ix[1]; uint z = ix[2];
+	uint3 size{ix.get_range()[0], ix.get_range()[1], ix.get_range()[2]};
+	float2 d{1.0f,0.0f};
+
+	data[x + y * size.x() + z * size.x() * size.y()] =
+    short2{d.x() * 32766.0f, d.y()};
+}
 	
 void Kfusion::languageSpecificConstructor() {
 
@@ -160,8 +175,8 @@ void Kfusion::languageSpecificConstructor() {
   const auto vsize = volumeResolution.x() *
                      volumeResolution.y() * volumeResolution.z();
   ocl_volume_data = new buffer<short2>(range<1>{vsize});
-#endif
 
+#endif
 	volume.init(volumeResolution, volumeDimensions);
 	reset();
 }
@@ -927,7 +942,7 @@ void integrateKernel(Volume vol, const float* depth, uint2 depthSize,
 				}
 			}
 		}
-	TOCK("integrateKernel", vol.size.x   * vol.size.y);
+	TOCK("integrateKernel", vol.size.x   * vol.size.y); // * vol.size.z ?
 }
 #endif
 
@@ -1037,8 +1052,7 @@ void raycastKernel(float3* vertex, float3* normal, uint2 inputSize,
 			} else {
 				//std::cerr<< "RAYCAST MISS "<<  pos.x() << " " << pos.y() <<"  " << hit.w() <<"\n";
 				vertex[pos.x() + pos.y() * inputSize.x()] = make_float3(0);
-				normal[pos.x() + pos.y() * inputSize.x()] = make_float3(INVALID, 0,
-						0);
+				normal[pos.x() + pos.y() * inputSize.x()] = make_float3(INVALID,0,0);
 			}
 		}
 	TOCK("raycastKernel", inputSize.x() * inputSize.y());
@@ -1070,7 +1084,7 @@ void raycastKernel(float3* vertex, float3* normal, uint2 inputSize,
 			} else {
 				//std::cerr<< "RAYCAST MISS "<<  pos.x << " " << pos.y <<"  " << hit.w() <<"\n";
 				vertex[pos.x + pos.y * inputSize.x] = make_float3(0);
-				normal[pos.x + pos.y * inputSize.x] = make_float3(INVALID, 0, 0);
+				normal[pos.x + pos.y * inputSize.x] = make_float3(INVALID,0,0);
 			}
 		}
 	TOCK("raycastKernel", inputSize.x * inputSize.y);
@@ -1356,6 +1370,18 @@ void dbg_show(T p, const char *fname, size_t sz, int id)
   printf("(%d) sum of %s: %g\n", id, fname, total);
 }
 template <typename T>
+void dbg_show2(T p, const char *fname, size_t sz, int id)
+{
+  short total{0};
+  for (size_t i = 0; i < sz; i++)
+#ifdef SYCL
+    total += p[i].x() + p[i].y();
+#else
+    total += p[i].x   + p[i].y;
+#endif
+  printf("(%d) sum of %s: %hd\n", id, fname, total);
+}
+template <typename T>
 void dbg_show3(T p, const char *fname, size_t sz, int id)
 {
   float total{0};
@@ -1366,6 +1392,18 @@ void dbg_show3(T p, const char *fname, size_t sz, int id)
     total += p[i].x   + p[i].y   + p[i].z;
 #endif
   printf("(%d) sum of %s: %g\n", id, fname, total);
+}
+template <typename T>
+void dbg_show4(T p, const char *fname, size_t sz, int id)
+{
+  long total{0};
+  for (size_t i = 0; i < sz; i++)
+#ifdef SYCL
+    total += p[i].x() + p[i].y() + p[i].z() + p[i].w();
+#else
+    total += p[i].x   + p[i].y   + p[i].z   + p[i].w;
+#endif
+  printf("(%d) sum of %s: %ld\n", id, fname, total);
 }
 
 template <typename T>
@@ -2337,16 +2375,26 @@ bool Kfusion::raycasting(float4 k, float mu, uint frame) {
         }
       });
     });
+
+    const auto csize = computationSize.x() * computationSize.y();
+    auto a_vert = ocl_vertex->get_access<sycl_a::mode::read,
+                                         sycl_a::target::host_buffer>();
+    auto a_norm = ocl_normal->get_access<sycl_a::mode::read,
+                                         sycl_a::target::host_buffer>();
+    dbg_show3(a_vert, "vertex:   ", csize, 8);
+    dbg_show3(a_norm, "normal:   ", csize, 9);
 #else
 		raycastPose = pose;
 		raycastKernel(vertex, normal, computationSize, volume,
 				raycastPose * getInverseCameraMatrix(k), nearPlane, farPlane,
 				step, 0.75f * mu);
+    const auto csize = computationSize.x * computationSize.y;
+    dbg_show3(vertex, "vertex:   ", csize, 8);
+    dbg_show3(normal, "normal:   ", csize, 9);
 #endif
 	}
 
 	return doRaycast;
-
 }
 
 bool Kfusion::integration(float4 k, uint integration_rate, float mu, uint frame)
@@ -2361,7 +2409,7 @@ bool Kfusion::integration(float4 k, uint integration_rate, float mu, uint frame)
 
 	if ((doIntegrate && ((frame % integration_rate) == 0)) || (frame <= 3)) {
 #ifdef SYCL
-		cl::sycl::uint2 depthSize{computationSize.x(),computationSize.y()};
+		uint2 depthSize{computationSize.x(),computationSize.y()};
 		const Matrix4 invTrack = inverse(pose);
 		const Matrix4 K = getCameraMatrix(k);
 
@@ -2446,25 +2494,31 @@ bool Kfusion::integration(float4 k, uint integration_rate, float mu, uint frame)
           {
             const float sdf = fmin(1.f, diff/mu);
             float2 data = getVolume(vol,pix);
-            data.x() = cl::sycl::clamp((data.y()*data.x() + sdf)/(data.y() + 1),
-                                       -1.f, 1.f);
+            data.x() = clamp((data.y()*data.x() + sdf)/(data.y() + 1),-1.f,1.f);
             data.y() = fmin(data.y()+1, maxweight);
             setVolume(vol,pix,data);
           }
         }
       });
     });
+
+    const auto vsize = volume.size.x() * volume.size.y() * volume.size.z();
+    auto vd = ocl_volume_data->get_access<sycl_a::mode::read,
+                                          sycl_a::target::host_buffer>();
+    dbg_show2(vd, "volume.data", vsize, 7);
 #else
-		integrateKernel(volume, floatDepth, computationSize, inverse(pose),
-				getCameraMatrix(k), mu, maxweight);
+    integrateKernel(volume, floatDepth, computationSize, inverse(pose),
+                    getCameraMatrix(k), mu, maxweight);
+    const auto vsize = volume.size.x * volume.size.y * volume.size.z;
+    dbg_show2(volume.data, "volume.data", vsize, 7); // short2 data
 #endif
 		doIntegrate = true;
 	} else {
 		doIntegrate = false;
 	}
 
+  printf("                    Kfusion::integration returns: %d\n", doIntegrate);
 	return doIntegrate;
-
 }
 
 void Kfusion::dumpVolume(std::string filename) {
@@ -2548,6 +2602,11 @@ void Kfusion::renderVolume(uchar4 * out, uint2 outputSize, int frame,
                          a_largestep[0], a_light[0], a_ambient[0]);
     });
   });
+
+  const auto csize = computationSize.x() * computationSize.y();
+  auto a_out = ocl_output_render_buffer.get_access<sycl_a::mode::read,
+                                                 sycl_a::target::host_buffer>();
+  dbg_show4(a_out, "trackRender", csize, 11);
 #else
 		renderVolumeKernel(out, outputSize, volume,
 				*(this->viewPose) * getInverseCameraMatrix(k), nearPlane,
@@ -2573,8 +2632,15 @@ void Kfusion::renderTrack(uchar4 * out, uint2 outputSize) {
 	    renderTrackKernel(ix, &out[0], &trackingResult[0]);
     });
   });
+  const auto csize = computationSize.x() * computationSize.y();
+  auto a_out = ocl_output_render_buffer.get_access<sycl_a::mode::read,
+                                                 sycl_a::target::host_buffer>();
+  dbg_show4(a_out, "trackRender", csize, 11);
 #else
 	renderTrackKernel(out, trackingResult, outputSize);
+
+  const auto csize = computationSize.x * computationSize.y;
+  dbg_show4(out, "trackRender", csize, 11);
 #endif
 }
 
@@ -2603,8 +2669,16 @@ void Kfusion::renderDepth(uchar4 * out, uint2 outputSize) {
       renderDepthKernel(ix, &out[0], &depth[0], nearPlane, farPlane);
     });
   });
+
+  const auto csize = computationSize.x() * computationSize.y();
+  auto a_out = ocl_volume_data->get_access<sycl_a::mode::read,
+                                           sycl_a::target::host_buffer>();
+  dbg_show4(out, "depthRender: ", csize, 10);
 #else
 	renderDepthKernel(out, floatDepth, outputSize, nearPlane, farPlane);
+
+  const auto csize = computationSize.x * computationSize.y;
+  dbg_show4(out, "depthRender: ", csize, 10);
 #endif
 }
 

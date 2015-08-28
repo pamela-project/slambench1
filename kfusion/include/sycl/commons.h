@@ -180,14 +180,14 @@ struct Volume {
 	}
 
 	void setints(const unsigned x, const unsigned y, const unsigned z,
-			/*const*/ float2 &d) {
-		data[x + y * size.x() + z * size.x() * size.y()] = make_short2(d.x() * 32766.0f,
-				d.y());
+               /*const*/ float2 &d) {
+    data[x + y * size.x() + z * size.x() * size.y()] =
+      make_short2(d.x() * 32766.0f, d.y());
 	}
 
 	void set(/*const*/ uint3 & pos, /*const*/ float2 & d) {
-		data[pos.x() + pos.y() * size.x() + pos.z() * size.x() * size.y()] = make_short2(
-				d.x() * 32766.0f, d.y());
+		data[pos.x() + pos.y() * size.x() + pos.z() * size.x() * size.y()] =
+      make_short2(d.x() * 32766.0f, d.y());
 	}
 	float3 pos(/*const*/ uint3 & p) /*const*/ {
 		return make_float3((p.x() + 0.5f) * dim.x() / size.x(),
