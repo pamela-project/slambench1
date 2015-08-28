@@ -1637,18 +1637,16 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 	// half sample the input depth maps into the pyramid levels
 	for (unsigned int i = 1; i < iterations.size(); ++i) {
 #ifdef SYCL
-//    struct uint2 { size_t x, y; }; // SYCL uint x()/y() methods non-const!
-//    struct  int2 { int    x, y; }; // SYCL  int x()/y() methods non-const!
 		cl::sycl::uint2 outSize{computationSize.x() / (int) ::pow(2, i),
                             computationSize.y() / (int) ::pow(2, i)};
 
 		float e_d = e_delta * 3;
 		int r = 1;
-		cl::sycl::uint2 inSize{outSize.x()*2,outSize.y()*2};
+		uint2 inSize{outSize.x()*2,outSize.y()*2};
 
-    buffer<cl::sycl::uint2,1> buf_inSize(&inSize,range<1>{1});
-    buffer<float,1>           buf_e_d(&e_d,range<1>{1});
-    buffer<int,1>             buf_r(&r,range<1>{1});
+    buffer<uint2,1> buf_inSize(&inSize,range<1>{1});
+    buffer<float,1> buf_e_d(&e_d,range<1>{1});
+    buffer<int,1>   buf_r(&r,range<1>{1});
 
     q.submit([&](handler &cgh) {
 
@@ -1663,22 +1661,22 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
           auto &inSize = a_inSize[0]; //
           auto &e_d    = a_e_d[0];    //
           auto &r      = a_r[0];      //
-          cl::sycl::uint2 pixel{ix[0],ix[1]};
-          cl::sycl::uint2 outSize{inSize.x() / 2, inSize.y() / 2};
+          uint2 pixel{ix[0],ix[1]};
+          uint2 outSize{inSize.x() / 2, inSize.y() / 2};
 
-         /* const */  cl::sycl::uint2 centerPixel{2*pixel.x(), 2*pixel.y()};
+         /* const */ uint2 centerPixel{2*pixel.x(), 2*pixel.y()};
 
           float sum = 0.0f;
           float t = 0.0f;
           const float center = in[centerPixel.x()+centerPixel.y()*inSize.x()];
           for(int i = -r + 1; i <= r; ++i) {
             for(int j = -r + 1; j <= r; ++j) {
-              const cl::sycl::int2 x{centerPixel.x()+j, centerPixel.y()+i};
-              const cl::sycl::int2 minval{0,0};
-              const cl::sycl::int2 maxval{inSize.x()-1, inSize.y()-1};
-              cl::sycl::int2 from{cl::sycl::clamp(x,minval,maxval)};
+              const int2 x{centerPixel.x()+j, centerPixel.y()+i};
+              const int2 minval{0,0};
+              const int2 maxval{inSize.x()-1, inSize.y()-1};
+                    int2 from{clamp(x,minval,maxval)};
               float current = in[from.x() + from.y() * inSize.x()];
-              if (cl::sycl::fabs(current - center) < e_d) {
+              if (fabs(current - center) < e_d) {
                 sum += 1.0f;
                 t += current;
               }
@@ -1724,7 +1722,7 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
       auto a_invK =            buf_invK.get_access<sycl_a::mode::read>(cgh);
       cgh.parallel_for<class T3>(imageSize, [depth,vertex,a_invK](item<2> ix) {
         Matrix4 &invK = a_invK[0]; // auto fails here when var used as an arg
-        cl::sycl::uint2 pixel{ix[0],ix[1]};
+        int2   pixel{ix[0],ix[1]};
         float3 vert{ix[0],ix[1],1.0f};
         float3 res{0,0,0};
 
@@ -1744,20 +1742,19 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
         vertex[pixel.x() + ix.get_range()[0] * pixel.y()] = res;
       });
     });
+
     q.submit([&](handler &cgh) {
-      auto normal = ocl_inputNormal[i]->get_access<sycl_a::mode::read_write>(cgh);
+      auto normal=ocl_inputNormal[i]->get_access<sycl_a::mode::read_write>(cgh);
       auto vertex = ocl_inputVertex[i]->get_access<sycl_a::mode::read>(cgh);
       auto a_invK =            buf_invK.get_access<sycl_a::mode::read>(cgh);
       cgh.parallel_for<class T4>(imageSize, [normal,vertex,a_invK](item<2> ix) {
-        cl::sycl::uint2  pixel{ix[0],ix[1]};
-        cl::sycl::uint2  vleft{cl::sycl::max((int)(pixel.x())-1,0), pixel.y()};
-        cl::sycl::uint2 vright{cl::sycl::min((int)(pixel.x())+1,
-                                             (int)ix.get_range()[0]-1),
-                               pixel.y()};
-        cl::sycl::uint2    vup{pixel.x(), cl::sycl::max((int)(pixel.y())-1,0)};
-        cl::sycl::uint2  vdown{pixel.x(),
-                               cl::sycl::min((int)(pixel.y())+1,
-                                             (int)ix.get_range()[1]-1)};
+        uint2  pixel{ix[0],ix[1]};
+        uint2  vleft{max((int)(pixel.x())-1,0),     pixel.y()};
+        uint2 vright{min((int)(pixel.x())+1,
+                         (int)ix.get_range()[0]-1), pixel.y()};
+        uint2    vup{pixel.x(), max((int)(pixel.y())-1,0)};
+        uint2  vdown{pixel.x(), min((int)(pixel.y())+1,
+                                    (int)ix.get_range()[1]-1)};
 
         // Not const as the x(), y() etc. methods are not marked as const
         /*const*/ float3 left =
@@ -1778,7 +1775,7 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
         const float3 dxv = right - left;
         const float3 dyv = down  - up;
         normal[pixel.x() + ix.get_range()[0] * pixel.y()] =
-          cl::sycl::normalize(cl::sycl::cross(dyv,dxv));
+          normalize(cross(dyv,dxv));
       });
     });
 		localimagesize = make_uint2(localimagesize.x() / 2, localimagesize.y() / 2);
@@ -1815,18 +1812,18 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
   for (int level = iterations.size() - 1; level >= 0; --level) {
 		uint2 localimagesize = make_uint2(
 #ifdef SYCL
-				computationSize.x() / (int) pow(2, level),
-				computationSize.y() / (int) pow(2, level));
+      computationSize.x() / (int) pow(2, level),
+      computationSize.y() / (int) pow(2, level));
 #else
-				computationSize.x / (int) pow(2, level),
-				computationSize.y / (int) pow(2, level));
+      computationSize.x / (int) pow(2, level),
+      computationSize.y / (int) pow(2, level));
 #endif
     for (int i = 0; i < iterations[level]; ++i) {  // i<4,i<5,i<10
 #ifdef SYCL
       const auto rw = sycl_a::mode::read_write;
       range<2> imageSize{localimagesize.x(),localimagesize.y()};
-		  cl::sycl::uint2 outputSize{computationSize.x(), computationSize.y()};
-      buffer<cl::sycl::uint2,1> buf_outputSize(&outputSize,range<1>{1});
+		  uint2 outputSize{computationSize.x(), computationSize.y()};
+      buffer<uint2,1> buf_outputSize(&outputSize,range<1>{1});
       buffer<Matrix4,1> buf_pose(&pose,range<1>{1});
       buffer<Matrix4,1> buf_projectReference(&projectReference,range<1>{1});
       decltype(dist_threshold)   stack_dist_threshold   = dist_threshold;
@@ -1859,7 +1856,7 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
           const Matrix4 &view    = a_projectReference[0]; // ""
           auto &dist_threshold   = a_dist_threshold[0]; //
           auto &normal_threshold = a_normal_threshold[0]; //
-          cl::sycl::uint2 pixel{ix[0],ix[1]};
+          uint2 pixel{ix[0],ix[1]};
           TrackData &row = output[pixel.x() + outputSize.x() * pixel.y()];
 
           float3 inNormalPixel =
@@ -1875,7 +1872,7 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
             Mat4TimeFloat3(Ttrack, inVertexPixel);
           /*const*/ float3 projectedPos    =
             Mat4TimeFloat3(view, projectedVertex);
-          /*const*/ cl::sycl::float2 projPixel{
+          /*const*/ float2 projPixel{
             projectedPos.x() / projectedPos.z() + 0.5f,
             projectedPos.y() / projectedPos.z() + 0.5f};
           if (projPixel.x() < 0 || projPixel.x() > outputSize.x()-1 ||
@@ -1884,7 +1881,7 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
             return;
           }
 
-          /*const*/ cl::sycl::uint2 refPixel{projPixel.x(), projPixel.y()};
+          /*const*/ uint2 refPixel{projPixel.x(), projPixel.y()};
           /*const*/ float3 referenceNormal =
             refNormal[refPixel.x() + outputSize.x() * refPixel.y()];
           if (referenceNormal.x() == INVALID) {
@@ -1897,29 +1894,29 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
             projectedVertex;
           const float3 projectedNormal = myrotate(Ttrack, inNormalPixel);
 
-          if (cl::sycl::length(diff) > dist_threshold) {
+          if (length(diff) > dist_threshold) {
             row.result = -4;
             return;  // !!!!!!!!!!!!
           }
-          if (cl::sycl::dot(projectedNormal,referenceNormal)<normal_threshold) {
+          if (dot(projectedNormal,referenceNormal)<normal_threshold) {
             row.result = -5;
             return;
           }
 
           row.result = 1;
-          row.error  = cl::sycl::dot(referenceNormal, diff);
-          *((float3 *)(row.J + 0)) = referenceNormal; // row.J[0:2]
-          *((float3 *)(row.J + 3)) =                  // row.J[3:5]
-            cl::sycl::cross(projectedVertex, referenceNormal);
+          row.error  = dot(referenceNormal, diff);
+          *((float3 *)(row.J + 0)) = referenceNormal;
+          *((float3 *)(row.J + 3)) = cross(projectedVertex, referenceNormal);
+          // row.J + 0 -> row.J[0:2]          row.J + 3 ->  row.J[3:5]
         });
       });
 
       const    range<1> nitems{size_of_group * number_of_groups};
       const nd_range<1> ndr{nd_range<1>(nitems, range<1>{size_of_group})};
-      cl::sycl::uint2 JSize{computationSize.x(), computationSize.y()};
-      cl::sycl::uint2  size{ localimagesize.x(),  localimagesize.y()};
-      buffer<cl::sycl::uint2,1> buf_JSize(&JSize,range<1>{1});
-      buffer<cl::sycl::uint2,1>  buf_size( &size,range<1>{1});
+      uint2 JSize{computationSize.x(), computationSize.y()};
+      uint2  size{ localimagesize.x(),  localimagesize.y()};
+      buffer<uint2,1> buf_JSize(&JSize,range<1>{1});
+      buffer<uint2,1> buf_size(  &size,range<1>{1});
 
       q.submit([&](handler &cgh) {
         auto       J = ocl_trackingResult->get_access<sycl_a::mode::read>(cgh);
@@ -1932,25 +1929,24 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
         cgh.parallel_for<class T6>(ndr,[out,J,a_JSize,a_size,S](nd_item<1> ix) {
           auto &JSize = a_JSize[0];  //
           auto  &size =  a_size[0];  //
-          cl::sycl::uint blockIdx  = ix.get_group(0);
-          cl::sycl::uint blockDim  = ix.get_local_range(0);
-          cl::sycl::uint threadIdx = ix.get_local(0);
-          //cl::sycl::uint gridDim   = ix.get_num_groups(0); // bug: always 0
-          cl::sycl::uint gridDim   = ix.get_global_range(0) /
-                                     ix.get_local_range(0);
+          uint blockIdx  = ix.get_group(0);
+          uint blockDim  = ix.get_local_range(0);
+          uint threadIdx = ix.get_local(0);
+          //uint gridDim   = ix.get_num_groups(0); // bug: always 0
+          uint gridDim   = ix.get_global_range(0) / ix.get_local_range(0);
 
-          const cl::sycl::uint sline = threadIdx;
+          const uint sline = threadIdx;
 
           float         sums[32];
           float *jtj  = sums + 7;
           float *info = sums + 28;
 
-          for (cl::sycl::uint i = 0; i < 32; ++i)
+          for (uint i = 0; i < 32; ++i)
             sums[i] = 0.0f;
 
           // Is gridDim zero!?
-          for (cl::sycl::uint y = blockIdx; y < size.y(); y += gridDim) {
-            for (cl::sycl::uint x = sline; x < size.x(); x += blockDim) {
+          for (uint y = blockIdx; y < size.y(); y += gridDim) {
+            for (uint x = sline; x < size.x(); x += blockDim) {
               const TrackData row = J[x + y * JSize.x()];
               if (row.result < 1) {
                 info[1] += row.result == -4 ? 1 : 0;

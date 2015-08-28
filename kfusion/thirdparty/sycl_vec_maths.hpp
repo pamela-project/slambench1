@@ -14,12 +14,15 @@ using cl::sycl::nd_range; using cl::sycl::range;
 using cl::sycl::nd_item;  using cl::sycl::item;
 namespace sycl_a = cl::sycl::access;
 
-using cl::sycl::float2; using cl::sycl::float3; using cl::sycl::float4;
-using cl::sycl::int2;   using cl::sycl::int3;
-using cl::sycl::uint2;  using cl::sycl::uint3;
+using cl::sycl::float2;    using cl::sycl::float3; using cl::sycl::float4;
+using cl::sycl::int2;      using cl::sycl::int3;
+using cl::sycl::uint2;     using cl::sycl::uint3;
 using cl::sycl::short2;
-using cl::sycl::uchar;  using cl::sycl::uchar3; using cl::sycl::uchar4;
-using cl::sycl::clamp;  using cl::sycl::min;    using cl::sycl::max;
+
+using cl::sycl::uchar;     using cl::sycl::uchar3; using cl::sycl::uchar4;
+using cl::sycl::clamp;     using cl::sycl::min;    using cl::sycl::max;
+using cl::sycl::normalize; using cl::sycl::cross;  using cl::sycl::length;
+using cl::sycl::dot;
 
 inline float2 make_float2(float x, float y         )  { return float2{x,y}; }
 inline float3 make_float3(float x, float y, float z)  { return float3{x,y,z}; }
@@ -71,6 +74,7 @@ inline float3 operator*(float b, float3 a) {
 	return float3{b*a.x(), b*a.y(), b*a.z()};
 }
 inline uint2 operator*(uint b, uint2 a) { return uint2{b * a.x(), b * a.y()}; }
+// SYCL's dot, length, normalize etc. don't work on host 
 inline float my_dot(float3 a, float3 b) {
   return a.x() * b.x() + a.y() * b.y() + a.z() * b.z();
 }
