@@ -59,8 +59,11 @@ void raycastKernel(float3* vertex, float3* normal, uint2 inputSize,
 
 ////////////////////////// RENDER KERNELS PROTOTYPES //////////////////////
 
+#ifndef SYCL
+// These are now structs
 void renderDepthKernel(uchar4* out, float * depth, uint2 depthSize,
 		const float nearPlane, const float farPlane);
+#endif
 
 void renderNormaKernell(uchar3* out, const float3* normal, uint2 normalSize);
 

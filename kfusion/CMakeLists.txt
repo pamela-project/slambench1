@@ -20,7 +20,6 @@ find_package(Qt5PrintSupport)
 
 include_directories(./include ${TOON_INCLUDE_PATH} ./thirdparty)
 
-
 if (CUDA_FOUND) 
  SET( CUDA_PROPAGATE_HOST_FLAGS OFF )
 endif(CUDA_FOUND)

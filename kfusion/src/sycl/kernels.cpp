@@ -6,6 +6,8 @@
  This code is licensed under the MIT License.
 
  */
+#include <SYCL/sycl.hpp>
+#include <dagr/dagr.hpp>
 #include <kernels.h>
 
 #ifdef __APPLE__
@@ -1173,9 +1175,11 @@ void renderNormalKernel(uchar3* out, const float3* normal, uint2 normalSize) {
 #endif
 
 #ifdef SYCL
+struct renderDepthKernel {
+
 template <typename T, typename U>   // templates abstract over address spaces
-void renderDepthKernel(item<2> ix, T *out, U const *depth,
-                       const float nearPlane, const float farPlane)
+static void kernel(item<2> ix, T *out, U const *depth,
+                   const float nearPlane, const float farPlane)
 {
 	const int posx = ix[0];
 	const int posy = ix[1];
@@ -1205,6 +1209,8 @@ void renderDepthKernel(item<2> ix, T *out, U const *depth,
 		}
 	}
 }
+
+}; // struct renderDepthKernel
 #else
 void renderDepthKernel(uchar4* out, float * depth, uint2 depthSize,
 		const float nearPlane, const float farPlane) {
@@ -2646,6 +2652,8 @@ void Kfusion::renderTrack(uchar4 * out, uint2 outputSize) {
 
 void Kfusion::renderDepth(uchar4 * out, uint2 outputSize) {
 #ifdef SYCL
+
+/*
   float stack_nearPlane = nearPlane; 
   float stack_farPlane  = farPlane; 
   buffer<float,1>  buf_nearPlane(&stack_nearPlane,           range<1>{1});
@@ -2666,19 +2674,29 @@ void Kfusion::renderDepth(uchar4 * out, uint2 outputSize) {
     {
       auto nearPlane   = a_nearPlane[0]; //
       auto farPlane    = a_farPlane[0];  //
-      renderDepthKernel(ix, &out[0], &depth[0], nearPlane, farPlane);
+      //renderDepthKernel(ix, &out[0], &depth[0], nearPlane, farPlane);
+      renderDepthKernel::kernel(ix, &out[0], &depth[0], nearPlane, farPlane);
     });
   });
+*/
 
-  const auto csize = computationSize.x() * computationSize.y();
-  auto a_out = ocl_volume_data->get_access<sycl_a::mode::read,
-                                           sycl_a::target::host_buffer>();
-  dbg_show4(out, "depthRender: ", csize, 10);
+  const auto r = range<1>{outputSize.x() * outputSize.y()};
+	buffer<uchar4,1> ocl_output_render_buffer(out,r);
+  range<2> globalWorksize{computationSize.x(), computationSize.y()};
+  dagr::run<renderDepthKernel,0>(q,globalWorksize,
+    dagr::wo(ocl_output_render_buffer),
+    *(const_cast<const decltype(ocl_FloatDepth)>(ocl_FloatDepth)),
+    nearPlane, farPlane);
+
+  const auto osize = outputSize.x() * outputSize.y();
+  auto a_out = ocl_output_render_buffer.get_access<sycl_a::mode::read,
+                                                 sycl_a::target::host_buffer>();
+  dbg_show4(out, "depthRender: ", osize, 10);
 #else
 	renderDepthKernel(out, floatDepth, outputSize, nearPlane, farPlane);
 
-  const auto csize = computationSize.x * computationSize.y;
-  dbg_show4(out, "depthRender: ", csize, 10);
+  const auto osize = outputSize.x * outputSize.y;
+  dbg_show4(out, "depthRender: ", osize, 10);
 #endif
 }
 
