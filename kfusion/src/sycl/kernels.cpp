@@ -860,6 +860,99 @@ void halfSampleRobustImageKernel(float* out, const float* in, uint2 inSize,
 }
 
 #ifdef SYCL
+template <typename F3>
+inline F3 myrotate(/*const*/ Matrix4 M, const F3 v) {
+	return F3{my_dot(F3{M.data[0].x(), M.data[0].y(), M.data[0].z()}, v),
+            my_dot(F3{M.data[1].x(), M.data[1].y(), M.data[1].z()}, v),
+            my_dot(F3{M.data[2].x(), M.data[2].y(), M.data[2].z()}, v)};
+}
+
+template <typename F3>
+inline F3 Mat4TimeFloat3(/*const*/ Matrix4 M, const F3 v) {
+	return
+  F3{cl::sycl::dot(F3{M.data[0].x(), M.data[0].y(), M.data[0].z()}, v) + M.data[0].w(),
+     cl::sycl::dot(F3{M.data[1].x(), M.data[1].y(), M.data[1].z()}, v) + M.data[1].w(),
+     cl::sycl::dot(F3{M.data[2].x(), M.data[2].y(), M.data[2].z()}, v) + M.data[2].w()};
+}
+
+template <typename T>
+inline void setVolume(Volume<T> v, uint3 pos, float2 d) {
+	v.data[pos.x() +
+         pos.y() * v.size.x() +
+         pos.z() * v.size.x() * v.size.y()] = short2{d.x() * 32766.0f, d.y()};
+}
+
+template <typename T>
+inline float3 posVolume(/*const*/ Volume<T> v, /*const*/ uint3 p) {
+	return float3{(p.x() + 0.5f) * v.dim.x() / v.size.x(),
+                (p.y() + 0.5f) * v.dim.y() / v.size.y(),
+                (p.z() + 0.5f) * v.dim.z() / v.size.z()};
+}
+
+template <typename T>
+inline float2 getVolume(/*const*/ Volume<T> v, /*const*/ uint3 pos) {
+  /*const*/ short2 d = v.data[pos.x() +   // Making d a ref fixes it.
+                              pos.y() * v.size.x() +
+                              pos.z() * v.size.x() * v.size.y()];
+	return float2{1,2};//d.x() * 0.00003051944088f, d.y()}; //  / 32766.0f
+}
+#endif
+
+
+#ifdef SYCL
+
+struct integrateKernelOK {
+
+template <typename I, typename T, typename U>
+static void kernel(I ix, T *v_data, const uint3 v_size, const float3 v_dim,
+                   const U *depth, /*const*/ uint2 depthSize,
+                   const Matrix4 invTrack, const Matrix4 K, const float mu,
+                   const float maxweight, const float3 delta,
+                   const float3 cameraDelta)
+{
+  Volume<decltype(&v_data[0])> vol;
+  vol.data = &v_data[0]; vol.size = v_size; vol.dim = v_dim;
+
+  uint3 pix{ix[0],ix[1],0};
+  const int sizex = ix.get_range()[0];
+
+  float3 pos     = Mat4TimeFloat3(invTrack, posVolume(vol,pix));
+  float3 cameraX = Mat4TimeFloat3(K, pos);
+
+  for (pix.z() = 0; pix.z() < vol.size.z();
+         pix.z() = pix.z()+1, pos += delta, cameraX += cameraDelta)
+  {
+    if (pos.z() < 0.0001f) // some near plane constraint
+      continue;
+
+    /*const*/ float2 pixel{cameraX.x()/cameraX.z() + 0.5f,
+                           cameraX.y()/cameraX.z() + 0.5f};
+
+    if (pixel.x() < 0 || pixel.x() > depthSize.x()-1 ||
+        pixel.y() < 0 || pixel.y() > depthSize.y()-1)
+      continue;
+
+    /*const*/ uint2 px{pixel.x(), pixel.y()};
+    float depthpx = depth[px.x() + depthSize.x() * px.y()];
+
+    if (depthpx == 0)
+      continue;
+
+    const float diff = (depthpx - cameraX.z()) *
+         cl::sycl::sqrt(1+sq(pos.x()/pos.z()) + sq(pos.y()/pos.z()));
+
+    if (diff > -mu)
+    {
+      const float sdf = fmin(1.f, diff/mu);
+      float2 data = getVolume(vol,pix);
+      data.x() = clamp((data.y()*data.x() + sdf)/(data.y() + 1),-1.f,1.f);
+      data.y() = fmin(data.y()+1, maxweight);
+      setVolume(vol,pix,data);
+    }
+  }
+}
+}; // struct 
+
 template <typename T>
 void integrateKernel(Volume<T> vol, const float* depth, uint2 depthSize,
 		/*const*/ Matrix4 invTrack, /*const*/ Matrix4 K, const float mu,
@@ -1632,45 +1725,6 @@ bool Kfusion::preprocessing(const uint16_t * inputDepth, /*const*/ uint2 inSize)
 
 	return true;
 }
-
-#ifdef SYCL
-template <typename F3>
-inline F3 myrotate(/*const*/ Matrix4 M, const F3 v) {
-	return F3{my_dot(F3{M.data[0].x(), M.data[0].y(), M.data[0].z()}, v),
-            my_dot(F3{M.data[1].x(), M.data[1].y(), M.data[1].z()}, v),
-            my_dot(F3{M.data[2].x(), M.data[2].y(), M.data[2].z()}, v)};
-}
-
-template <typename F3>
-inline F3 Mat4TimeFloat3(/*const*/ Matrix4 M, const F3 v) {
-	return
-  F3{cl::sycl::dot(F3{M.data[0].x(), M.data[0].y(), M.data[0].z()}, v) + M.data[0].w(),
-     cl::sycl::dot(F3{M.data[1].x(), M.data[1].y(), M.data[1].z()}, v) + M.data[1].w(),
-     cl::sycl::dot(F3{M.data[2].x(), M.data[2].y(), M.data[2].z()}, v) + M.data[2].w()};
-}
-
-template <typename T>
-inline void setVolume(Volume<T> v, uint3 pos, float2 d) {
-	v.data[pos.x() +
-         pos.y() * v.size.x() +
-         pos.z() * v.size.x() * v.size.y()] = short2{d.x() * 32766.0f, d.y()};
-}
-
-template <typename T>
-inline float3 posVolume(/*const*/ Volume<T> v, /*const*/ uint3 p) {
-	return float3{(p.x() + 0.5f) * v.dim.x() / v.size.x(),
-                (p.y() + 0.5f) * v.dim.y() / v.size.y(),
-                (p.z() + 0.5f) * v.dim.z() / v.size.z()};
-}
-
-template <typename T>
-inline float2 getVolume(/*const*/ Volume<T> v, /*const*/ uint3 pos) {
-  /*const*/ short2 d = v.data[pos.x() +   // Making d a ref fixes it.
-                              pos.y() * v.size.x() +
-                              pos.z() * v.size.x() * v.size.y()];
-	return float2{1,2};//d.x() * 0.00003051944088f, d.y()}; //  / 32766.0f
-}
-#endif
 
 bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 		uint frame) {
@@ -2652,33 +2706,6 @@ void Kfusion::renderTrack(uchar4 * out, uint2 outputSize) {
 
 void Kfusion::renderDepth(uchar4 * out, uint2 outputSize) {
 #ifdef SYCL
-
-/*
-  float stack_nearPlane = nearPlane; 
-  float stack_farPlane  = farPlane; 
-  buffer<float,1>  buf_nearPlane(&stack_nearPlane,           range<1>{1});
-  buffer<float,1>  buf_farPlane (&stack_farPlane,            range<1>{1});
-  const auto r = range<1>{outputSize.x() * outputSize.y()};
-	buffer<uchar4,1> ocl_output_render_buffer(out,r);
-
-  q.submit([&](handler &cgh) {
-
-    auto out   = ocl_output_render_buffer.get_access<sycl_a::mode::write>(cgh);
-    auto depth          =  ocl_FloatDepth->get_access<sycl_a::mode::read>(cgh);
-    auto a_nearPlane    =    buf_nearPlane.get_access<sycl_a::mode::read>(cgh);
-    auto a_farPlane     =     buf_farPlane.get_access<sycl_a::mode::read>(cgh);
-
-    range<2> globalWorksize{computationSize.x(), computationSize.y()};
-    cgh.parallel_for<class T9>(globalWorksize,
-      [out,depth,a_nearPlane,a_farPlane] (item<2> ix)
-    {
-      auto nearPlane   = a_nearPlane[0]; //
-      auto farPlane    = a_farPlane[0];  //
-      //renderDepthKernel(ix, &out[0], &depth[0], nearPlane, farPlane);
-      renderDepthKernel::kernel(ix, &out[0], &depth[0], nearPlane, farPlane);
-    });
-  });
-*/
 
   const auto r = range<1>{outputSize.x() * outputSize.y()};
 	buffer<uchar4,1> ocl_output_render_buffer(out,r);
