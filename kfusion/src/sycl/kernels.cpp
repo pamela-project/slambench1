@@ -2468,7 +2468,28 @@ bool Kfusion::integration(float4 k, uint integration_rate, float mu, uint frame)
 #endif
 
 	if ((doIntegrate && ((frame % integration_rate) == 0)) || (frame <= 3)) {
+#if 1
+    range<2> globalWorksize{volumeResolution.x(), volumeResolution.y()};
+    auto depth = *const_cast<buffer<float,1>*>(ocl_FloatDepth);
+		const Matrix4 invTrack = inverse(pose);
+		const Matrix4 K = getCameraMatrix(k);
+		const float3 delta = myrotate(invTrack,
+				float3{0, 0, volumeDimensions.z() / volumeResolution.z()});
+		const float3 cameraDelta = myrotate(K, delta);
+
+    dagr::run<integrateKernelOK,0>(q, globalWorksize,
+      *ocl_volume_data, volumeResolution, volumeDimensions, depth,
+      computationSize, invTrack, K, mu, maxweight, delta, myrotate(K, delta));
+
+    const auto vsize = volume.size.x() * volume.size.y() * volume.size.z();
+    auto vd = ocl_volume_data->get_access<sycl_a::mode::read,
+                                          sycl_a::target::host_buffer>();
+    dbg_show2(vd, "volume.data", vsize, 7);
+#endif
+
 #ifdef SYCL
+#if 0
+
 		uint2 depthSize{computationSize.x(),computationSize.y()};
 		const Matrix4 invTrack = inverse(pose);
 		const Matrix4 K = getCameraMatrix(k);
@@ -2566,6 +2587,7 @@ bool Kfusion::integration(float4 k, uint integration_rate, float mu, uint frame)
     auto vd = ocl_volume_data->get_access<sycl_a::mode::read,
                                           sycl_a::target::host_buffer>();
     dbg_show2(vd, "volume.data", vsize, 7);
+#endif
 #else
     integrateKernel(volume, floatDepth, computationSize, inverse(pose),
                     getCameraMatrix(k), mu, maxweight);
