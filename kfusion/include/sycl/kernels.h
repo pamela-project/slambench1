@@ -69,7 +69,9 @@ void renderDepthKernel(uchar4* out, float * depth, uint2 depthSize,
 
 void renderNormaKernell(uchar3* out, const float3* normal, uint2 normalSize);
 
+#ifndef SYCL
 void renderTrackKernel(uchar4* out, const TrackData* data, uint2 outSize);
+#endif
 
 template <typename T>
 void renderVolumeKernel(uchar4* out, const uint2 depthSize,
