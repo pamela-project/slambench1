@@ -98,16 +98,22 @@ bool print_kernel_timing = false;
 	struct timespec tock_clockData;
 #endif
 
-template <typename T>
-void initVolumeKernel(item<3> ix, T *data)
-{
-	uint x = ix[0]; uint y = ix[1]; uint z = ix[2];
-	uint3 size{ix.get_range()[0], ix.get_range()[1], ix.get_range()[2]};
-	float2 d{1.0f,0.0f};
+#ifdef SYCL
+struct initVolumeKernelOk {
 
-	data[x + y * size.x() + z * size.x() * size.y()] =
+template <typename T>
+static void kernel(item<3> ix, T *data)
+{
+  uint x = ix[0]; uint y = ix[1]; uint z = ix[2];
+  uint3 size{ix.get_range()[0], ix.get_range()[1], ix.get_range()[2]};
+  float2 d{1.0f,0.0f};
+
+  data[x + y * size.x() + z * size.x() * size.y()] =
     short2{d.x() * 32766.0f, d.y()};
 }
+
+}; // struct
+#endif  // SYCL
 	
 void Kfusion::languageSpecificConstructor() {
 
@@ -901,7 +907,7 @@ inline float2 getVolume(/*const*/ Volume<T> v, /*const*/ uint3 pos) {
 
 #ifdef SYCL
 
-struct integrateKernelOK {
+struct integrateKernel {
 
 template <typename I, typename T, typename U>
 static void kernel(I ix, T *v_data, const uint3 v_size, const float3 v_dim,
@@ -953,52 +959,9 @@ static void kernel(I ix, T *v_data, const uint3 v_size, const float3 v_dim,
 }
 }; // struct 
 
-template <typename T>
-void integrateKernel(Volume<T> vol, const float* depth, uint2 depthSize,
-		/*const*/ Matrix4 invTrack, /*const*/ Matrix4 K, const float mu,
-		const float maxweight) {
-	TICK();
-	const float3 delta =
-    rotate(invTrack, make_float3(0, 0, vol.dim.z() / vol.size.z()));
-	const float3 cameraDelta = rotate(K, delta);
-	unsigned int y;
-#pragma omp parallel for \
-        shared(vol), private(y)
-	for (y = 0; y < vol.size.y(); y++)
-		for (unsigned int x = 0; x < vol.size.x(); x++) {
-
-			uint3 pix = make_uint3(x, y, 0); //pix.x() = x;pix.y() = y;
-			float3 pos = invTrack * vol.pos(pix);
-			float3 cameraX = K * pos;
-
-			for (pix.z() = 0; pix.z() < vol.size.z();
-					/*++pix.z()*/pix.z()=pix.z()+1,pos += delta,cameraX += cameraDelta) {
-				if (pos.z() < 0.0001f) // some near plane constraint
-					continue;
-				/*const*/ float2 pixel = make_float2(cameraX.x() / cameraX.z() + 0.5f,
-						cameraX.y() / cameraX.z() + 0.5f);
-				if (pixel.x() < 0 || pixel.x() > depthSize.x() - 1 || pixel.y() < 0
-						|| pixel.y() > depthSize.y() - 1)
-					continue;
-				/*const*/ uint2 px = make_uint2(pixel.x(), pixel.y());
-				if (depth[px.x() + px.y() * depthSize.x()] == 0)
-					continue;
-				const float diff = (depth[px.x()+px.y()*depthSize.x()] - cameraX.z()) *
-              std::sqrt(1 + sq(pos.x() / pos.z()) + sq(pos.y() / pos.z()));
-				if (diff > -mu) {
-					const float sdf = fminf(1.f, diff / mu);
-					float2 data = vol[pix];
-					data.x() = clamp((data.y()*data.x()+sdf) / (data.y() + 1), -1.f, 1.f);
-					data.y() = fminf(data.y() + 1, maxweight);
-					vol.set(pix, data);
-				}
-			}
-		}
-	TOCK("integrateKernel", vol.size.x() * vol.size.y());
-}
 #else
 void integrateKernel(Volume vol, const float* depth, uint2 depthSize,
-		/*const*/ Matrix4 invTrack, /*const*/ Matrix4 K, const float mu,
+		const Matrix4 invTrack, const Matrix4 K, const float mu,
 		const float maxweight) {
 	TICK();
 	const float3 delta =
@@ -2468,7 +2431,7 @@ bool Kfusion::integration(float4 k, uint integration_rate, float mu, uint frame)
 #endif
 
 	if ((doIntegrate && ((frame % integration_rate) == 0)) || (frame <= 3)) {
-#if 1
+#ifdef SYCL
     range<2> globalWorksize{volumeResolution.x(), volumeResolution.y()};
     auto depth = *const_cast<buffer<float,1>*>(ocl_FloatDepth);
 		const Matrix4 invTrack = inverse(pose);
@@ -2477,7 +2440,8 @@ bool Kfusion::integration(float4 k, uint integration_rate, float mu, uint frame)
 				float3{0, 0, volumeDimensions.z() / volumeResolution.z()});
 		const float3 cameraDelta = myrotate(K, delta);
 
-    dagr::run<integrateKernelOK,0>(q, globalWorksize,
+    // The SYCL lambda for integrateKernel demonstrates verbosity
+    dagr::run<integrateKernel,0>(q, globalWorksize,
       *ocl_volume_data, volumeResolution, volumeDimensions, depth,
       computationSize, invTrack, K, mu, maxweight, delta, myrotate(K, delta));
 
@@ -2485,109 +2449,6 @@ bool Kfusion::integration(float4 k, uint integration_rate, float mu, uint frame)
     auto vd = ocl_volume_data->get_access<sycl_a::mode::read,
                                           sycl_a::target::host_buffer>();
     dbg_show2(vd, "volume.data", vsize, 7);
-#endif
-
-#ifdef SYCL
-#if 0
-
-		uint2 depthSize{computationSize.x(),computationSize.y()};
-		const Matrix4 invTrack = inverse(pose);
-		const Matrix4 K = getCameraMatrix(k);
-
-		const float3 delta = myrotate(invTrack,
-				float3{0, 0, volumeDimensions.z() / volumeResolution.z()});
-		const float3 cameraDelta = myrotate(K, delta);
-
-    float stack_maxweight = maxweight; 
-    buffer<uint3, 1>  buf_v_size     (&volumeResolution,range<1>{1});
-    buffer<float3,1>  buf_v_dim      (&volumeDimensions,range<1>{1});
-    buffer<Matrix4,1> buf_K          (&K,               range<1>{1});
-    buffer<uint2,1>   buf_depthSize  (&depthSize,       range<1>{1});
-    buffer<Matrix4,1> buf_invTrack   (&invTrack,        range<1>{1});
-    buffer<float3,1>  buf_delta      (&delta,           range<1>{1});
-    buffer<float3,1>  buf_cameraDelta(&cameraDelta,     range<1>{1});
-    buffer<float,1>   buf_mu         (&mu,              range<1>{1});
-    buffer<float,1>   buf_maxweight  (&stack_maxweight, range<1>{1});
-
-    range<2> globalWorksize{volumeResolution.x(), volumeResolution.y()};
-    q.submit([&](handler &cgh) {
-
-      auto a_v_size      =       buf_v_size.get_access<sycl_a::mode::read>(cgh);
-      auto a_v_dim       =        buf_v_dim.get_access<sycl_a::mode::read>(cgh);
-      auto a_K           =            buf_K.get_access<sycl_a::mode::read>(cgh);
-      auto depth         =  ocl_FloatDepth->get_access<sycl_a::mode::read>(cgh);
-      auto a_depthSize   =    buf_depthSize.get_access<sycl_a::mode::read>(cgh);
-      auto a_invTrack    =     buf_invTrack.get_access<sycl_a::mode::read>(cgh);
-      auto a_v_data =ocl_volume_data->get_access<sycl_a::mode::read_write>(cgh);
-      auto a_delta       =        buf_delta.get_access<sycl_a::mode::read>(cgh);
-      auto a_cameraDelta =  buf_cameraDelta.get_access<sycl_a::mode::read>(cgh);
-      auto a_mu          =           buf_mu.get_access<sycl_a::mode::read>(cgh);
-      auto a_maxweight   =    buf_maxweight.get_access<sycl_a::mode::read>(cgh);
-
-      cgh.parallel_for<class T7>(globalWorksize,
-        [a_v_data,a_v_size,a_v_dim,a_K,depth,a_depthSize,a_invTrack,a_mu,
-         a_maxweight,a_delta,a_cameraDelta]
-        (item<2> ix)
-      {
-        auto v_size      = a_v_size[0];      //
-        auto v_dim       = a_v_dim[0];       //
-        auto K           = a_K[0];           //
-        auto depthSize   = a_depthSize[0];   //
-        auto invTrack    = a_invTrack[0];    //
-        auto v_data      = &a_v_data[0];     //
-        auto delta       = a_delta[0];       //
-        auto cameraDelta = a_cameraDelta[0]; //
-        auto mu          = a_mu[0];          //
-        auto maxweight   = a_maxweight[0];   //
-
-        Volume<decltype(&v_data[0])> vol;
-        vol.data = &v_data[0]; vol.size = v_size; vol.dim = v_dim;
-
-        uint3 pix{ix[0],ix[1],0};
-        const int sizex = ix.get_range()[0];
-
-        float3 pos     = Mat4TimeFloat3(invTrack, posVolume(vol,pix));
-        float3 cameraX = Mat4TimeFloat3(K, pos);
-
-	      for (pix.z() = 0; pix.z() < vol.size.z();
-               pix.z() = pix.z()+1, pos += delta, cameraX += cameraDelta)
-        {
-          if (pos.z() < 0.0001f) // some near plane constraint
-            continue;
-
-          /*const*/ float2 pixel{cameraX.x()/cameraX.z() + 0.5f,
-                                 cameraX.y()/cameraX.z() + 0.5f};
-
-          if (pixel.x() < 0 || pixel.x() > depthSize.x()-1 ||
-              pixel.y() < 0 || pixel.y() > depthSize.y()-1)
-            continue;
-
-          /*const*/ uint2 px{pixel.x(), pixel.y()};
-          float depthpx = depth[px.x() + depthSize.x() * px.y()];
-
-          if (depthpx == 0)
-            continue;
-
-          const float diff = (depthpx - cameraX.z()) *
-               cl::sycl::sqrt(1+sq(pos.x()/pos.z()) + sq(pos.y()/pos.z()));
-
-          if (diff > -mu)
-          {
-            const float sdf = fmin(1.f, diff/mu);
-            float2 data = getVolume(vol,pix);
-            data.x() = clamp((data.y()*data.x() + sdf)/(data.y() + 1),-1.f,1.f);
-            data.y() = fmin(data.y()+1, maxweight);
-            setVolume(vol,pix,data);
-          }
-        }
-      });
-    });
-
-    const auto vsize = volume.size.x() * volume.size.y() * volume.size.z();
-    auto vd = ocl_volume_data->get_access<sycl_a::mode::read,
-                                          sycl_a::target::host_buffer>();
-    dbg_show2(vd, "volume.data", vsize, 7);
-#endif
 #else
     integrateKernel(volume, floatDepth, computationSize, inverse(pose),
                     getCameraMatrix(k), mu, maxweight);
