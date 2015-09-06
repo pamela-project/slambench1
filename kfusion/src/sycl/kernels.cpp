@@ -1363,12 +1363,14 @@ void renderTrackKernel(uchar4* out, const TrackData* data, uint2 outSize) {
 #endif
 
 #ifdef SYCL
+struct renderVolumeKernel {
+
 template <typename T, typename U>
-void renderVolumeKernel(item<2> ix, T *render, U *v_data, const uint3 v_size,
-                        const float3 v_dim, const Matrix4 view,
-                        const float nearPlane, const float farPlane,
-                        const float step, const float largestep,
-                        const float3 light, const float3 ambient)
+static void kernel(item<2> ix, T *render, U *v_data, const uint3 v_size,
+                   const float3 v_dim, const Matrix4 view,
+                   const float nearPlane, const float farPlane,
+                   const float step, const float largestep,
+                   const float3 light, const float3 ambient)
 {
 	/*const*/ Volume<U *> v;//{v_size,v_dim,v_data};
   v.data = v_data; v.size = v_size; v.dim = v_dim;
@@ -1394,6 +1396,8 @@ void renderVolumeKernel(item<2> ix, T *render, U *v_data, const uint3 v_size,
       render[pos.x() + sizex * pos.y()] = uchar4{0,0,0,0};
 	}
 }
+
+}; // struct
 #else
 void renderVolumeKernel(uchar4* out, const uint2 depthSize, const Volume volume,
     const Matrix4 view, const float nearPlane,
@@ -2528,6 +2532,7 @@ void Kfusion::renderVolume(uchar4 * out, uint2 outputSize, int frame,
   update_ocl_output_render_buffer(outputSize);
 
 #ifdef SYCL
+#if 0
   float        stack_step      = step;
   float        stack_nearPlane = nearPlane; 
   float        stack_farPlane  = farPlane; 
@@ -2572,6 +2577,15 @@ void Kfusion::renderVolume(uchar4 * out, uint2 outputSize, int frame,
                          a_largestep[0], a_light[0], a_ambient[0]);
     });
   });
+#endif
+
+  range<2> globalWorksize{computationSize.x(), computationSize.y()};
+  Matrix4 imat = getInverseCameraMatrix(k); // operator * needs nonconst
+	Matrix4 view = *(this->viewPose) * imat;
+  dagr::run<renderVolumeKernel,0>(q,globalWorksize,
+    wo(*ocl_output_render_buffer),
+    *ocl_volume_data,volumeResolution,volumeDimensions,view,nearPlane,farPlane,
+    step,largeStep,light,ambient);
 
   const auto csize = computationSize.x() * computationSize.y();
   auto a_out = ocl_output_render_buffer->get_access<sycl_a::mode::read,
