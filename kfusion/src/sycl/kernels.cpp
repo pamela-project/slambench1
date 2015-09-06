@@ -2583,9 +2583,9 @@ void Kfusion::renderVolume(uchar4 * out, uint2 outputSize, int frame,
   Matrix4 imat = getInverseCameraMatrix(k); // operator * needs nonconst
 	Matrix4 view = *(this->viewPose) * imat;
   dagr::run<renderVolumeKernel,0>(q,globalWorksize,
-    wo(*ocl_output_render_buffer),
+    dagr::wo(*ocl_output_render_buffer),
     *ocl_volume_data,volumeResolution,volumeDimensions,view,nearPlane,farPlane,
-    step,largeStep,light,ambient);
+    step,largestep,light,ambient);
 
   const auto csize = computationSize.x() * computationSize.y();
   auto a_out = ocl_output_render_buffer->get_access<sycl_a::mode::read,
