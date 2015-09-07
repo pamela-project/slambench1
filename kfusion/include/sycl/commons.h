@@ -384,11 +384,11 @@ inline Matrix4 inverse(/*const*/ Matrix4 & A) {
   return R;
 }
 
-inline Matrix4 operator*(/*const*/ Matrix4 & A, /*const*/ Matrix4 & B) {
+inline Matrix4 operator*(const Matrix4 & A, const Matrix4 & B) {
 	Matrix4 R;
   TooN::wrapMatrix<4, 4>(reinterpret_cast<float *>(&R)) =
-    TooN::wrapMatrix<4, 4>(reinterpret_cast<float *>(&A)) *
-    TooN::wrapMatrix<4, 4>(reinterpret_cast<float *>(&B));
+    TooN::wrapMatrix<4, 4>(reinterpret_cast<const float *>(&A)) *
+    TooN::wrapMatrix<4, 4>(reinterpret_cast<const float *>(&B));
   return R;
 }
 

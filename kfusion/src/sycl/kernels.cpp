@@ -2342,8 +2342,7 @@ bool Kfusion::raycasting(float4 k, float mu, uint frame) {
 	if (frame > 2) {
 #ifdef SYCL
 		raycastPose = pose;
-    Matrix4 tmp = getInverseCameraMatrix(k); // operator * needs nonconst
-		const Matrix4 view = raycastPose * tmp;
+		const Matrix4 view = raycastPose * getInverseCameraMatrix(k);
 
     float stack_nearPlane = nearPlane; 
     float stack_farPlane  = farPlane; 
@@ -2538,8 +2537,7 @@ void Kfusion::renderVolume(uchar4 * out, uint2 outputSize, int frame,
   float        stack_farPlane  = farPlane; 
   const float3 stack_light     = light;
   const float3 stack_ambient   = ambient;
-  Matrix4 imat = getInverseCameraMatrix(k); // operator * needs nonconst
-	Matrix4 view = *(this->viewPose) * imat;
+	Matrix4 view = *(this->viewPose) * getInverseCameraMatrix(k);
 //    const auto r = range<1>{outputSize.x() * outputSize.y()};
 //	buffer<uchar4,1>  ocl_output_render_buffer(out,r);
   buffer<uint3, 1>  buf_v_size   (&volumeResolution,          range<1>{1});
@@ -2580,8 +2578,7 @@ void Kfusion::renderVolume(uchar4 * out, uint2 outputSize, int frame,
 #endif
 
   range<2> globalWorksize{computationSize.x(), computationSize.y()};
-  Matrix4 imat = getInverseCameraMatrix(k); // operator * needs nonconst
-	Matrix4 view = *(this->viewPose) * imat;
+	Matrix4 view = *(this->viewPose) * getInverseCameraMatrix(k);
   dagr::run<renderVolumeKernel,0>(q,globalWorksize,
     dagr::wo(*ocl_output_render_buffer),
     *ocl_volume_data,volumeResolution,volumeDimensions,view,nearPlane,farPlane,
