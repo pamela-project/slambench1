@@ -1083,6 +1083,7 @@ float4 raycast(const     Volume    volume,
 
 }
 #ifdef SYCL
+#if 0
 template <typename T>
 void raycastKernel(float3* vertex, float3* normal, uint2 inputSize,
 		/*const*/ Volume<T> integration, const Matrix4 view, const float nearPlane,
@@ -1117,6 +1118,45 @@ void raycastKernel(float3* vertex, float3* normal, uint2 inputSize,
 		}
 	TOCK("raycastKernel", inputSize.x() * inputSize.y());
 }
+#endif
+#endif
+
+#ifdef SYCL
+struct raycastKernel {
+
+// Although T is instantiated float, pos3D and normal are targeting float3 data
+// Actually, T is instantiated as float3. This is due to the declaration of
+// ocl_vertex, which was given a float3 type, rather than the uptyped OpenCL buf
+template <typename T, typename U>
+static void kernel(item<2> ix, T *pos3D, T *normal, U *v_data,
+                   const uint3 v_size, const float3 v_dim, const Matrix4 view,
+                   const float nearPlane, const float farPlane,
+                   const float step, const float largestep)
+{
+  /*const*/ Volume<U *> volume;//{v_size,v_dim,v_data};
+  volume.data = &v_data[0]; volume.size = v_size; volume.dim = v_dim;
+  uint2 pos{ix[0],ix[1]};
+  const int sizex = ix.get_range()[0];
+
+  /*const*/ float4 hit =
+    raycast_sycl(volume, pos, view, nearPlane, farPlane, step, largestep);
+  const float3 test{hit.x(),hit.y(),hit.z()}; // as_float3(hit);
+
+  if (hit.w() > 0.0f) {
+    pos3D[pos.x() + sizex * pos.y()] = test;
+    float3 surfNorm = grad(test,volume);
+    if (cl::sycl::length(surfNorm) == 0) {
+      normal[pos.x() + sizex * pos.y()] = float3{INVALID,INVALID,INVALID};
+    } else {
+      normal[pos.x() + sizex * pos.y()] = cl::sycl::normalize(surfNorm);
+    }
+  } else {
+    pos3D [pos.x() + sizex * pos.y()] = float3{0,0,0};
+    normal[pos.x() + sizex * pos.y()] = float3{INVALID,INVALID,INVALID};
+  }
+}
+
+}; // struct
 #else
 void raycastKernel(float3* vertex, float3* normal, uint2 inputSize,
 		/*const*/ Volume integration, const Matrix4 view, const float nearPlane,
@@ -2340,7 +2380,13 @@ bool Kfusion::raycasting(float4 k, float mu, uint frame) {
 #ifdef SYCL
 		raycastPose = pose;
 		const Matrix4 view = raycastPose * getInverseCameraMatrix(k);
+    range<2> RaycastglobalWorksize{computationSize.x(), computationSize.y()};
 
+    dagr::run<raycastKernel,0>(q,RaycastglobalWorksize,
+      *ocl_vertex,*ocl_normal,*ocl_volume_data,
+      volumeResolution,volumeDimensions,view,nearPlane,farPlane,step,largestep);
+
+#if 0
     float stack_nearPlane = nearPlane; 
     float stack_farPlane  = farPlane; 
     float stack_step      = step;
@@ -2405,6 +2451,7 @@ bool Kfusion::raycasting(float4 k, float mu, uint frame) {
         }
       });
     });
+#endif
 
     const auto csize = computationSize.x() * computationSize.y();
     auto a_vert = ocl_vertex->get_access<sycl_a::mode::read,

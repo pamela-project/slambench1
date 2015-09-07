@@ -47,12 +47,12 @@ bool updatePoseKernel(Matrix4 & pose, const float * output,
 bool checkPoseKernel(Matrix4 & pose, Matrix4 oldPose, const float * output,
 		uint2 imageSize, float track_threshold);
 
+// These are now structs
 #ifndef SYCL
 template <typename T>
 void integrateKernel(Volume<T> vol, const float* depth, uint2 imageSize,
 		const Matrix4 invTrack, const Matrix4 K, const float mu,
 		const float maxweight);
-#endif
 
 template <typename T>
 void raycastKernel(float3* vertex, float3* normal, uint2 inputSize,
@@ -61,8 +61,6 @@ void raycastKernel(float3* vertex, float3* normal, uint2 inputSize,
 
 ////////////////////////// RENDER KERNELS PROTOTYPES //////////////////////
 
-#ifndef SYCL
-// These are now structs
 void renderDepthKernel(uchar4* out, float * depth, uint2 depthSize,
 		const float nearPlane, const float farPlane);
 #endif
