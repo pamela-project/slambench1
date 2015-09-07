@@ -2386,73 +2386,6 @@ bool Kfusion::raycasting(float4 k, float mu, uint frame) {
       *ocl_vertex,*ocl_normal,*ocl_volume_data,
       volumeResolution,volumeDimensions,view,nearPlane,farPlane,step,largestep);
 
-#if 0
-    float stack_nearPlane = nearPlane; 
-    float stack_farPlane  = farPlane; 
-    float stack_step      = step;
-    buffer<uint3, 1>  buf_v_size     (&volumeResolution,          range<1>{1});
-    buffer<float3,1>  buf_v_dim      (&volumeDimensions,          range<1>{1});
-    buffer<Matrix4,1> buf_view       (const_cast<Matrix4*>(&view),range<1>{1});
-    buffer<float,1>   buf_nearPlane  (&stack_nearPlane,           range<1>{1});
-    buffer<float,1>   buf_farPlane   (&stack_farPlane,            range<1>{1});
-    buffer<float,1>   buf_step       (&step,                      range<1>{1});
-    buffer<float,1>   buf_largestep  (&largestep,                 range<1>{1});
-
-    q.submit([&](handler &cgh) {
-
-      auto a_pos3D       =ocl_vertex->get_access<sycl_a::mode::read_write>(cgh);
-      auto a_normal      =ocl_normal->get_access<sycl_a::mode::read_write>(cgh);
-      auto a_v_size      =       buf_v_size.get_access<sycl_a::mode::read>(cgh);
-      auto a_v_dim       =        buf_v_dim.get_access<sycl_a::mode::read>(cgh);
-      auto a_view        =         buf_view.get_access<sycl_a::mode::read>(cgh);
-      auto a_v_data =ocl_volume_data->get_access<sycl_a::mode::read_write>(cgh);
-      auto a_nearPlane   =    buf_nearPlane.get_access<sycl_a::mode::read>(cgh);
-      auto a_farPlane    =     buf_farPlane.get_access<sycl_a::mode::read>(cgh);
-      auto a_step        =         buf_step.get_access<sycl_a::mode::read>(cgh);
-      auto a_largestep   =    buf_largestep.get_access<sycl_a::mode::read>(cgh);
-
-      range<2> RaycastglobalWorksize{computationSize.x(), computationSize.y()};
-      cgh.parallel_for<class T8>(RaycastglobalWorksize,
-        [a_pos3D,a_normal,a_v_data,a_v_size,a_v_dim,a_view,
-         a_nearPlane,a_farPlane,a_step,a_largestep]
-        (item<2> ix)
-      {
-        auto pos3D       = a_pos3D;          //
-        auto normal      = a_normal;         //
-        auto v_data      = &a_v_data[0];     //
-        auto v_size      = a_v_size[0];      //
-        auto v_dim       = a_v_dim[0];       //
-        auto view        = a_view[0];        //
-        auto nearPlane   = a_nearPlane[0];   //
-        auto farPlane    = a_farPlane[0];    //
-        auto largestep   = a_largestep[0];   //
-        auto      step   = a_step[0];        //
-
-        /*const*/ Volume<decltype(&v_data[0])> volume;//{v_size,v_dim,v_data};
-        volume.data = &v_data[0]; volume.size = v_size; volume.dim = v_dim;
-        uint2 pos{ix[0],ix[1]};
-        const int sizex = ix.get_range()[0];
-
-        /*const*/ float4 hit =
-          raycast_sycl(volume, pos, view, nearPlane, farPlane, step, largestep);
-        const float3 test{hit.x(),hit.y(),hit.z()}; // as_float3(hit);
-
-        if (hit.w() > 0.0f) {
-          pos3D[pos.x() + sizex * pos.y()] = test;
-          float3 surfNorm = grad(test,volume);
-          if (cl::sycl::length(surfNorm) == 0) {
-            normal[pos.x() + sizex * pos.y()] = float3{INVALID,INVALID,INVALID};
-          } else {
-            normal[pos.x() + sizex * pos.y()] = cl::sycl::normalize(surfNorm);
-          }
-        } else {
-          pos3D [pos.x() + sizex * pos.y()] = float3{0,0,0};
-          normal[pos.x() + sizex * pos.y()] = float3{INVALID,INVALID,INVALID};
-        }
-      });
-    });
-#endif
-
     const auto csize = computationSize.x() * computationSize.y();
     auto a_vert = ocl_vertex->get_access<sycl_a::mode::read,
                                          sycl_a::target::host_buffer>();
@@ -2575,63 +2508,12 @@ void Kfusion::renderVolume(uchar4 * out, uint2 outputSize, int frame,
   update_ocl_output_render_buffer(outputSize);
 
 #ifdef SYCL
-#if 0
-  float        stack_step      = step;
-  float        stack_nearPlane = nearPlane; 
-  float        stack_farPlane  = farPlane; 
-  const float3 stack_light     = light;
-  const float3 stack_ambient   = ambient;
-	Matrix4 view = *(this->viewPose) * getInverseCameraMatrix(k);
-//    const auto r = range<1>{outputSize.x() * outputSize.y()};
-//	buffer<uchar4,1>  ocl_output_render_buffer(out,r);
-  buffer<uint3, 1>  buf_v_size   (&volumeResolution,          range<1>{1});
-  buffer<float3,1>  buf_v_dim    (&volumeDimensions,          range<1>{1});
-  buffer<Matrix4,1> buf_view     (&view,                      range<1>{1});
-  buffer<float,1>   buf_nearPlane(&stack_nearPlane,           range<1>{1});
-  buffer<float,1>   buf_farPlane (&stack_farPlane,            range<1>{1});
-  buffer<float,1>   buf_step     (&step,                      range<1>{1});
-  buffer<float,1>   buf_largestep(&largestep,                 range<1>{1});
-  buffer<float3,1>  buf_light  (const_cast<float3 *>(&stack_light),range<1>{1});
-  buffer<float3,1> buf_ambient(const_cast<float3*>(&stack_ambient),range<1>{1});
-
-  q.submit([&](handler &cgh) {
-
-    auto out  = ocl_output_render_buffer->get_access<sycl_a::mode::write>(cgh);
-    auto a_v_data = ocl_volume_data->get_access<sycl_a::mode::read_write>(cgh);
-    auto a_v_size      =        buf_v_size.get_access<sycl_a::mode::read>(cgh);
-    auto a_v_dim       =         buf_v_dim.get_access<sycl_a::mode::read>(cgh);
-    auto a_view                 = buf_view.get_access<sycl_a::mode::read>(cgh);
-    auto a_nearPlane    =    buf_nearPlane.get_access<sycl_a::mode::read>(cgh);
-    auto a_farPlane     =     buf_farPlane.get_access<sycl_a::mode::read>(cgh);
-    auto a_step        =          buf_step.get_access<sycl_a::mode::read>(cgh);
-    auto a_largestep   =     buf_largestep.get_access<sycl_a::mode::read>(cgh);
-    auto a_light         =       buf_light.get_access<sycl_a::mode::read>(cgh);
-    auto a_ambient         =   buf_ambient.get_access<sycl_a::mode::read>(cgh);
-
-    range<2> globalWorksize{computationSize.x(), computationSize.y()};
-    cgh.parallel_for<class T11>(globalWorksize,
-      [out,a_v_data,a_v_size,a_v_dim,a_view,a_nearPlane,a_farPlane,a_step,
-       a_largestep,a_light,a_ambient]
-      (item<2> ix)
-    {
-      renderVolumeKernel(ix, &out[0], &a_v_data[0], a_v_size[0], a_v_dim[0],
-                         a_view[0], a_nearPlane[0], a_farPlane[0], a_step[0],
-                         a_largestep[0], a_light[0], a_ambient[0]);
-    });
-  });
-#endif
-
   range<2> globalWorksize{computationSize.x(), computationSize.y()};
-	Matrix4 view = *(this->viewPose) * getInverseCameraMatrix(k);
+  Matrix4 view = *(this->viewPose) * getInverseCameraMatrix(k);
   dagr::run<renderVolumeKernel,0>(q,globalWorksize,
     dagr::wo(*ocl_output_render_buffer),
     *ocl_volume_data,volumeResolution,volumeDimensions,view,nearPlane,farPlane,
     step,largestep,light,ambient);
-
-  const auto csize = computationSize.x() * computationSize.y();
-  auto a_out = ocl_output_render_buffer->get_access<sycl_a::mode::read,
-                                                 sycl_a::target::host_buffer>();
-  dbg_show4(a_out, "trackRender", csize, 11);
 #else
 		renderVolumeKernel(out, outputSize, volume,
 				*(this->viewPose) * getInverseCameraMatrix(k), nearPlane,
@@ -2642,24 +2524,6 @@ void Kfusion::renderVolume(uchar4 * out, uint2 outputSize, int frame,
 void Kfusion::renderTrack(uchar4 * out, uint2 outputSize) {
 #ifdef SYCL
   update_ocl_output_render_buffer(outputSize);
-
-//  const auto r = range<1>{outputSize.x() * outputSize.y()};
-//	buffer<uchar4,1> ocl_output_render_buffer(out,r);
-
-#if 0
-  q.submit([&](handler &cgh) {
-
-    auto out   = ocl_output_render_buffer->get_access<sycl_a::mode::write>(cgh);
-    auto trackingResult=ocl_trackingResult->get_access<sycl_a::mode::read>(cgh);
-
-    range<2> globalWorksize{computationSize.x(), computationSize.y()};
-    cgh.parallel_for<class T10>(globalWorksize,
-      [out,trackingResult] (item<2> ix)
-    {
-	    renderTrackKernel(ix, &out[0], &trackingResult[0]);
-    });
-  });
-#endif
 
   range<2> globalWorksize{computationSize.x(), computationSize.y()};
   dagr::run<renderTrackKernel,0>(q,globalWorksize,
@@ -2682,8 +2546,6 @@ void Kfusion::renderDepth(uchar4 * out, uint2 outputSize) {
 #ifdef SYCL
   update_ocl_output_render_buffer(outputSize);
 
-//  const auto r = range<1>{outputSize.x() * outputSize.y()};
-//	buffer<uchar4,1> ocl_output_render_buffer(out,r);
   range<2> globalWorksize{computationSize.x(), computationSize.y()};
   dagr::run<renderDepthKernel,0>(q,globalWorksize,
     dagr::wo(*ocl_output_render_buffer),
