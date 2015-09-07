@@ -1875,10 +1875,7 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 #endif
 
 	oldPose = pose;
-	//const Matrix4 projectReference = getCameraMatrix(k) * inverse(raycastPose);
-  Matrix4 tmpA = getCameraMatrix(k);
-  Matrix4 tmpB = inverse(raycastPose);
-	const Matrix4 projectReference = tmpA * tmpB;
+	const Matrix4 projectReference = getCameraMatrix(k) * inverse(raycastPose);
 
   // iterations: a vector<int> set to {10,5,4} in Kfusion ctor (kernels.h)
   for (int level = iterations.size() - 1; level >= 0; --level) {

@@ -372,11 +372,11 @@ inline float4 operator*(const Matrix4 & M, const float4 & v) {
                      my_dot(M.data[3], v));
 }
 
-inline Matrix4 inverse(/*const*/ Matrix4 & A) {
+inline Matrix4 inverse(const Matrix4 & A) {
   static TooN::Matrix<4, 4, float> I = TooN::Identity;
 //  TooN::Matrix<4, 4, float> temp = TooN::wrapMatrix<4, 4>(&A.data[0].x());
   TooN::Matrix<4, 4, float> temp =
-    TooN::wrapMatrix<4, 4>(reinterpret_cast<float *>(&A));
+    TooN::wrapMatrix<4, 4>(reinterpret_cast<const float *>(&A));
   Matrix4 R;
 //This approach gives a segmentation fault:
 //TooN::wrapMatrix<4, 4>(&R.data[0].x()) = TooN::gaussian_elimination(temp, I);
