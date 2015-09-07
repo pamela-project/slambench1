@@ -87,39 +87,43 @@ static void newKfusion(bool resetPose) {
 	iterations.assign(default_iterations,
 			default_iterations + DEFAULT_ITERATION_COUNT);
 
+  auto &vr  = config->volume_resolution;
+  auto &vs  = config->volume_size;
+  auto &ipf = config->initial_pos_factor;
+
 	if (*kfusion_pp)
 		delete *kfusion_pp;
 	if (!resetPose)
 		*kfusion_pp = new Kfusion(
-				make_uint2(640 / config->compute_size_ratio,
-						480 / config->compute_size_ratio),
-				make_uint3(config->volume_resolution.x,
-						config->volume_resolution.x,
-						config->volume_resolution.x),
-				make_float3(config->volume_size.x, config->volume_size.x,
-						config->volume_size.x), init_pose, config->pyramid);
+      make_uint2(640 / config->compute_size_ratio,
+                 480 / config->compute_size_ratio),
+#ifdef SYCL
+      make_uint3(vr.x(), vr.x(), vr.x()), make_float3(vs.x(), vs.x(), vs.x()),
+#else
+      make_uint3(vr.x, vr.x, vr.x), make_float3(vs.x, vs.x, vs.x),
+#endif
+      init_pose, config->pyramid);
 	else {
-		trans = SE3<float>::exp(
-				makeVector(config->initial_pos_factor.x,
-						config->initial_pos_factor.y,
-						config->initial_pos_factor.z, 0, 0, 0)
-						* config->volume_size.x);
+#ifdef SYCL
+    float tmp = vs.x(); // TooN needs this type explicit; a cast also is fine.
+    trans = SE3<float>::exp(makeVector(ipf.x(),ipf.y(),ipf.z(),0,0,0) * tmp);
+#else
+    trans = SE3<float>::exp(makeVector(ipf.x,ipf.y,ipf.z,0,0,0) * vs.x);
+#endif
 		rot = makeVector(0.0, 0, 0, 0, 0, 0);
 		*kfusion_pp = new Kfusion(
-				make_uint2(640 / config->compute_size_ratio,
-						480 / config->compute_size_ratio),
-				make_uint3(config->volume_resolution.x,
-						config->volume_resolution.x,
-						config->volume_resolution.x),
-				make_float3(config->volume_size.x, config->volume_size.x,
-						config->volume_size.x),
-				config->initial_pos_factor
-						* make_float3(config->volume_size.x,
-								config->volume_size.x, config->volume_size.x),
-				config->pyramid);
+      make_uint2(640 / config->compute_size_ratio,
+                 480 / config->compute_size_ratio),
+#ifdef SYCL
+      make_uint3(vr.x(), vr.x(), vr.x()), make_float3(vs.x(), vs.x(), vs.x()),
+		  ipf	* make_float3(vs.x(), vs.x(), vs.x()), config->pyramid);
+#else
+      make_uint3(vr.x, vr.x, vr.x), make_float3(vs.x, vs.x, vs.x),
+		  ipf	* make_float3(vs.x, vs.x, vs.x), config->pyramid);
+#endif
 	}
-	appWindow->viewers->setBufferSize(640 / config->compute_size_ratio,
-			480 / config->compute_size_ratio);
+  appWindow->viewers->setBufferSize(640 / config->compute_size_ratio,
+                                    480 / config->compute_size_ratio);
 	reset = true;
 }
 static void continueWithNewKfusion() {
@@ -302,10 +306,16 @@ void qtLinkKinectQt(int argc, char *argv[], Kfusion **_kfusion,
 	config = _config;
 	reader_pp = _depthReader;
 	trans = SE3<float>(
+#ifdef SYCL
+			makeVector(config->initial_pos_factor.x() * config->volume_size.x(),
+                 config->initial_pos_factor.y() * config->volume_size.x(),
+                 config->initial_pos_factor.z() * config->volume_size.x(),
+#else
 			makeVector(config->initial_pos_factor.x * config->volume_size.x,
-					config->initial_pos_factor.y * config->volume_size.x,
-					config->volume_size.x * config->initial_pos_factor.z, 0, 0,
-					0));
+                 config->initial_pos_factor.y * config->volume_size.x,
+                 config->initial_pos_factor.z * config->volume_size.x,
+#endif
+                 0, 0, 0));
 	QApplication a(argc, argv);
 
 	//Create a new ApplicationWindow (which holds everything)
@@ -349,10 +359,18 @@ appWindow	->addButtonChoices("Compute Res",
 			&(config->compute_size_ratio), continueWithNewKfusion);
 	appWindow->addButtonChoices("Vol. Size", { "4.0mx4.0mx4.0m",
 			"2.0mx2.0mx2.0m", "1.0mx1.0mx1.0m" }, { 4.0, 2.0, 1.0 },
+#ifdef SYCL
+			(float *) (&(config->volume_size.x())), continueWithNewKfusion);
+#else
 			(float *) (&(config->volume_size.x)), continueWithNewKfusion);
+#endif
 	appWindow->addButtonChoices("Vol. Res", { "1024x1024x1024", "512x512x512",
 			"256x256x256", "128x128x128", "64x64x64", "32x32x32" }, { 1024, 512,
+#ifdef SYCL
+			256, 128, 64, 32 }, (int *) &(config->volume_resolution.x()),
+#else
 			256, 128, 64, 32 }, (int *) &(config->volume_resolution.x),
+#endif
 			continueWithNewKfusion);
 
 	appWindow->addButtonChoices("ICP threshold", { "1e-4", "1e-5", "1e-6" }, {
@@ -361,6 +379,18 @@ appWindow	->addButtonChoices("Compute Res",
 			"0.090", "0.180", "0.360" }, { 0.005, 0.011, 0.022, 0.045, 0.09,
 			0.18, 0.36 }, (float *) &(config->mu), continueWithNewKfusion);
 
+#ifdef SYCL
+	int cwidth = (
+			((*reader_pp) == NULL) ? 640 : ((*reader_pp)->getinputSize()).x())
+			/ config->compute_size_ratio;
+	int cheight = (
+			((*reader_pp) == NULL) ? 480 : ((*reader_pp)->getinputSize()).y())
+			/ config->compute_size_ratio;
+	int width =
+			(((*reader_pp) == NULL) ? 640 : ((*reader_pp)->getinputSize()).x());
+	int height = (
+			((*reader_pp) == NULL) ? 480 : ((*reader_pp)->getinputSize()).y());
+#else
 	int cwidth = (
 			((*reader_pp) == NULL) ? 640 : ((*reader_pp)->getinputSize()).x)
 			/ config->compute_size_ratio;
@@ -371,6 +401,7 @@ appWindow	->addButtonChoices("Compute Res",
 			(((*reader_pp) == NULL) ? 640 : ((*reader_pp)->getinputSize()).x);
 	int height = (
 			((*reader_pp) == NULL) ? 480 : ((*reader_pp)->getinputSize()).y);
+#endif
 
 	FImage rgbImage = { width, height, GL_RGB, GL_UNSIGNED_BYTE, inputRGB };
 	bool rgbDepthEnabled = true;

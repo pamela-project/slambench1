@@ -80,9 +80,15 @@ void storeStats(int frame, double *timings, float3 pos, bool tracked,
 	Stats.sample("rendering", timings[6] - timings[5], PerfStats::TIME);
 	Stats.sample("computation", timings[5] - timings[1], PerfStats::TIME);
 	Stats.sample("total", timings[6] - timings[0], PerfStats::TIME);
+#ifdef SYCL
+	Stats.sample("X", pos.x(), PerfStats::DISTANCE);
+	Stats.sample("Y", pos.y(), PerfStats::DISTANCE);
+	Stats.sample("Z", pos.z(), PerfStats::DISTANCE);
+#else
 	Stats.sample("X", pos.x, PerfStats::DISTANCE);
 	Stats.sample("Y", pos.y, PerfStats::DISTANCE);
 	Stats.sample("Z", pos.z, PerfStats::DISTANCE);
+#endif
 	Stats.sample("tracked", tracked, PerfStats::INT);
 	Stats.sample("integrated", integrated, PerfStats::INT);
 }
@@ -107,9 +113,15 @@ int main(int argc, char ** argv) {
 	//  =========  BASIC PARAMETERS  (input size / computation size )  =========
 	uint2 inputSize =
 			(reader != NULL) ? reader->getinputSize() : make_uint2(640, 480);
+#ifdef SYCL
+  uint2 computationSize = make_uint2(
+			inputSize.x() / config.compute_size_ratio,
+			inputSize.y() / config.compute_size_ratio);
+#else
 	const uint2 computationSize = make_uint2(
 			inputSize.x / config.compute_size_ratio,
 			inputSize.y / config.compute_size_ratio);
+#endif
 
 	//  =========  BASIC BUFFERS  (input / output )  =========
 
@@ -118,9 +130,13 @@ int main(int argc, char ** argv) {
 	int height = 480;
 	//we could allocate a more appropriate amount of memory (less) but this makes life hard if we switch up resolution later;
 	inputDepth = (uint16_t*) malloc(sizeof(uint16_t) * width * height);
+#ifdef SYCL
+	inputRGB = (uchar3*) malloc(sizeof(uchar3) * inputSize.x() * inputSize.y());
+#else
 	inputRGB = (uchar3*) malloc(sizeof(uchar3) * inputSize.x * inputSize.y);
-	depthRender = (uchar4*) malloc(sizeof(uchar4) * width * height);
-	trackRender = (uchar4*) malloc(sizeof(uchar4) * width * height);
+#endif
+	depthRender  = (uchar4*) malloc(sizeof(uchar4) * width * height);
+	trackRender  = (uchar4*) malloc(sizeof(uchar4) * width * height);
 	volumeRender = (uchar4*) malloc(sizeof(uchar4) * width * height);
 
 	float3 init_pose = config.initial_pos_factor * config.volume_size;

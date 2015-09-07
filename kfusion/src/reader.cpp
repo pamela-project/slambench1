@@ -66,25 +66,43 @@ DepthReader *createReader(Configuration *config, std::string filename) {
 						std::vector<std::string> dims = split(value, ',');
 
 						if (dims.size() == 3) {
-							config->volume_resolution.x = ::atoi(
-									dims[0].c_str());
-							config->volume_resolution.y = ::atoi(
-									dims[1].c_str());
-							config->volume_resolution.z = ::atoi(
-									dims[2].c_str());
+#ifdef SYCL
+							config->volume_resolution.x() = ::atoi(dims[0].c_str());
+							config->volume_resolution.y() = ::atoi(dims[1].c_str());
+							config->volume_resolution.z() = ::atoi(dims[2].c_str());
+#else
+							config->volume_resolution.x = ::atoi(dims[0].c_str());
+							config->volume_resolution.y = ::atoi(dims[1].c_str());
+							config->volume_resolution.z = ::atoi(dims[2].c_str());
+#endif
 						} else {
+#ifdef SYCL
+							if (dims.size() == 0)
+								config->volume_resolution.x() = 256;
+							else
+								config->volume_resolution.x() = ::atoi(dims[0].c_str());
+							config->volume_resolution.y() = config->volume_size.x();
+							config->volume_resolution.z() = config->volume_size.x();
+#else
 							if (dims.size() == 0)
 								config->volume_resolution.x = 256;
 							else
-								config->volume_resolution.x = ::atoi(
-										dims[0].c_str());
+								config->volume_resolution.x = ::atoi(dims[0].c_str());
 							config->volume_resolution.y = config->volume_size.x;
 							config->volume_resolution.z = config->volume_size.x;
+#endif
 						}
+#ifdef SYCL
+						std::cout << "volumetric-size: "
+								<< config->volume_resolution.x() << "x"
+								<< config->volume_resolution.y() << "x"
+								<< config->volume_resolution.z() << std::endl;
+#else
 						std::cout << "volumetric-size: "
 								<< config->volume_resolution.x << "x"
 								<< config->volume_resolution.y << "x"
 								<< config->volume_resolution.z << std::endl;
+#endif
 						continue;
 					}
 
@@ -92,10 +110,25 @@ DepthReader *createReader(Configuration *config, std::string filename) {
 						std::vector<std::string> dims = split(value, ',');
 
 						if (dims.size() == 3) {
+#ifdef SYCL
+							config->volume_size.x() = ::atof(dims[0].c_str());
+							config->volume_size.y() = ::atof(dims[1].c_str());
+							config->volume_size.z() = ::atof(dims[2].c_str());
+#else
 							config->volume_size.x = ::atof(dims[0].c_str());
 							config->volume_size.y = ::atof(dims[1].c_str());
 							config->volume_size.z = ::atof(dims[2].c_str());
+#endif
 						} else {
+#ifdef SYCL
+							if (dims.size() == 0)
+								config->volume_size.x() = 2.0;
+							else {
+								config->volume_size.x() = ::atof(dims[0].c_str());
+								config->volume_size.y() = config->volume_size.x();
+								config->volume_size.z() = config->volume_size.x();
+							}
+#else
 							if (dims.size() == 0)
 								config->volume_size.x = 2.0;
 							else {
@@ -103,27 +136,42 @@ DepthReader *createReader(Configuration *config, std::string filename) {
 								config->volume_size.y = config->volume_size.x;
 								config->volume_size.z = config->volume_size.x;
 							}
+#endif
 						}
+#ifdef SYCL
+						std::cout << "volume-size: " << config->volume_size.x()
+								<< "x" << config->volume_size.y() << "x"
+								<< config->volume_size.z() << std::endl;
+#else
 						std::cout << "volume-size: " << config->volume_size.x
 								<< "x" << config->volume_size.y << "x"
 								<< config->volume_size.z << std::endl;
+#endif
 						continue;
 					}
 
 					if (key == "initial-position") {
 						std::vector<std::string> dims = split(value, ',');
 						if (dims.size() == 3) {
-							config->initial_pos_factor.x = ::atof(
-									dims[0].c_str());
-							config->initial_pos_factor.y = ::atof(
-									dims[1].c_str());
-							config->initial_pos_factor.z = ::atof(
-									dims[2].c_str());
+#ifdef SYCL
+							config->initial_pos_factor.x() = ::atof(dims[0].c_str());
+							config->initial_pos_factor.y() = ::atof(dims[1].c_str());
+							config->initial_pos_factor.z() = ::atof(dims[2].c_str());
+							std::cout << "initial-position: "
+									<< config->initial_pos_factor.x() << ", "
+									<< config->initial_pos_factor.y() << ", "
+									<< config->initial_pos_factor.z()
+									<< std::endl;
+#else
+							config->initial_pos_factor.x = ::atof(dims[0].c_str());
+							config->initial_pos_factor.y = ::atof(dims[1].c_str());
+							config->initial_pos_factor.z = ::atof(dims[2].c_str());
 							std::cout << "initial-position: "
 									<< config->initial_pos_factor.x << ", "
 									<< config->initial_pos_factor.y << ", "
 									<< config->initial_pos_factor.z
 									<< std::endl;
+#endif
 						} else {
 							std::cerr
 									<< "ERROR: initial-position  specified with incorrect data. (was "
@@ -135,6 +183,17 @@ DepthReader *createReader(Configuration *config, std::string filename) {
 					if (key == "camera") {
 						std::vector<std::string> dims = split(value, ',');
 						if (dims.size() == 4) {
+#ifdef SYCL
+							config->camera.x() = ::atof(dims[0].c_str());
+							config->camera.y() = ::atof(dims[1].c_str());
+							config->camera.z() = ::atof(dims[2].c_str());
+							config->camera.w() = ::atof(dims[3].c_str());
+							config->camera_overrided = true;
+							std::cout << "camera: " << config->camera.x() << ","
+									<< config->camera.y() << ","
+									<< config->camera.z() << ","
+									<< config->camera.w() << std::endl;
+#else
 							config->camera.x = ::atof(dims[0].c_str());
 							config->camera.y = ::atof(dims[1].c_str());
 							config->camera.z = ::atof(dims[2].c_str());
@@ -144,6 +203,7 @@ DepthReader *createReader(Configuration *config, std::string filename) {
 									<< config->camera.y << ","
 									<< config->camera.z << ","
 									<< config->camera.w << std::endl;
+#endif
 						} else {
 							std::cerr
 									<< "ERROR: camera specified with incorrect data. (was "
@@ -159,8 +219,7 @@ DepthReader *createReader(Configuration *config, std::string filename) {
 						}
 						config->input_file = value;
 						filename = value;
-						std::cout << "input-file: " << config->input_file
-								<< std::endl;
+						std::cout << "input-file: " << config->input_file << std::endl;
 						newFile = true;
 						continue;
 					}
