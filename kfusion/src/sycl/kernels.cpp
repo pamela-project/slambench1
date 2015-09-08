@@ -452,6 +452,49 @@ void depth2vertexKernel(float3* vertex, const float * depth, uint2 imageSize,
 
 #endif // SYCL
 
+#ifdef SYCL
+
+struct vertex2normalKernel {
+
+// normal and vertex are actually arrays of float3
+template <typename T>
+static void kernel(item<2> ix,       T *normal, const uint2 normalSize,
+                               const T *verte_, const uint2 vertexSize)
+{
+  using const_float3_as1_t = const __attribute__((address_space(1))) float3&;
+  static_assert(std::is_same<decltype(verte_[0]),const_float3_as1_t>::value,"");
+
+  // otherwise x=vertex[0] is an error. See bugs/const_vec_ptr.cpp
+  const float3 *vertex = verte_;
+  // auto vertex = verte_; // more generic?
+  static_assert(std::is_same<decltype(vertex[0]),const float3&>::value,"");
+
+  uint2  pixel{ix[0],ix[1]};
+  uint2  vleft{max((int)(pixel.x())-1,0),                           pixel.y()};
+  uint2 vright{min((int)(pixel.x())+1, (int)ix.get_range()[0]-1),   pixel.y()};
+  uint2    vup{pixel.x(),                           max((int)(pixel.y())-1,0)};
+  uint2  vdown{pixel.x(),   min((int)(pixel.y())+1, (int)ix.get_range()[1]-1)};
+
+  /*const*/ float3 left  = vertex[vleft.x()  + ix.get_range()[0] * vleft.y()];
+  /*const*/ float3 right = vertex[vright.x() + ix.get_range()[0] * vright.y()];
+  /*const*/ float3 up    = vertex[vup.x()    + ix.get_range()[0] * vup.y()];
+  /*const*/ float3 down  = vertex[vdown.x()  + ix.get_range()[0] * vdown.y()];
+
+  if (left.z() == 0 || right.z() == 0|| up.z() == 0 || down.z() == 0) {
+    float3 invalid3{INVALID,INVALID,INVALID};
+    normal[pixel.x() + ix.get_range()[0] * pixel.y()] = invalid3;
+    return;
+  }
+
+  const float3 dxv = right - left;
+  const float3 dyv = down  - up;
+  normal[pixel.x() + ix.get_range()[0] * pixel.y()] = normalize(cross(dyv,dxv));
+}
+
+}; // struct
+
+#else // SYCL
+
 void vertex2normalKernel(float3 * out, const float3 * in, uint2 imageSize) {
 	TICK();
 	unsigned int x, y;
@@ -497,6 +540,8 @@ void vertex2normalKernel(float3 * out, const float3 * in, uint2 imageSize) {
 	}
 	TOCK("vertex2normalKernel", imgSize_x * imgSize_y);
 }
+
+#endif // SYCL
 
 void new_reduce(int blockIndex, float * out, TrackData* J, /*const*/ uint2 Jsize,
 		/*const*/ uint2 size) {
@@ -1890,46 +1935,19 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 		float4 tmp{k / float(1 << i)};
 		Matrix4 invK = getInverseCameraMatrix(tmp);   // Needs a non-const (tmp)
     const uint2    img_sz_ui2{localimagesize.x(),localimagesize.y()};
-		const range<2>  imageSize{localimagesize.x(),localimagesize.y()};
-    auto &depth = *const_cast<const buffer<float,1> *>(ocl_ScaledDepth[i]);
-    dagr::run<depth2vertexKernel,0>(q,imageSize,*ocl_inputVertex[i],img_sz_ui2,
-                                    depth,img_sz_ui2,invK);
-#if 0
+    const range<2>  imageSize{localimagesize.x(),localimagesize.y()};
+    auto &depth  = *const_cast<const buffer<float,1> *>(ocl_ScaledDepth[i]);
+    dagr::run<depth2vertexKernel,0>(q,imageSize,
+      *ocl_inputVertex[i],img_sz_ui2,depth,img_sz_ui2,invK);
 
-		float4 tmp{k / float(1 << i)};
-		Matrix4 invK = getInverseCameraMatrix(tmp);   // Needs a non-const (tmp)
-    buffer<Matrix4,1> buf_invK(&invK,range<1>{1});
-		const range<2> imageSize{localimagesize.x(),localimagesize.y()};
-
-
-    q.submit([&](handler &cgh) {
-      auto depth  = ocl_ScaledDepth[i]->get_access<sycl_a::mode::read>(cgh);
-      auto vertex = ocl_inputVertex[i]->get_access<sycl_a::mode::read_write>(cgh);
-      auto a_invK =            buf_invK.get_access<sycl_a::mode::read>(cgh);
-      cgh.parallel_for<class T3>(imageSize, [depth,vertex,a_invK](item<2> ix) {
-        Matrix4 &invK = a_invK[0]; // auto fails here when var used as an arg
-        int2   pixel{ix[0],ix[1]};
-        float3 vert{ix[0],ix[1],1.0f};
-        float3 res{0,0,0};
-
-        auto elem = depth[pixel.x() + ix.get_range()[0] * pixel.y()];
-        if (elem > 0) {
-          float3 tmp3{pixel.x(), pixel.y(), 1.f};
-//          res = elem * myrotate(invK, tmp3); // SYCL needs this (*) operator
-          float3 rot = myrotate(invK, tmp3);
-          res.x() = elem * rot.x();
-          res.y() = elem * rot.y();
-          res.z() = elem * rot.z();
-        }
-
-        // cl::sycl::vstore3(res, pixel.x() + ix.get_range()[0] * pixel.y(),vertex); 	// vertex[pixel] = 
-        // This use of 4*32 bits data is fine; but if copied back, ensure data
-        // is similarly aligned
-        vertex[pixel.x() + ix.get_range()[0] * pixel.y()] = res;
-      });
-    });
+#if 1
+    const range<2>  imageSize2{localimagesize.x(),localimagesize.y()};
+    auto &vertex = *const_cast<const buffer<float3,1> *>(ocl_inputVertex[i]);
+    dagr::run<vertex2normalKernel,0>(q,imageSize2,
+      *ocl_inputNormal[i],img_sz_ui2,vertex,img_sz_ui2);
 #endif
 
+#if 0
     buffer<Matrix4,1> buf_invK(&invK,range<1>{1}); // used to be above
     q.submit([&](handler &cgh) {
       auto normal=ocl_inputNormal[i]->get_access<sycl_a::mode::read_write>(cgh);
@@ -1945,6 +1963,10 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
                                     (int)ix.get_range()[1]-1)};
 
         // Not const as the x(), y() etc. methods are not marked as const
+        static_assert(std::is_same<
+                        __attribute__((address_space(1))) float3&,
+                        decltype(vertex[0])
+                      >::value,"");
         /*const*/ float3 left =
           vertex[vleft.x()  + ix.get_range()[0] * vleft.y()];
         /*const*/ float3 right = 
@@ -1966,6 +1988,8 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
           normalize(cross(dyv,dxv));
       });
     });
+#endif
+
 		localimagesize = make_uint2(localimagesize.x() / 2, localimagesize.y() / 2);
 #else
 		Matrix4 invK = getInverseCameraMatrix(k / float(1 << i));
