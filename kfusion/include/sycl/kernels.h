@@ -38,8 +38,10 @@ void vertex2normalKernel(float3 * out, const float3 * in, uint2 imageSize);
 void mm2metersKernel(float * out, uint2 outSize, const ushort * in,
 		uint2 inSize);
 
+#ifndef SYCL
 void halfSampleRobustImageKernel(float* out, const float* in, uint2 imageSize,
 		const float e_d, const int r);
+#endif
 
 bool updatePoseKernel(Matrix4 & pose, const float * output,
 		float icp_threshold);

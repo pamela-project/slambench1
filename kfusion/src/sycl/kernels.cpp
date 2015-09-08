@@ -820,6 +820,41 @@ void mm2metersKernel(float *out, uint2 outSize, const ushort *in, uint2 inSize)
 	TOCK("mm2metersKernel", outSize_x * outSize_y);
 }
 
+#ifdef SYCL
+struct halfSampleRobustImageKernel {
+
+template <typename T>
+static void kernel(item<2> ix, T *out, const T *in,
+                   /*const*/ uint2 inSize, const float e_d, const int r)
+{
+  uint2 pixel{ix[0],ix[1]};
+  uint2 outSize{inSize.x() / 2, inSize.y() / 2};
+
+  /*const*/ uint2 centerPixel{2*pixel.x(), 2*pixel.y()};
+
+  float sum = 0.0f;
+  float t   = 0.0f;
+  const float center = in[centerPixel.x()+centerPixel.y()*inSize.x()];
+  for(int i = -r + 1; i <= r; ++i) {
+    for(int j = -r + 1; j <= r; ++j) {
+      const int2 x{centerPixel.x()+j, centerPixel.y()+i};
+      const int2 minval{0,0};
+      const int2 maxval{inSize.x()-1, inSize.y()-1};
+            int2 from{clamp(x,minval,maxval)};
+      float current = in[from.x() + from.y() * inSize.x()];
+      if (fabs(current - center) < e_d) {
+        sum += 1.0f;
+        t += current;
+      }
+    }
+  }
+  out[pixel.x() + pixel.y() * outSize.x()] = t / sum;
+}
+
+}; // struct
+
+#else
+
 void halfSampleRobustImageKernel(float* out, const float* in, uint2 inSize,
 		const float e_d, const int r) {
 	TICK();
@@ -866,6 +901,7 @@ void halfSampleRobustImageKernel(float* out, const float* in, uint2 inSize,
 	}
 	TOCK("halfSampleRobustImageKernel", outSize_x * outSize_y);
 }
+#endif
 
 #ifdef SYCL
 template <typename F3>
@@ -1752,6 +1788,13 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 		cl::sycl::uint2 outSize{computationSize.x() / (int) ::pow(2, i),
                             computationSize.y() / (int) ::pow(2, i)};
 
+    auto r   = range<2>{outSize.x(),outSize.y()};
+    auto out = dagr::wo(*ocl_ScaledDepth[i]);
+		uint2 inSize{outSize.x()*2,outSize.y()*2}; // Seems redundant
+    auto in  = *const_cast<const buffer<float,1> *>(ocl_ScaledDepth[i-1]);
+    dagr::run<halfSampleRobustImageKernel,0>(q,r,out,in,inSize,e_delta*3,1);
+
+#if 0
 		float e_d = e_delta * 3;
 		int r = 1;
 		uint2 inSize{outSize.x()*2,outSize.y()*2};
@@ -1797,6 +1840,7 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
           out[pixel.x() + pixel.y() * outSize.x()] = t / sum;
       });
     });
+#endif
 #else
 		halfSampleRobustImageKernel(ScaledDepth[i], ScaledDepth[i - 1],
 				make_uint2(computationSize.x / (int) pow(2, i - 1),
@@ -2425,7 +2469,6 @@ bool Kfusion::integration(float4 k, uint integration_rate, float mu, uint frame)
 		const Matrix4 K = getCameraMatrix(k);
 		const float3 delta = myrotate(invTrack,
 				float3{0, 0, volumeDimensions.z() / volumeResolution.z()});
-		const float3 cameraDelta = myrotate(K, delta);
 
     // The SYCL lambda for integrateKernel demonstrates verbosity
     dagr::run<integrateKernel,0>(q, globalWorksize,
