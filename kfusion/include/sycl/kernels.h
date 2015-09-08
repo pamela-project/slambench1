@@ -29,11 +29,13 @@ void depth2vertexKernel(float3* vertex, const float * depth, uint2 imageSize,
 void reduceKernel(float * out, TrackData* J, const uint2 Jsize,
 		const uint2 size);
 
+#ifndef SYCL
 void trackKernel(TrackData* output, const float3* inVertex,
 		const float3* inNormal, uint2 inSize, const float3* refVertex,
 		const float3* refNormal, uint2 refSize, const Matrix4 Ttrack,
 		const Matrix4 view, const float dist_threshold,
 		const float normal_threshold);
+#endif
 
 #ifndef SYCL
 void vertex2normalKernel(float3 * out, const float3 * in, uint2 imageSize);
