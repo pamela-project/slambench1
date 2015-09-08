@@ -74,8 +74,8 @@ buffer<float,1>             *ocl_reduce_output_buffer = NULL;
 buffer<TrackData,1>         *ocl_trackingResult       = NULL;
 buffer<float,1>             *ocl_FloatDepth           = NULL;
 buffer<float,1>            **ocl_ScaledDepth          = NULL;
-buffer<float3,1> **ocl_inputVertex          = NULL;
-buffer<float3,1> **ocl_inputNormal          = NULL;
+buffer<float3,1>           **ocl_inputVertex          = NULL;
+buffer<float3,1>           **ocl_inputNormal          = NULL;
 //buffer<ushort,1> *ocl_depth_buffer = NULL; // cl_mem ocl_depth_buffer
 /////////// todo 
 
@@ -357,32 +357,100 @@ void bilateralFilterKernel(float* out, const float* in, uint2 size,
 		TOCK("bilateralFilterKernel", size_x * size_y);
 }
 
+#ifdef SYCL
+template <typename F3>
+inline F3 myrotate(/*const*/ Matrix4 M, const F3 v) {
+	return F3{my_dot(F3{M.data[0].x(), M.data[0].y(), M.data[0].z()}, v),
+            my_dot(F3{M.data[1].x(), M.data[1].y(), M.data[1].z()}, v),
+            my_dot(F3{M.data[2].x(), M.data[2].y(), M.data[2].z()}, v)};
+}
+
+template <typename F3>
+inline F3 Mat4TimeFloat3(/*const*/ Matrix4 M, const F3 v) {
+	return
+  F3{cl::sycl::dot(F3{M.data[0].x(), M.data[0].y(), M.data[0].z()}, v) + M.data[0].w(),
+     cl::sycl::dot(F3{M.data[1].x(), M.data[1].y(), M.data[1].z()}, v) + M.data[1].w(),
+     cl::sycl::dot(F3{M.data[2].x(), M.data[2].y(), M.data[2].z()}, v) + M.data[2].w()};
+}
+
+template <typename T>
+inline void setVolume(Volume<T> v, uint3 pos, float2 d) {
+	v.data[pos.x() +
+         pos.y() * v.size.x() +
+         pos.z() * v.size.x() * v.size.y()] = short2{d.x() * 32766.0f, d.y()};
+}
+
+template <typename T>
+inline float3 posVolume(/*const*/ Volume<T> v, /*const*/ uint3 p) {
+	return float3{(p.x() + 0.5f) * v.dim.x() / v.size.x(),
+                (p.y() + 0.5f) * v.dim.y() / v.size.y(),
+                (p.z() + 0.5f) * v.dim.z() / v.size.z()};
+}
+
+template <typename T>
+inline float2 getVolume(/*const*/ Volume<T> v, /*const*/ uint3 pos) {
+  /*const*/ short2 d = v.data[pos.x() +   // Making d a ref fixes it.
+                              pos.y() * v.size.x() +
+                              pos.z() * v.size.x() * v.size.y()];
+	return float2{1,2};//d.x() * 0.00003051944088f, d.y()}; //  / 32766.0f
+}
+#endif
+
+#ifdef SYCL
+
+struct depth2vertexKernel {
+
+// vertex is actually an array of float3 (T == float3).
+// vertexSize and depthSize are unused.
+template <typename T, typename U>
+static void kernel(item<2> ix, T *vertex, const uint2 vertexSize,
+                   const U *depth, const uint2 depthSize, const Matrix4 invK)
+{
+  int2   pixel{ix[0],ix[1]};
+  float3 vert{ix[0],ix[1],1.0f};
+  float3 res{0,0,0};
+
+  float elem = depth[pixel.x() + ix.get_range()[0] * pixel.y()];
+  if (elem > 0) {
+    float3 tmp3{pixel.x(), pixel.y(), 1.f};
+//          res = elem * myrotate(invK, tmp3); // SYCL needs this (*) operator
+    float3 rot = myrotate(invK, tmp3);
+    res.x() = elem * rot.x();
+    res.y() = elem * rot.y();
+    res.z() = elem * rot.z();
+  }
+
+  // cl::sycl::vstore3(res, pixel.x() + ix.get_range()[0] * pixel.y(),vertex); 	// vertex[pixel] = 
+  // This use of 4*32 bits data is fine; but if copied back, ensure data
+  // is similarly aligned
+  vertex[pixel.x() + ix.get_range()[0] * pixel.y()] = res;
+}
+
+}; // struct
+
+#else // SYCL
+
 void depth2vertexKernel(float3* vertex, const float * depth, uint2 imageSize,
 		const Matrix4 invK) {
 	TICK();
 	unsigned int x, y;
-#ifdef SYCL
-	const uint imgSize_x = imageSize.x(); const uint imgSize_y = imageSize.y();
-#else
-	const uint imgSize_x = imageSize.x;   const uint imgSize_y = imageSize.y;
-#endif
-
 #pragma omp parallel for \
          shared(vertex), private(x, y)
-	for (y = 0; y < imgSize_y; y++) {
-		for (x = 0; x < imgSize_x; x++) {
+	for (y = 0; y < imageSize.y; y++) {
+		for (x = 0; x < imageSize.x; x++) {
 
-			if (depth[x + y * imgSize_x] > 0) {
-				vertex[x + y * imgSize_x] = depth[x + y * imgSize_x]
+			if (depth[x + y * imageSize.x] > 0) {
+				vertex[x + y * imageSize.x] = depth[x + y * imageSize.x]
 						* (rotate(invK, make_float3(x, y, 1.f)));
-// float * float3
 			} else {
-				vertex[x + y * imgSize_x] = make_float3(0);
+				vertex[x + y * imageSize.x] = make_float3(0);
 			}
 		}
 	}
-	TOCK("depth2vertexKernel", imgSize_x * imgSize_y);
+	TOCK("depth2vertexKernel", imageSize.x * imageSize.y);
 }
+
+#endif // SYCL
 
 void vertex2normalKernel(float3 * out, const float3 * in, uint2 imageSize) {
 	TICK();
@@ -821,6 +889,7 @@ void mm2metersKernel(float *out, uint2 outSize, const ushort *in, uint2 inSize)
 }
 
 #ifdef SYCL
+
 struct halfSampleRobustImageKernel {
 
 template <typename T>
@@ -853,95 +922,46 @@ static void kernel(item<2> ix, T *out, const T *in,
 
 }; // struct
 
-#else
+#else // SYCL
 
 void halfSampleRobustImageKernel(float* out, const float* in, uint2 inSize,
 		const float e_d, const int r) {
 	TICK();
-//	uint2 outSize = make_uint2(inSize.x() / 2, inSize.y() / 2);
-#ifdef SYCL
-	const uint inSize_x  = inSize.x(); const uint inSize_y = inSize.y();
-#else
-	const uint inSize_x  = inSize.x;   const uint inSize_y = inSize.y;
-#endif
-	const uint outSize_x = inSize_x / 2;
-  const uint outSize_y = inSize_y / 2;
+	uint2 outSize = make_uint2(inSize.x / 2, inSize.y / 2);
 	unsigned int y;
 #pragma omp parallel for \
         shared(out), private(y)
-	for (y = 0; y < outSize_y; y++) {
-		for (unsigned int x = 0; x < outSize_x; x++) {
-//			uint2 pixel = make_uint2(x, y);
-//			/*const*/ uint2 centerPixel = 2 * pixel;
-      const uint centerPixel_x = 2 * x;
-      const uint centerPixel_y = 2 * y;
+	for (y = 0; y < outSize.y; y++) {
+		for (unsigned int x = 0; x < outSize.x; x++) {
+			uint2 pixel = make_uint2(x, y);
+			const uint2 centerPixel = 2 * pixel;
 
 			float sum = 0.0f;
 			float t = 0.0f;
-			const float center = in[centerPixel_x + centerPixel_y * inSize_x];
+			const float center = in[centerPixel.x
+					+ centerPixel.y * inSize.x];
 			for (int i = -r + 1; i <= r; ++i) {
 				for (int j = -r + 1; j <= r; ++j) {
 					uint2 cur = make_uint2(
 							clamp(
-									make_int2(centerPixel_x + j, centerPixel_y + i), make_int2(0),
-									make_int2(2 * outSize_x - 1, 2 * outSize_y - 1)));
-#ifdef SYCL
-					float current = in[cur.x() + cur.y() * inSize_x];
-#else
-					float current = in[cur.x   + cur.y   * inSize_x];
-#endif
+									make_int2(centerPixel.x + j,
+											centerPixel.y + i), make_int2(0),
+									make_int2(2 * outSize.x - 1,
+											2 * outSize.y - 1)));
+					float current = in[cur.x + cur.y * inSize.x];
 					if (fabsf(current - center) < e_d) {
 						sum += 1.0f;
 						t += current;
 					}
 				}
 			}
-			out[x + y * outSize_x] = t / sum;
+			out[pixel.x + pixel.y * outSize.x] = t / sum;
 		}
 	}
-	TOCK("halfSampleRobustImageKernel", outSize_x * outSize_y);
-}
-#endif
-
-#ifdef SYCL
-template <typename F3>
-inline F3 myrotate(/*const*/ Matrix4 M, const F3 v) {
-	return F3{my_dot(F3{M.data[0].x(), M.data[0].y(), M.data[0].z()}, v),
-            my_dot(F3{M.data[1].x(), M.data[1].y(), M.data[1].z()}, v),
-            my_dot(F3{M.data[2].x(), M.data[2].y(), M.data[2].z()}, v)};
+	TOCK("halfSampleRobustImageKernel", outSize.x * outSize.y);
 }
 
-template <typename F3>
-inline F3 Mat4TimeFloat3(/*const*/ Matrix4 M, const F3 v) {
-	return
-  F3{cl::sycl::dot(F3{M.data[0].x(), M.data[0].y(), M.data[0].z()}, v) + M.data[0].w(),
-     cl::sycl::dot(F3{M.data[1].x(), M.data[1].y(), M.data[1].z()}, v) + M.data[1].w(),
-     cl::sycl::dot(F3{M.data[2].x(), M.data[2].y(), M.data[2].z()}, v) + M.data[2].w()};
-}
-
-template <typename T>
-inline void setVolume(Volume<T> v, uint3 pos, float2 d) {
-	v.data[pos.x() +
-         pos.y() * v.size.x() +
-         pos.z() * v.size.x() * v.size.y()] = short2{d.x() * 32766.0f, d.y()};
-}
-
-template <typename T>
-inline float3 posVolume(/*const*/ Volume<T> v, /*const*/ uint3 p) {
-	return float3{(p.x() + 0.5f) * v.dim.x() / v.size.x(),
-                (p.y() + 0.5f) * v.dim.y() / v.size.y(),
-                (p.z() + 0.5f) * v.dim.z() / v.size.z()};
-}
-
-template <typename T>
-inline float2 getVolume(/*const*/ Volume<T> v, /*const*/ uint3 pos) {
-  /*const*/ short2 d = v.data[pos.x() +   // Making d a ref fixes it.
-                              pos.y() * v.size.x() +
-                              pos.z() * v.size.x() * v.size.y()];
-	return float2{1,2};//d.x() * 0.00003051944088f, d.y()}; //  / 32766.0f
-}
-#endif
-
+#endif // SYCL
 
 #ifdef SYCL
 
@@ -1791,7 +1811,7 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
     auto r   = range<2>{outSize.x(),outSize.y()};
     auto out = dagr::wo(*ocl_ScaledDepth[i]);
 		uint2 inSize{outSize.x()*2,outSize.y()*2}; // Seems redundant
-    auto in  = *const_cast<const buffer<float,1> *>(ocl_ScaledDepth[i-1]);
+    auto &in = *const_cast<const buffer<float,1> *>(ocl_ScaledDepth[i-1]);
     dagr::run<halfSampleRobustImageKernel,0>(q,r,out,in,inSize,e_delta*3,1);
 
 #if 0
@@ -1868,9 +1888,19 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 	for (unsigned int i = 0; i < iterations.size(); ++i) {
 #ifdef SYCL
 		float4 tmp{k / float(1 << i)};
-		Matrix4 invK = getInverseCameraMatrix(tmp);
+		Matrix4 invK = getInverseCameraMatrix(tmp);   // Needs a non-const (tmp)
+    const uint2    img_sz_ui2{localimagesize.x(),localimagesize.y()};
+		const range<2>  imageSize{localimagesize.x(),localimagesize.y()};
+    auto &depth = *const_cast<const buffer<float,1> *>(ocl_ScaledDepth[i]);
+    dagr::run<depth2vertexKernel,0>(q,imageSize,*ocl_inputVertex[i],img_sz_ui2,
+                                    depth,img_sz_ui2,invK);
+#if 0
+
+		float4 tmp{k / float(1 << i)};
+		Matrix4 invK = getInverseCameraMatrix(tmp);   // Needs a non-const (tmp)
     buffer<Matrix4,1> buf_invK(&invK,range<1>{1});
-		range<2> imageSize{localimagesize.x(),localimagesize.y()};
+		const range<2> imageSize{localimagesize.x(),localimagesize.y()};
+
 
     q.submit([&](handler &cgh) {
       auto depth  = ocl_ScaledDepth[i]->get_access<sycl_a::mode::read>(cgh);
@@ -1898,7 +1928,9 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
         vertex[pixel.x() + ix.get_range()[0] * pixel.y()] = res;
       });
     });
+#endif
 
+    buffer<Matrix4,1> buf_invK(&invK,range<1>{1}); // used to be above
     q.submit([&](handler &cgh) {
       auto normal=ocl_inputNormal[i]->get_access<sycl_a::mode::read_write>(cgh);
       auto vertex = ocl_inputVertex[i]->get_access<sycl_a::mode::read>(cgh);
