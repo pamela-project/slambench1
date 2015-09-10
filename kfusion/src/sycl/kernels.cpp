@@ -691,9 +691,86 @@ void new_reduce(int blockIndex, float * out, TrackData* J, const uint2 Jsize,
 struct reduceKernel {
 
 template <typename T, typename U, typename V>
-static void kernel(nd_item<1> ix, T *out, const U *J,
-                   const uint2 JSize, const uint2 size, V *S)
+static void kernel(nd_item<1> ix, T *out, const U *J_,
+                   /*const*/ uint2 JSize, /*const*/ uint2 size, V *S)
 {
+  const TrackData *J = J_;  // See const_vec_ptr.cpp
+
+  uint blockIdx  = ix.get_group(0);
+  uint blockDim  = ix.get_local_range(0);
+  uint threadIdx = ix.get_local(0);
+  //uint gridDim   = ix.get_num_groups(0); // bug: always 0
+  uint gridDim   = ix.get_global_range(0) / ix.get_local_range(0);
+
+  const uint sline = threadIdx;
+
+  float         sums[32];
+  float *jtj  = sums + 7;
+  float *info = sums + 28;
+
+  for (uint i = 0; i < 32; ++i)
+    sums[i] = 0.0f;
+
+  for (uint y = blockIdx; y < size.y(); y += gridDim) {
+    for (uint x = sline; x < size.x(); x += blockDim) {
+      const TrackData row = J[x + y * JSize.x()];
+      if (row.result < 1) {
+        info[1] += row.result == -4 ? 1 : 0;
+        info[2] += row.result == -5 ? 1 : 0;
+        info[3] += row.result  > -4 ? 1 : 0;
+        continue;
+      }
+
+      // Error part
+      sums[0] += row.error * row.error;
+
+      // JTe part
+      for (int i = 0; i < 6; ++i)
+        sums[i+1] += row.error * row.J[i];
+
+      jtj[0] += row.J[0] * row.J[0];
+      jtj[1] += row.J[0] * row.J[1];
+      jtj[2] += row.J[0] * row.J[2];
+      jtj[3] += row.J[0] * row.J[3];
+      jtj[4] += row.J[0] * row.J[4];
+      jtj[5] += row.J[0] * row.J[5];
+
+      jtj[6] += row.J[1] * row.J[1];
+      jtj[7] += row.J[1] * row.J[2];
+      jtj[8] += row.J[1] * row.J[3];
+      jtj[9] += row.J[1] * row.J[4];
+      jtj[10] += row.J[1] * row.J[5];
+
+      jtj[11] += row.J[2] * row.J[2];
+      jtj[12] += row.J[2] * row.J[3];
+      jtj[13] += row.J[2] * row.J[4];
+      jtj[14] += row.J[2] * row.J[5];
+
+      jtj[15] += row.J[3] * row.J[3];
+      jtj[16] += row.J[3] * row.J[4];
+      jtj[17] += row.J[3] * row.J[5];
+
+      jtj[18] += row.J[4] * row.J[4];
+      jtj[19] += row.J[4] * row.J[5];
+
+      jtj[20] += row.J[5] * row.J[5];
+      // extra info here
+      info[0] += 1;
+    }
+  }
+
+  // copy over to shared memory
+  for (int i = 0; i < 32; ++i)
+    S[sline * 32 + i] = sums[i];
+
+  ix.barrier(sycl_a::fence_space::local);
+
+  // sum up columns and copy to global memory in the final 32 threads
+  if (sline < 32) {
+    for (unsigned i = 1; i < blockDim; ++i)
+      S[sline] += S[i * 32 + sline];
+    out[sline+blockIdx*32] = S[sline];
+  }
 }
 
 }; // struct
@@ -1955,11 +2032,14 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 
       const    range<1> nitems{size_of_group * number_of_groups};
       const nd_range<1> ndr{nd_range<1>(nitems, range<1>{size_of_group})};
-      dagr::run<reduceKernel,0>(q,ndr,
+      dagr::run<reduceKernel,0>(q,ndr,dagr::wo(*ocl_reduce_output_buffer),
+        dagr::ro(*ocl_trackingResult), computationSize, localimagesize,
+        dagr::lo<float>(size_of_group * 32));
 
+#if 0
       const auto rw = sycl_a::mode::read_write; // previously above
-//      const    range<1> nitems{size_of_group * number_of_groups};
-//      const nd_range<1> ndr{nd_range<1>(nitems, range<1>{size_of_group})};
+      const    range<1> nitems{size_of_group * number_of_groups};
+      const nd_range<1> ndr{nd_range<1>(nitems, range<1>{size_of_group})};
       uint2 JSize{computationSize.x(), computationSize.y()};
       uint2  size{ localimagesize.x(),  localimagesize.y()};
       buffer<uint2,1> buf_JSize(&JSize,range<1>{1});
@@ -2054,6 +2134,7 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
           }
         });
       });
+#endif
 
 //      copy_back(reduceOutputBuffer, *ocl_reduce_output_buffer);
 //      memcpy(reductionoutput,
