@@ -776,6 +776,7 @@ static void kernel(nd_item<1> ix, T *out, const U *J_,
 }; // struct
 
 #else
+#define OLDREDUCE // PGK
 void reduceKernel(float * out, TrackData* J, const uint2 Jsize,
 		const uint2 size) {
 	TICK();
@@ -2036,110 +2037,19 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
         dagr::ro(*ocl_trackingResult), computationSize, localimagesize,
         dagr::lo<float>(size_of_group * 32));
 
-#if 0
-      const auto rw = sycl_a::mode::read_write; // previously above
-      const    range<1> nitems{size_of_group * number_of_groups};
-      const nd_range<1> ndr{nd_range<1>(nitems, range<1>{size_of_group})};
-      uint2 JSize{computationSize.x(), computationSize.y()};
-      uint2  size{ localimagesize.x(),  localimagesize.y()};
-      buffer<uint2,1> buf_JSize(&JSize,range<1>{1});
-      buffer<uint2,1> buf_size(  &size,range<1>{1});
-
-      q.submit([&](handler &cgh) {
-        auto       J = ocl_trackingResult->get_access<sycl_a::mode::read>(cgh);
-        auto a_JSize = buf_JSize.get_access<sycl_a::mode::read>(cgh);
-        auto  a_size =  buf_size.get_access<sycl_a::mode::read>(cgh);
-        const range<1> local_mem_size{size_of_group * 32};
-        auto out=ocl_reduce_output_buffer->get_access<sycl_a::mode::write>(cgh);
-        accessor<float, 1, rw, sycl_a::target::local> S(local_mem_size, cgh);
-
-        cgh.parallel_for<class T6>(ndr,[out,J,a_JSize,a_size,S](nd_item<1> ix) {
-          auto &JSize = a_JSize[0];  //
-          auto  &size =  a_size[0];  //
-          uint blockIdx  = ix.get_group(0);
-          uint blockDim  = ix.get_local_range(0);
-          uint threadIdx = ix.get_local(0);
-          //uint gridDim   = ix.get_num_groups(0); // bug: always 0
-          uint gridDim   = ix.get_global_range(0) / ix.get_local_range(0);
-
-          const uint sline = threadIdx;
-
-          float         sums[32];
-          float *jtj  = sums + 7;
-          float *info = sums + 28;
-
-          for (uint i = 0; i < 32; ++i)
-            sums[i] = 0.0f;
-
-          // Is gridDim zero!?
-          for (uint y = blockIdx; y < size.y(); y += gridDim) {
-            for (uint x = sline; x < size.x(); x += blockDim) {
-              const TrackData row = J[x + y * JSize.x()];
-              if (row.result < 1) {
-                info[1] += row.result == -4 ? 1 : 0;
-                info[2] += row.result == -5 ? 1 : 0;
-                info[3] += row.result > -4 ? 1 : 0;
-                continue;
-              }
-
-              // Error part
-              sums[0] += row.error * row.error;
-
-              // JTe part
-              for (int i = 0; i < 6; ++i)
-                sums[i+1] += row.error * row.J[i];
-
-              jtj[0] += row.J[0] * row.J[0];
-              jtj[1] += row.J[0] * row.J[1];
-              jtj[2] += row.J[0] * row.J[2];
-              jtj[3] += row.J[0] * row.J[3];
-              jtj[4] += row.J[0] * row.J[4];
-              jtj[5] += row.J[0] * row.J[5];
-
-              jtj[6] += row.J[1] * row.J[1];
-              jtj[7] += row.J[1] * row.J[2];
-              jtj[8] += row.J[1] * row.J[3];
-              jtj[9] += row.J[1] * row.J[4];
-              jtj[10] += row.J[1] * row.J[5];
-
-              jtj[11] += row.J[2] * row.J[2];
-              jtj[12] += row.J[2] * row.J[3];
-              jtj[13] += row.J[2] * row.J[4];
-              jtj[14] += row.J[2] * row.J[5];
-
-              jtj[15] += row.J[3] * row.J[3];
-              jtj[16] += row.J[3] * row.J[4];
-              jtj[17] += row.J[3] * row.J[5];
-
-              jtj[18] += row.J[4] * row.J[4];
-              jtj[19] += row.J[4] * row.J[5];
-
-              jtj[20] += row.J[5] * row.J[5];
-              // extra info here
-              info[0] += 1;
-            }
-          }
-
-          // copy over to shared memory
-          for (int i = 0; i < 32; ++i)
-            S[sline * 32 + i] = sums[i];
-
-          ix.barrier(sycl_a::fence_space::local);
-
-          // sum up columns and copy to global memory in the final 32 threads
-          if (sline < 32) {
-            for (unsigned i = 1; i < blockDim; ++i)
-              S[sline] += S[i * 32 + sline];
-            out[sline+blockIdx*32] = S[sline];
-          }
-        });
-      });
-#endif
-
-//      copy_back(reduceOutputBuffer, *ocl_reduce_output_buffer);
+//    ocl_reduce_output_buffer->set_final_data(myptr);
+      copy_back(reduceOutputBuffer, *ocl_reduce_output_buffer);
 //      memcpy(reductionoutput,
 //             reduceOutputBuffer,
 //             number_of_groups * 32 * sizeof(float));
+
+      TooN::Matrix<TooN::Dynamic, TooN::Dynamic, float,
+        TooN::Reference::RowMajor> values(reduceOutputBuffer,
+          number_of_groups, 32);
+
+			for (int j = 1; j < number_of_groups; ++j) {
+				values[0] += values[j];
+			}
 
       if (updatePoseKernel(pose, reduceOutputBuffer, icp_threshold))
         break;
@@ -2169,7 +2079,8 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
     sycl_a::mode::read,
     sycl_a::target::host_buffer
   >();
-  dbg_show(red,"reduceOutputBuffer",32*number_of_groups/*8*/,6);
+//  dbg_show(red,"reduceOutputBuffer",32*number_of_groups/*8*/,6);
+  dbg_show(reduceOutputBuffer,"reduceOutputBuffer",32*number_of_groups/*8*/,6);
 	return checkPoseKernel(pose, oldPose, reduceOutputBuffer, computationSize,
 			track_threshold);
 #else
