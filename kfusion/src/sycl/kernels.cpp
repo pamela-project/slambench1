@@ -543,8 +543,9 @@ void vertex2normalKernel(float3 * out, const float3 * in, uint2 imageSize) {
 
 #endif // SYCL
 
-void new_reduce(int blockIndex, float * out, TrackData* J, /*const*/ uint2 Jsize,
-		/*const*/ uint2 size) {
+#ifndef SYCL
+void new_reduce(int blockIndex, float * out, TrackData* J, const uint2 Jsize,
+		const uint2 size) {
 	float *sums = out + blockIndex * 32;
 
 	float * jtj = sums + 7;
@@ -587,19 +588,12 @@ void new_reduce(int blockIndex, float * out, TrackData* J, /*const*/ uint2 Jsize
 	sums29 = 0.0f;
 	sums30 = 0.0f;
 	sums31 = 0.0f;
-#ifdef SYCL
-	const uint size_x  = size.x(); const uint size_y = size.y();
-  const uint Jsize_x = Jsize.x();
-#else
-	const uint size_x  = size.x;   const uint size_y = size.y;
-  const uint Jsize_x = Jsize.x;
-#endif
 // comment me out to try coarse grain parallelism 
 #pragma omp parallel for reduction(+:sums0,sums1,sums2,sums3,sums4,sums5,sums6,sums7,sums8,sums9,sums10,sums11,sums12,sums13,sums14,sums15,sums16,sums17,sums18,sums19,sums20,sums21,sums22,sums23,sums24,sums25,sums26,sums27,sums28,sums29,sums30,sums31)
-	for (uint y = blockIndex; y < size_y; y += 8) {
-		for (uint x = 0; x < size_x; x++) {
+	for (uint y = blockIndex; y < size.y; y += 8) {
+		for (uint x = 0; x < size.x; x++) {
 
-			const TrackData & row = J[(x + y * Jsize_x)]; // ...
+			const TrackData & row = J[(x + y * Jsize.x)]; // ...
 			if (row.result < 1) {
 				// accesses sums[28..31]
 				/*(sums+28)[1]*/sums29 += row.result == -4 ? 1 : 0;
@@ -690,6 +684,21 @@ void new_reduce(int blockIndex, float * out, TrackData* J, /*const*/ uint2 Jsize
 	sums[31] = sums31;
 
 }
+#endif
+
+#ifdef SYCL
+
+struct reduceKernel {
+
+template <typename T, typename U, typename V>
+static void kernel(nd_item<1> ix, T *out, const U *J,
+                   const uint2 JSize, const uint2 size, V *S)
+{
+}
+
+}; // struct
+
+#else
 void reduceKernel(float * out, TrackData* J, const uint2 Jsize,
 		const uint2 size) {
 	TICK();
@@ -713,9 +722,9 @@ void reduceKernel(float * out, TrackData* J, const uint2 Jsize,
 			float * info = sums+28;
 			for(uint i = 0; i < 32; ++i) sums[i] = 0;
 
-			for(uint y = blockIndex; y < size.y(); y += 8 /*gridDim.x()*/) {
-				for(uint x = sline; x < size.x; x += 112 /*blockDim.x()*/) {
-					const TrackData & row = J[(x + y * Jsize.x())]; // ...
+			for(uint y = blockIndex; y < size.y; y += 8 /*gridDim.x*/) {
+				for(uint x = sline; x < size.x; x += 112 /*blockDim.x*/) {
+					const TrackData & row = J[(x + y * Jsize.x)]; // ...
 
 					if(row.result < 1) {
 						// accesses S[threadIndex][28..31]
@@ -795,6 +804,7 @@ void reduceKernel(float * out, TrackData* J, const uint2 Jsize,
 	}
 	TOCK("reduceKernel", 512);
 }
+#endif
 
 #ifdef SYCL
 struct trackKernel {
@@ -1943,9 +1953,13 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
         refVertex,computationSize,refNormal,computationSize,
         pose,projectReference,dist_threshold,normal_threshold);
 
-      const auto rw = sycl_a::mode::read_write; // previously above
       const    range<1> nitems{size_of_group * number_of_groups};
       const nd_range<1> ndr{nd_range<1>(nitems, range<1>{size_of_group})};
+      dagr::run<reduceKernel,0>(q,ndr,
+
+      const auto rw = sycl_a::mode::read_write; // previously above
+//      const    range<1> nitems{size_of_group * number_of_groups};
+//      const nd_range<1> ndr{nd_range<1>(nitems, range<1>{size_of_group})};
       uint2 JSize{computationSize.x(), computationSize.y()};
       uint2  size{ localimagesize.x(),  localimagesize.y()};
       buffer<uint2,1> buf_JSize(&JSize,range<1>{1});
