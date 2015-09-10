@@ -1214,44 +1214,6 @@ float4 raycast(const     Volume    volume,
 	return make_float4(0);
 
 }
-#ifdef SYCL
-#if 0
-template <typename T>
-void raycastKernel(float3* vertex, float3* normal, uint2 inputSize,
-		/*const*/ Volume<T> integration, const Matrix4 view, const float nearPlane,
-		const float farPlane, const float step, const float largestep) {
-	TICK();
-	unsigned int y;
-#pragma omp parallel for \
-	    shared(normal, vertex), private(y)
-	for (y = 0; y < inputSize.y(); y++)
-		for (unsigned int x = 0; x < inputSize.x(); x++) {
-
-			uint2 pos = make_uint2(x, y);
-
-			/*const*/ float4 hit = raycast(integration, pos, view, nearPlane,
-					farPlane, step, largestep);
-			if (hit.w() > 0.0) {
-				vertex[pos.x() + pos.y() * inputSize.x()] = make_float3(hit);
-				//float3 surfNorm = integration.grad(make_float3(hit));
-        float3 tmp = make_float3(hit);
-				float3 surfNorm = integration.grad(tmp);
-				if (length(surfNorm) == 0) {
-					//normal[pos] = normalize(surfNorm); // APN added
-					normal[pos.x() + pos.y() * inputSize.x()].x() = INVALID;
-				} else {
-					normal[pos.x() + pos.y() * inputSize.x()] = normalize(surfNorm);
-				}
-			} else {
-				//std::cerr<< "RAYCAST MISS "<<  pos.x() << " " << pos.y() <<"  " << hit.w() <<"\n";
-				vertex[pos.x() + pos.y() * inputSize.x()] = make_float3(0);
-				normal[pos.x() + pos.y() * inputSize.x()] = make_float3(INVALID,0,0);
-			}
-		}
-	TOCK("raycastKernel", inputSize.x() * inputSize.y());
-}
-#endif
-#endif
 
 #ifdef SYCL
 struct raycastKernel {
@@ -1889,54 +1851,6 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 		uint2 inSize{outSize.x()*2,outSize.y()*2}; // Seems redundant
     auto &in = *const_cast<const buffer<float,1> *>(ocl_ScaledDepth[i-1]);
     dagr::run<halfSampleRobustImageKernel,0>(q,r,out,in,inSize,e_delta*3,1);
-
-#if 0
-		float e_d = e_delta * 3;
-		int r = 1;
-		uint2 inSize{outSize.x()*2,outSize.y()*2};
-
-    buffer<uint2,1> buf_inSize(&inSize,range<1>{1});
-    buffer<float,1> buf_e_d(&e_d,range<1>{1});
-    buffer<int,1>   buf_r(&r,range<1>{1});
-
-    q.submit([&](handler &cgh) {
-
-      auto out = ocl_ScaledDepth[i  ]->get_access<sycl_a::mode::write>(cgh);
-      auto in  = ocl_ScaledDepth[i-1]->get_access<sycl_a::mode::read>(cgh);
-      auto a_inSize = buf_inSize.get_access<sycl_a::mode::read>(cgh);
-      auto a_e_d    = buf_e_d.get_access<sycl_a::mode::read>(cgh);
-      auto a_r      = buf_r.get_access<sycl_a::mode::read>(cgh);
-
-      cgh.parallel_for<class T2>(range<2>{outSize.x(),outSize.y()},
-        [in,out,a_inSize,a_e_d,a_r](item<2> ix) { 
-          auto &inSize = a_inSize[0]; //
-          auto &e_d    = a_e_d[0];    //
-          auto &r      = a_r[0];      //
-          uint2 pixel{ix[0],ix[1]};
-          uint2 outSize{inSize.x() / 2, inSize.y() / 2};
-
-         /* const */ uint2 centerPixel{2*pixel.x(), 2*pixel.y()};
-
-          float sum = 0.0f;
-          float t = 0.0f;
-          const float center = in[centerPixel.x()+centerPixel.y()*inSize.x()];
-          for(int i = -r + 1; i <= r; ++i) {
-            for(int j = -r + 1; j <= r; ++j) {
-              const int2 x{centerPixel.x()+j, centerPixel.y()+i};
-              const int2 minval{0,0};
-              const int2 maxval{inSize.x()-1, inSize.y()-1};
-                    int2 from{clamp(x,minval,maxval)};
-              float current = in[from.x() + from.y() * inSize.x()];
-              if (fabs(current - center) < e_d) {
-                sum += 1.0f;
-                t += current;
-              }
-            }
-          }
-          out[pixel.x() + pixel.y() * outSize.x()] = t / sum;
-      });
-    });
-#endif
 #else
 		halfSampleRobustImageKernel(ScaledDepth[i], ScaledDepth[i - 1],
 				make_uint2(computationSize.x / (int) pow(2, i - 1),
@@ -2028,98 +1942,6 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
         inVertex,localimagesize,inNormal,localimagesize,
         refVertex,computationSize,refNormal,computationSize,
         pose,projectReference,dist_threshold,normal_threshold);
-#if 0
-      const auto rw = sycl_a::mode::read_write;
-      range<2> imageSize{localimagesize.x(),localimagesize.y()};
-		  uint2 outputSize{computationSize.x(), computationSize.y()};
-      buffer<uint2,1> buf_outputSize(&outputSize,range<1>{1});
-      buffer<Matrix4,1> buf_pose(&pose,range<1>{1});
-      buffer<Matrix4,1> buf_projectReference(&projectReference,range<1>{1});
-      decltype(dist_threshold)   stack_dist_threshold   = dist_threshold;
-      decltype(normal_threshold) stack_normal_threshold = normal_threshold;
-      buffer<float,1> buf_dist_threshold(const_cast<float*>(&stack_dist_threshold),range<1>{1});
-      buffer<float,1> buf_normal_threshold(const_cast<float*>(&stack_normal_threshold),range<1>{1});
-
-      q.submit([&](handler &cgh) {
-
-        auto inNormal     = ocl_inputNormal[level]->get_access<rw>(cgh);
-        auto inVertex     = ocl_inputVertex[level]->get_access<rw>(cgh);
-        auto output       = ocl_trackingResult->get_access<rw>(cgh);
-        auto refVertex    = ocl_vertex->get_access<sycl_a::mode::read>(cgh);
-        auto refNormal    = ocl_normal->get_access<sycl_a::mode::read>(cgh);
-        auto a_outputSize = buf_outputSize.get_access<sycl_a::mode::read>(cgh);
-        auto a_pose       = buf_pose.get_access<sycl_a::mode::read>(cgh);
-        auto a_projectReference =
-          buf_projectReference.get_access<sycl_a::mode::read>(cgh);
-        auto a_dist_threshold   = buf_dist_threshold.get_access<sycl_a::mode::read>(cgh); //
-        auto a_normal_threshold = buf_normal_threshold.get_access<sycl_a::mode::read>(cgh); //
-
-        cgh.parallel_for<class T5>(
-          imageSize,
-          [output,a_outputSize,inVertex,inNormal,refVertex,refNormal,
-           a_pose,a_projectReference,a_dist_threshold,a_normal_threshold]
-          (item<2> ix)
-        {
-          auto &outputSize       = a_outputSize[0]; //
-          const Matrix4 &Ttrack  = a_pose[0]; // auto fails here as earlier
-          const Matrix4 &view    = a_projectReference[0]; // ""
-          auto &dist_threshold   = a_dist_threshold[0]; //
-          auto &normal_threshold = a_normal_threshold[0]; //
-          uint2 pixel{ix[0],ix[1]};
-          TrackData &row = output[pixel.x() + outputSize.x() * pixel.y()];
-
-          float3 inNormalPixel =
-            inNormal[pixel.x() + ix.get_range()[0] * pixel.y()];
-          if (inNormalPixel.x() == INVALID) {
-            row.result = -1;
-            return;
-          }
-
-          float3 inVertexPixel =
-            inVertex[pixel.x() + ix.get_range()[0] * pixel.y()];
-          /*const*/ float3 projectedVertex =
-            Mat4TimeFloat3(Ttrack, inVertexPixel);
-          /*const*/ float3 projectedPos    =
-            Mat4TimeFloat3(view, projectedVertex);
-          /*const*/ float2 projPixel{
-            projectedPos.x() / projectedPos.z() + 0.5f,
-            projectedPos.y() / projectedPos.z() + 0.5f};
-          if (projPixel.x() < 0 || projPixel.x() > outputSize.x()-1 ||
-              projPixel.y() < 0 || projPixel.y() > outputSize.y()-1) {
-            row.result = -2;
-            return;
-          }
-
-          /*const*/ uint2 refPixel{projPixel.x(), projPixel.y()};
-          /*const*/ float3 referenceNormal =
-            refNormal[refPixel.x() + outputSize.x() * refPixel.y()];
-          if (referenceNormal.x() == INVALID) {
-            row.result = -3;
-            return;
-          }
-
-          const float3 diff =
-            refVertex[refPixel.x() + outputSize.x() * refPixel.y()] -
-            projectedVertex;
-          const float3 projectedNormal = myrotate(Ttrack, inNormalPixel);
-
-          if (length(diff) > dist_threshold) {
-            row.result = -4;
-            return;  // !!!!!!!!!!!!
-          }
-          if (dot(projectedNormal,referenceNormal)<normal_threshold) {
-            row.result = -5;
-            return;
-          }
-
-          row.result = 1;
-          row.error  = dot(referenceNormal, diff);
-          *((float3 *)(row.J + 0)) = referenceNormal; // a la vstore3
-          *((float3 *)(row.J + 3)) = cross(projectedVertex, referenceNormal);
-          // row.J + 0 -> row.J[0:2]          row.J + 3 ->  row.J[3:5]
-        });
-      });
-#endif
 
       const auto rw = sycl_a::mode::read_write; // previously above
       const    range<1> nitems{size_of_group * number_of_groups};
