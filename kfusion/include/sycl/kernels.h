@@ -35,12 +35,10 @@ void trackKernel(TrackData* output, const float3* inVertex,
 		const float normal_threshold);
 
 void vertex2normalKernel(float3 * out, const float3 * in, uint2 imageSize);
-#endif
 
 void mm2metersKernel(float * out, uint2 outSize, const ushort * in,
 		uint2 inSize);
 
-#ifndef SYCL
 void halfSampleRobustImageKernel(float* out, const float* in, uint2 imageSize,
 		const float e_d, const int r);
 #endif

@@ -66,9 +66,12 @@ cl::sycl::queue q(cl::sycl::intel_selector{});
 static_assert(std::is_standard_layout<TrackData>::value,"");
 // needed? Depends on depth buffer location/lifetime
 // uint2 computationSizeBkp = make_uint2(0, 0);
-buffer<float3,1>  *ocl_vertex         = NULL;
-buffer<float3,1>  *ocl_normal         = NULL;
-buffer<short2,1>  *ocl_volume_data    = NULL;
+buffer<float3,1>   *ocl_vertex               = NULL;
+buffer<float3,1>   *ocl_normal               = NULL;
+buffer<short2,1>   *ocl_volume_data          = NULL;
+buffer<uint16_t,1> *ocl_depth_buffer         = NULL;
+// Common buffer for track, depth and volume:
+buffer<uchar4,1>   *ocl_output_render_buffer = NULL;
 
 buffer<float,1>             *ocl_reduce_output_buffer = NULL;
 buffer<TrackData,1>         *ocl_trackingResult       = NULL;
@@ -76,17 +79,13 @@ buffer<float,1>             *ocl_FloatDepth           = NULL;
 buffer<float,1>            **ocl_ScaledDepth          = NULL;
 buffer<float3,1>           **ocl_inputVertex          = NULL;
 buffer<float3,1>           **ocl_inputNormal          = NULL;
-//buffer<ushort,1> *ocl_depth_buffer = NULL; // cl_mem ocl_depth_buffer
-/////////// todo 
-
-// cl_mem ocl_output_render_buffer = NULL; // Common buffer for rendering track, depth and volume
-buffer<uchar4,1> *ocl_output_render_buffer;
 float *reduceOutputBuffer = NULL;
 
 // reduction parameters
-static const size_t size_of_group = 64;
+static const size_t size_of_group    = 64;
 static const size_t number_of_groups = 8;
 
+uint2 computationSizeBkp = make_uint2(0, 0);
 uint2 outputImageSizeBkp = make_uint2(0, 0);
 #endif
 
@@ -238,6 +237,10 @@ Kfusion::~Kfusion() {
 	if (ocl_volume_data) {
 		delete ocl_volume_data;
 		ocl_volume_data = NULL;
+  }
+	if (ocl_depth_buffer) {
+		delete ocl_depth_buffer;
+		ocl_depth_buffer = NULL;
   }
 	if (ocl_reduce_output_buffer) {
 	  delete ocl_reduce_output_buffer;
@@ -1015,6 +1018,24 @@ void trackKernel(TrackData* output, const float3* inVertex,
 }
 #endif // SYCL
 
+#ifdef SYCL
+
+struct mm2metersKernel {
+
+template <typename T, typename U>
+static void kernel(item<2> ix, T *depth, /*const*/ uint2 depthSize,
+                   const U *in, /*const*/ uint2 inSize, const int ratio)
+{
+  uint2 pixel{ix[0],ix[1]};
+  depth[pixel.x() + depthSize.x() * pixel.y()] =
+    in[pixel.x() * ratio + inSize.x() * pixel.y() * ratio] / 1000.0f;
+//  depth[ix] = in[ ix.get()*ratio ] / 1000.0f;
+}
+
+}; // struct
+
+#else
+
 void mm2metersKernel(float *out, uint2 outSize, const ushort *in, uint2 inSize)
 {
 	TICK();
@@ -1051,6 +1072,8 @@ void mm2metersKernel(float *out, uint2 outSize, const ushort *in, uint2 inSize)
 		}
 	TOCK("mm2metersKernel", outSize_x * outSize_y);
 }
+
+#endif
 
 #ifdef SYCL
 
@@ -1757,6 +1780,19 @@ bool Kfusion::preprocessing(const uint16_t * inputDepth, /*const*/ uint2 inSize)
 	int ratio = inSize_x / outSize_x;
 
 #ifdef SYCL
+	if (computationSizeBkp.x() < inSize.x() ||
+      computationSizeBkp.y() < inSize.y() || ocl_depth_buffer == NULL) {
+		computationSizeBkp = make_uint2(inSize.x(), inSize.y());
+		if (ocl_depth_buffer != NULL) {
+      delete ocl_depth_buffer;
+      ocl_depth_buffer = NULL;
+		}
+    auto in_sz = range<1>{inSize.x() * inSize.y()};
+		ocl_depth_buffer = new buffer<uint16_t,1>(inputDepth, in_sz);
+	}
+#endif
+
+#ifdef SYCL
   auto sd0a = ocl_ScaledDepth[0]->get_access<
     sycl_a::mode::read,
     sycl_a::target::host_buffer
@@ -1768,6 +1804,12 @@ bool Kfusion::preprocessing(const uint16_t * inputDepth, /*const*/ uint2 inSize)
     
 #ifdef SYCL
   {
+    auto r = range<2>{outSize.x(),outSize.y()};
+    dagr::run<mm2metersKernel,0>(q, r, *ocl_FloatDepth, outSize,
+                                 dagr::ro(*ocl_depth_buffer), inSize, ratio);
+// uncomment below: dagr above doesn't seem to update ScaledDepth[0]
+
+#if 0
     const range<1>  in_size{inSize.x()*inSize.y()};
     const range<1> out_size{outSize.x()*outSize.y()};
     // The const_casts overcome a SYCL buffer ctor bug causing a segfault
@@ -1794,6 +1836,7 @@ bool Kfusion::preprocessing(const uint16_t * inputDepth, /*const*/ uint2 inSize)
 //        depth[ix] = in[ ix.get()*ratio ] / 1000.0f;
       });
     });
+#endif
 
     const size_t gaussianS = radius * 2 + 1;
 //    buffer<float,1> ocl_ScaledDepth(ScaledDepth[0],out_size); // remove arg 1
@@ -1865,59 +1908,6 @@ bool Kfusion::preprocessing(const uint16_t * inputDepth, /*const*/ uint2 inSize)
 
   dbg_show(ScaledDepth[0], "ScaledDepth[0]", outSize_x * outSize_y, 1);
 #endif
-
-
-/*__kernel void mm2metersKernel(
-		__global float * depth,
-		const uint2 depthSize ,
-		const __global ushort * in ,
-		const uint2 inSize ,
-		const int ratio ) {
-	uint2 pixel = (uint2) (get_global_id(0),get_global_id(1));
-	depth[pixel.x + depthSize.x * pixel.y()] = in[pixel.x * ratio + inSize.x * pixel.y() * ratio] / 1000.0f;
-}
-*/
-
-/*__kernel void bilateralFilterKernel( __global float * out,
-		const __global float * in,
-		const __global float * gaussian,
-		const float e_d,
-		const int r ) {
-
-	const uint2 pos = (uint2) (get_global_id(0),get_global_id(1));
-	const uint2 size = (uint2) (get_global_size(0),get_global_size(1));
-
-	const float center = in[pos.x + size.x * pos.y()];
-
-	if ( center == 0 ) {
-		out[pos.x + size.x * pos.y()] = 0;
-		return;
-	}
-
-	float sum = 0.0f;
-	float t = 0.0f;
-	// FIXME : sum and t diverge too much from cpp version
-	for(int i = -r; i <= r; ++i) {
-		for(int j = -r; j <= r; ++j) {
-			const uint2 curPos = (uint2)(clamp(pos.x + i, 0u, size.x-1), clamp(pos.y() + j, 0u, size.y()-1));
-			const float curPix = in[curPos.x + curPos.y() * size.x];
-			if(curPix > 0) {
-				const float mod = sq(curPix - center);
-				const float factor = gaussian[i + r] * gaussian[j + r] * exp(-mod / (2 * e_d * e_d));
-				t += factor * curPix;
-				sum += factor;
-			} else {
-				//std::cerr << "ERROR BILATERAL " <<pos.x+i<< " "<<pos.y()+j<< " " <<curPix<<" \n";
-			}
-		}
-	}
-	out[pos.x + size.x * pos.y()] = t / sum;
-
-} */
-
-//  mm2metersKernel(floatDepth, computationSize, inputDepth, inSize);
-//  bilateralFilterKernel(ScaledDepth[0], floatDepth, computationSize, gaussian,
-//    e_delta, radius);
 
 	return true;
 }
@@ -2480,18 +2470,18 @@ void Kfusion::renderDepth(uchar4 * out, uint2 outputSize) {
   range<2> globalWorksize{computationSize.x(), computationSize.y()};
   dagr::run<renderDepthKernel,0>(q,globalWorksize,
     dagr::wo(*ocl_output_render_buffer),
-    *(const_cast<const decltype(ocl_FloatDepth)>(ocl_FloatDepth)),
+    dagr::ro(*ocl_FloatDepth),
     nearPlane, farPlane);
 
   const auto osize = outputSize.x() * outputSize.y();
   auto a_out = ocl_output_render_buffer->get_access<sycl_a::mode::read,
                                                  sycl_a::target::host_buffer>();
-  dbg_show4(out, "depthRender: ", osize, 10);
+  dbg_show4(out, "depthRender", osize, 10); // 0!?
 #else
 	renderDepthKernel(out, floatDepth, outputSize, nearPlane, farPlane);
 
   const auto osize = outputSize.x * outputSize.y;
-  dbg_show4(out, "depthRender: ", osize, 10);
+  dbg_show4(out, "depthRender", osize, 10);
 #endif
 }
 
