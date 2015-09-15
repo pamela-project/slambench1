@@ -18,10 +18,10 @@
 template <typename T>
 void initVolumeKernel(Volume<T> volume);
 
+#ifndef SYCL
 void bilateralFilterKernel(float* out, const float* in, uint2 inSize,
 		const float * gaussian, float e_d, int r);
 
-#ifndef SYCL
 void depth2vertexKernel(float3* vertex, const float * depth, uint2 imageSize,
 		const Matrix4 invK);
 

@@ -64,8 +64,9 @@ float3 ** inputNormal;
 // sycl specific
 cl::sycl::queue q(cl::sycl::intel_selector{});
 static_assert(std::is_standard_layout<TrackData>::value,"");
-// needed? Depends on depth buffer location/lifetime
-// uint2 computationSizeBkp = make_uint2(0, 0);
+
+buffer<float,1>    *ocl_gaussian             = NULL;
+
 buffer<float3,1>   *ocl_vertex               = NULL;
 buffer<float3,1>   *ocl_normal               = NULL;
 buffer<short2,1>   *ocl_volume_data          = NULL;
@@ -178,6 +179,10 @@ void Kfusion::languageSpecificConstructor() {
 		x = i - 2;
 		gaussian[i] = expf(-(x * x) / (2 * delta * delta));
 	}
+
+#ifdef SYCL
+  ocl_gaussian = new buffer<float,1>(gaussian, range<1>{gaussianS});
+#endif
 	// ********* END : Generate the gaussian *************
 
 #ifdef SYCL
@@ -233,6 +238,10 @@ Kfusion::~Kfusion() {
 	if (ocl_normal) {
 		delete ocl_normal;
 		ocl_normal = NULL;
+  }
+	if (ocl_gaussian) {
+		delete ocl_gaussian;
+		ocl_gaussian = NULL;
   }
 	if (ocl_volume_data) {
 		delete ocl_volume_data;
@@ -309,22 +318,63 @@ void initVolumeKernel(Volume volume) {
 }
 #endif
 
+#ifdef SYCL
+
+struct bilateralFilterKernel {
+
+template <typename T>
+static void kernel(item<2> ix, T *out, const T *in, const T *gaussian,
+                   const float e_d, const int r)
+{
+  /*const*/ uint2 pos{ix[0],ix[1]};
+  /*const*/ uint2 size{ix.get_range()[0], ix.get_range()[1]};
+
+  const float center = in[pos.x() + size.x() * pos.y()];
+
+  if ( center == 0 ) {
+    out[pos.x() + size.x() * pos.y()] = 0;
+    return;
+  }
+
+  float sum = 0.0f;
+  float t   = 0.0f;
+  for (int i = -r; i <= r; ++i) {
+    for (int j = -r; j <= r; ++j) {
+      // n.b. unsigned + signed is unsigned! Bug in OpenCL C version?
+      const int px = pos.x()+i; const int sx = size.x()-1;
+      const int py = pos.y()+i; const int sy = size.y()-1;
+      const int curPosx = cl::sycl::clamp(px,0,sx);
+      const int curPosy = cl::sycl::clamp(py,0,sy);
+      const float curPix = in[curPosx + curPosy * size.x()];
+      if (curPix > 0) {
+        const float mod    = sq(curPix - center);
+        const float factor = gaussian[i + r] * gaussian[j + r] *
+                             cl::sycl::exp(-mod / (2 * e_d * e_d));
+        t   += factor * curPix;
+        sum += factor;
+      } else {
+        // std::cerr << "ERROR BILATERAL " << pos.x()+i << " " <<
+        // pos.y()+j<< " " <<curPix<<" \n";
+      }
+    }
+  } 
+  out[pos.x() + size.x() * pos.y()] = t / sum;
+}
+
+};
+
+#else
+
 void bilateralFilterKernel(float* out, const float* in, uint2 size,
 		const float * gaussian, float e_d, int r) {
 	TICK()
 		uint y;
 		float e_d_squared_2 = e_d * e_d * 2;
-#ifdef SYCL
-	const uint size_x = size.x(); const uint size_y = size.y();
-#else
-	const uint size_x = size.x;   const uint size_y = size.y;
-#endif
-
 #pragma omp parallel for \
 	    shared(out),private(y)   
-		for (y = 0; y < size_y; y++) {
-			for (uint x = 0; x < size_x; x++) {
-				uint pos = x + y * size_x;
+		for (y = 0; y < size.y; y++) {
+			for (uint x = 0; x < size.x; x++) {
+				uint pos = x + y * size.x;
 				if (in[pos] == 0) {
 					out[pos] = 0;
 					continue;
@@ -337,13 +387,9 @@ void bilateralFilterKernel(float* out, const float* in, uint2 size,
 
 				for (int i = -r; i <= r; ++i) {
 					for (int j = -r; j <= r; ++j) {
-						uint2 curPos = make_uint2(clamp(x + i, 0u, size_x - 1),
-                                      clamp(y + j, 0u, size_y - 1));
-#ifdef SYCL
-						const float curPix = in[curPos.x() + curPos.y() * size_x];
-#else
-						const float curPix = in[curPos.x   + curPos.y   * size_x];
-#endif
+						uint2 curPos = make_uint2(clamp(x + i, 0u, size.x - 1),
+								clamp(y + j, 0u, size.y - 1));
+						const float curPix = in[curPos.x + curPos.y * size.x];
 						if (curPix > 0) {
 							const float mod = sq(curPix - center);
 							const float factor = gaussian[i + r]
@@ -357,8 +403,10 @@ void bilateralFilterKernel(float* out, const float* in, uint2 size,
 				out[pos] = t / sum;
 			}
 		}
-		TOCK("bilateralFilterKernel", size_x * size_y);
+		TOCK("bilateralFilterKernel", size.x * size.y);
 }
+
+#endif // SYCL
 
 #ifdef SYCL
 template <typename F3>
@@ -1161,11 +1209,14 @@ static void kernel(I ix, T *v_data, const uint3 v_size, const float3 v_dim,
                    const float maxweight, const float3 delta,
                    const float3 cameraDelta)
 {
-  Volume<decltype(&v_data[0])> vol;
+  Volume<T *> vol;
   vol.data = &v_data[0]; vol.size = v_size; vol.dim = v_dim;
 
   uint3 pix{ix[0],ix[1],0};
   const int sizex = ix.get_range()[0];
+
+  setVolume(vol,pix,float2{1,1}); // debug
+  return;
 
   float3 pos     = Mat4TimeFloat3(invTrack, posVolume(vol,pix));
   float3 cameraX = Mat4TimeFloat3(K, pos);
@@ -1212,6 +1263,7 @@ void integrateKernel(Volume vol, const float* depth, uint2 depthSize,
 	const float3 delta =
     rotate(invTrack, make_float3(0, 0, vol.dim.z / vol.size.z));
 	const float3 cameraDelta = rotate(K, delta);
+
 	unsigned int y;
 #pragma omp parallel for \
         shared(vol), private(y)
@@ -1221,6 +1273,24 @@ void integrateKernel(Volume vol, const float* depth, uint2 depthSize,
 			uint3 pix = make_uint3(x, y, 0); //pix.x() = x;pix.y() = y;
 			float3 pos = invTrack * vol.pos(pix);
 			float3 cameraX = K * pos;
+
+//        vol.data[0] = short2{1,1}; // -32764
+//        vol.data[0] = short2{1,0}; // -32765
+//        vol.data[0] = short2{0,0}; // -32766
+//        printf("%d %d %d - %d %d %d (%d)\n", 
+//          pix.x, pix.y, pix.z, vol.size.x, vol.size.y, vol.size.z,
+//          pix.x + pix.y * vol.size.x + pix.z * vol.size.x * vol.size.y);
+      for (pix.z = 0; pix.z < vol.size.z; ++pix.z) {
+        vol.data[pix.x + pix.y * vol.size.x + pix.z * vol.size.x * vol.size.y]
+           = short2{1,1}; // 33554432
+//           = short2{2,0}; // 33554432
+//           = short2{1,0}; // 16777216
+      }
+//        vol.set(pix,float2{1,1}); // debug
+      continue;
+// commons.h
+// data[pos.x + pos.y * size.x + pos.z * size.x * size.y] =
+//   make_short2(d.x * 32766.0f, d.y);
 
 			for (pix.z = 0; pix.z < vol.size.z;
 					++pix.z,pos += delta,cameraX += cameraDelta) {
@@ -1487,6 +1557,7 @@ static void kernel(item<2> ix, T *out, U const *depth,
 	const int posx = ix[0];
 	const int posy = ix[1];
   const int sizex = ix.get_range()[0];
+
 	float d = depth[posx + sizex * posy];
 	if (d < nearPlane)
     out[posx + sizex * posy] = uchar4{255,255,255,0};
@@ -1690,14 +1761,14 @@ void dbg_show(T p, const char *fname, size_t sz, int id)
 template <typename T>
 void dbg_show2(T p, const char *fname, size_t sz, int id)
 {
-  short total{0};
+  long total{0};
   for (size_t i = 0; i < sz; i++)
 #ifdef SYCL
     total += p[i].x() + p[i].y();
 #else
     total += p[i].x   + p[i].y;
 #endif
-  printf("(%d) sum of %s: %hd\n", id, fname, total);
+  printf("(%d) sum of %s: %ld\n", id, fname, total);
 }
 template <typename T>
 void dbg_show3(T p, const char *fname, size_t sz, int id)
@@ -1804,10 +1875,12 @@ bool Kfusion::preprocessing(const uint16_t * inputDepth, /*const*/ uint2 inSize)
     
 #ifdef SYCL
   {
+#if 1
     auto r = range<2>{outSize.x(),outSize.y()};
     dagr::run<mm2metersKernel,0>(q, r, *ocl_FloatDepth, outSize,
                                  dagr::ro(*ocl_depth_buffer), inSize, ratio);
-// uncomment below: dagr above doesn't seem to update ScaledDepth[0]
+    delete ocl_depth_buffer; ocl_depth_buffer = NULL; // debug only
+#endif
 
 #if 0
     const range<1>  in_size{inSize.x()*inSize.y()};
@@ -1837,7 +1910,11 @@ bool Kfusion::preprocessing(const uint16_t * inputDepth, /*const*/ uint2 inSize)
       });
     });
 #endif
+    dagr::run<bilateralFilterKernel,0>(q, r, *ocl_ScaledDepth[0],
+                                       dagr::ro(*ocl_FloatDepth),
+                                       dagr::ro(*ocl_gaussian),e_delta,radius);
 
+#if 0
     const size_t gaussianS = radius * 2 + 1;
 //    buffer<float,1> ocl_ScaledDepth(ScaledDepth[0],out_size); // remove arg 1
     buffer<float,1> ocl_gaussian(gaussian, range<1>{gaussianS});
@@ -1893,6 +1970,7 @@ bool Kfusion::preprocessing(const uint16_t * inputDepth, /*const*/ uint2 inSize)
           out[pos.x() + size.x() * pos.y()] = t / sum;
       }); 
     });
+#endif
 
   }
   auto sd0b = ocl_ScaledDepth[0]->get_access<
@@ -2070,13 +2148,13 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
     sycl_a::target::host_buffer
   >();
 //  dbg_show(red,"reduceOutputBuffer",32*number_of_groups/*8*/,6);
-  dbg_show(reduceOutputBuffer,"reduceOutputBuffer",32*number_of_groups/*8*/,6);
+  dbg_show(reduceOutputBuffer,"reduction",32*number_of_groups/*8*/,6);
 	return checkPoseKernel(pose, oldPose, reduceOutputBuffer, computationSize,
 			track_threshold);
 #else
   dbg_show_TrackData(trackingResult, "trackingResult",
                      computationSize.x * computationSize.y, 5);
-  dbg_show(reductionoutput,"reductionoutput",32*8,6);
+  dbg_show(reductionoutput,"reduction",32*8,6);
 	return checkPoseKernel(pose, oldPose, reductionoutput, computationSize,
 			track_threshold);
 #endif
@@ -2476,7 +2554,7 @@ void Kfusion::renderDepth(uchar4 * out, uint2 outputSize) {
   const auto osize = outputSize.x() * outputSize.y();
   auto a_out = ocl_output_render_buffer->get_access<sycl_a::mode::read,
                                                  sycl_a::target::host_buffer>();
-  dbg_show4(out, "depthRender", osize, 10); // 0!?
+  dbg_show4(a_out, "depthRender", osize, 10); // 0!?
 #else
 	renderDepthKernel(out, floatDepth, outputSize, nearPlane, farPlane);
 
