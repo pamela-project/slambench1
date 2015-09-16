@@ -1925,105 +1925,15 @@ bool Kfusion::preprocessing(const uint16_t * inputDepth, /*const*/ uint2 inSize)
 #endif
     
 #ifdef SYCL
-  {
-#if 1
     auto r = range<2>{outSize.x(),outSize.y()};
+
     dagr::run<mm2metersKernel,0>(q, r, *ocl_FloatDepth, outSize,
                                  dagr::ro(*ocl_depth_buffer), inSize, ratio);
     delete ocl_depth_buffer; ocl_depth_buffer = NULL; // debug only
-#endif
 
-#if 0
-    const range<1>  in_size{inSize.x()*inSize.y()};
-    const range<1> out_size{outSize.x()*outSize.y()};
-    // The const_casts overcome a SYCL buffer ctor bug causing a segfault
-    buffer<ushort,1> ocl_depth_buffer(const_cast<ushort*>(inputDepth), in_size);
-//    buffer< float,1> ocl_FloatDepth(out_size);
-    buffer<decltype(ratio),1>   buf_ratio(&ratio,range<1>{sizeof(ratio)});
-    buffer<decltype(outSize),1> buf_os(&outSize,range<1>{sizeof(outSize)});
-    buffer<decltype(inSize),1>  buf_is(&inSize,range<1>{sizeof(inSize)});
-    q.submit([&](handler &cgh) {
-
-      auto in      = ocl_depth_buffer.get_access<sycl_a::mode::read      >(cgh);
-      auto depth   =  ocl_FloatDepth->get_access<sycl_a::mode::read_write>(cgh);
-      auto a_ratio   = buf_ratio.get_access<sycl_a::mode::read>(cgh); //
-      auto a_outSize = buf_os.get_access<sycl_a::mode::read>(cgh); //
-      auto a_inSize  = buf_is.get_access<sycl_a::mode::read>(cgh); //
-
-      cgh.parallel_for<class T0>(range<2>{outSize.x(),outSize.y()},
-        [in,depth,a_ratio,a_inSize,a_outSize](item<2> ix) {
-        auto &ratio   = a_ratio  [0]; //
-        auto &outSize = a_outSize[0]; //
-        auto &inSize  = a_inSize [0]; //
-        depth[ix[0] + outSize.x() * ix[1]] =
-           in[ix[0] * ratio + inSize.x() * ix[1] * ratio] / 1000.0f;
-//        depth[ix] = in[ ix.get()*ratio ] / 1000.0f;
-      });
-    });
-#endif
     dagr::run<bilateralFilterKernel,0>(q, r, *ocl_ScaledDepth[0],
                                        dagr::ro(*ocl_FloatDepth),
                                        dagr::ro(*ocl_gaussian),e_delta,radius);
-
-#if 0
-    const size_t gaussianS = radius * 2 + 1;
-//    buffer<float,1> ocl_ScaledDepth(ScaledDepth[0],out_size); // remove arg 1
-    buffer<float,1> ocl_gaussian(gaussian, range<1>{gaussianS});
-    decltype(radius)  stack_radius  = radius; 
-    decltype(e_delta) stack_e_delta = e_delta;
-    buffer<int,1>    buf_radius(const_cast<int*>(&stack_radius),range<1>{1});
-    buffer<float,1> buf_e_delta(const_cast<float*>(&stack_e_delta),range<1>{1});
-
-    q.submit([&](handler &cgh) {
-
-      auto out       = ocl_ScaledDepth[0]->get_access<sycl_a::mode::write>(cgh);
-      auto in        = ocl_FloatDepth->get_access<sycl_a::mode::read>(cgh);
-      auto gaussian  =    ocl_gaussian.get_access<sycl_a::mode::read>(cgh);
-      auto a_radius  =      buf_radius.get_access<sycl_a::mode::read>(cgh); //
-      auto a_e_delta =     buf_e_delta.get_access<sycl_a::mode::read>(cgh); //
-   
-      cgh.parallel_for<class T1>(range<2>{outSize.x(),outSize.y()},
-        [in,out,gaussian,a_radius,a_e_delta](item<2> ix) { 
-          /*const*/ uint2 pos{ix[0],ix[1]};
-          /*const*/ uint2 size{ix.get_range()[0], ix.get_range()[1]};
-          auto &r   =  a_radius[0]; //
-          auto &e_d = a_e_delta[0]; //
-
-          const float center = in[pos.x() + size.x() * pos.y()];
-
-          if ( center == 0 ) {
-            out[pos.x() + size.x() * pos.y()] = 0;
-            return;
-          }
-
-          float sum = 0.0f;
-          float t   = 0.0f;
-          for (int i = -r; i <= r; ++i) {
-            for (int j = -r; j <= r; ++j) {
-              // n.b. unsigned + signed is unsigned! Bug in OpenCL C version?
-              const int px = pos.x()+i; const int sx = size.x()-1;
-              const int py = pos.y()+i; const int sy = size.y()-1;
-              const int curPosx = cl::sycl::clamp(px,0,sx);
-              const int curPosy = cl::sycl::clamp(py,0,sy);
-              const float curPix = in[curPosx + curPosy * size.x()];
-              if (curPix > 0) {
-                const float mod    = sq(curPix - center);
-                const float factor = gaussian[i + r] * gaussian[j + r] *
-                                     cl::sycl::exp(-mod / (2 * e_d * e_d));
-                t   += factor * curPix;
-                sum += factor;
-              } else {
-                // std::cerr << "ERROR BILATERAL " << pos.x()+i << " " <<
-                // pos.y()+j<< " " <<curPix<<" \n";
-              }
-            }
-          } 
-          out[pos.x() + size.x() * pos.y()] = t / sum;
-      }); 
-    });
-#endif
-
-  }
   auto sd0b = ocl_ScaledDepth[0]->get_access<
     sycl_a::mode::read,
     sycl_a::target::host_buffer
@@ -2531,7 +2441,8 @@ void Kfusion::dumpVolume(std::string filename) {
 }
 
 #ifdef SYCL
-inline void update_ocl_output_render_buffer(/*const*/ uint2 &outputSize)
+inline void update_ocl_output_render_buffer(uchar4 *out,
+                                            /*const*/ uint2 &outputSize)
 {
   if (outputImageSizeBkp.x() < outputSize.x() ||
       outputImageSizeBkp.y() < outputSize.y() ||
@@ -2543,11 +2454,9 @@ inline void update_ocl_output_render_buffer(/*const*/ uint2 &outputSize)
 	    ocl_output_render_buffer = NULL;
 	  }
 	  ocl_output_render_buffer =
-      new buffer<uchar4,1>(range<1>{outputSize.x() * outputSize.y()});
+      new buffer<uchar4,1>(out, range<1>{outputSize.x() * outputSize.y()});
   }
 }
-#else
-inline void update_ocl_output_render_buffer(const uint2 &) { }
 #endif
 
 void Kfusion::renderVolume(uchar4 * out, uint2 outputSize, int frame,
@@ -2555,15 +2464,18 @@ void Kfusion::renderVolume(uchar4 * out, uint2 outputSize, int frame,
                            float largestep)
 {
 	if (frame % raycast_rendering_rate != 0) return;
-  update_ocl_output_render_buffer(outputSize);
 
 #ifdef SYCL
+  update_ocl_output_render_buffer(out, outputSize);
+
   range<2> globalWorksize{computationSize.x(), computationSize.y()};
   Matrix4 view = *(this->viewPose) * getInverseCameraMatrix(k);
   dagr::run<renderVolumeKernel,0>(q,globalWorksize,
     dagr::wo(*ocl_output_render_buffer),
     *ocl_volume_data,volumeResolution,volumeDimensions,view,nearPlane,farPlane,
     step,largestep,light,ambient);
+
+  delete ocl_output_render_buffer; ocl_output_render_buffer = NULL; // get it
 #else
 		renderVolumeKernel(out, outputSize, volume,
 				*(this->viewPose) * getInverseCameraMatrix(k), nearPlane,
@@ -2573,17 +2485,20 @@ void Kfusion::renderVolume(uchar4 * out, uint2 outputSize, int frame,
 
 void Kfusion::renderTrack(uchar4 * out, uint2 outputSize) {
 #ifdef SYCL
-  update_ocl_output_render_buffer(outputSize);
+  update_ocl_output_render_buffer(out, outputSize);
 
   range<2> globalWorksize{computationSize.x(), computationSize.y()};
   dagr::run<renderTrackKernel,0>(q,globalWorksize,
     dagr::wo(*ocl_output_render_buffer),
     *const_cast<const buffer<TrackData,1> *>(ocl_trackingResult));
 
+  delete ocl_output_render_buffer; ocl_output_render_buffer = NULL; // get it
+
   const auto csize = computationSize.x() * computationSize.y();
-  auto a_out = ocl_output_render_buffer->get_access<sycl_a::mode::read,
-                                                 sycl_a::target::host_buffer>();
-  dbg_show4(a_out, "trackRender", csize, 11);
+//  auto a_out = ocl_output_render_buffer->get_access<sycl_a::mode::read,
+//                                                 sycl_a::target::host_buffer>();
+  dbg_show4(out, "trackRender", csize, 11);
+
 #else
 	renderTrackKernel(out, trackingResult, outputSize);
 
@@ -2594,7 +2509,7 @@ void Kfusion::renderTrack(uchar4 * out, uint2 outputSize) {
 
 void Kfusion::renderDepth(uchar4 * out, uint2 outputSize) {
 #ifdef SYCL
-  update_ocl_output_render_buffer(outputSize);
+  update_ocl_output_render_buffer(out, outputSize);
 
   range<2> globalWorksize{computationSize.x(), computationSize.y()};
   dagr::run<renderDepthKernel,0>(q,globalWorksize,
@@ -2602,10 +2517,13 @@ void Kfusion::renderDepth(uchar4 * out, uint2 outputSize) {
     dagr::ro(*ocl_FloatDepth),
     nearPlane, farPlane);
 
+  delete ocl_output_render_buffer; ocl_output_render_buffer = NULL; // get it
+
   const auto osize = outputSize.x() * outputSize.y();
-  auto a_out = ocl_output_render_buffer->get_access<sycl_a::mode::read,
-                                                 sycl_a::target::host_buffer>();
-  dbg_show4(a_out, "depthRender", osize, 10); // 0!?
+//  auto a_out = ocl_output_render_buffer->get_access<sycl_a::mode::read,
+//                                                 sycl_a::target::host_buffer>();
+  dbg_show4(out, "depthRender", osize, 10); // 0!?
+
 #else
 	renderDepthKernel(out, floatDepth, outputSize, nearPlane, farPlane);
 
