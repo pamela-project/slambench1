@@ -100,23 +100,6 @@ bool print_kernel_timing = false;
 	struct timespec tock_clockData;
 #endif
 
-#ifdef SYCL
-struct initVolumeKernelOk {
-
-template <typename T>
-static void kernel(item<3> ix, T *data)
-{
-  uint x = ix[0]; uint y = ix[1]; uint z = ix[2];
-  uint3 size{ix.get_range()[0], ix.get_range()[1], ix.get_range()[2]};
-  float2 d{1.0f,0.0f};
-
-  data[x + y * size.x() + z * size.x() * size.y()] =
-    short2{d.x() * 32766.0f, d.y()};
-}
-
-}; // struct
-#endif  // SYCL
-	
 void Kfusion::languageSpecificConstructor() {
 
 	if (getenv("KERNEL_TIMINGS"))
@@ -278,7 +261,13 @@ Kfusion::~Kfusion() {
 	volume.release();
 }
 void Kfusion::reset() {
+#ifdef SYCL
+  uint3 &vr = volumeResolution; // declared in kernels.h
+  const auto r = range<3>{vr.x(),vr.y(),vr.x()};
+	dagr::run<initVolumeKernel,0>(q,r,*ocl_volume_data);
+#else
 	initVolumeKernel(volume);
+#endif
 }
 void init() {
 }
@@ -290,19 +279,20 @@ void clean() {
 // stub
 
 #ifdef SYCL
+struct initVolumeKernel {
+
 template <typename T>
-void initVolumeKernel(Volume<T> volume) {
-	TICK();
-	for (unsigned int x = 0; x < volume.size.x(); x++)
-		for (unsigned int y = 0; y < volume.size.y(); y++) {
-			for (unsigned int z = 0; z < volume.size.z(); z++) {
-				//std::cout <<  x << " " << y << " " << z <<"\n";
-        /*const*/ float2 w{1.0f, 0.0f};
-				volume.setints(x, y, z, w /*make_float2(1.0f, 0.0f)*/); // w = nonconst
-			}
-		}
-	TOCK("initVolumeKernel", volume.size.x() * volume.size.y() * volume.size.z());
+static void kernel(item<3> ix, T *data)
+{
+  uint x = ix[0]; uint y = ix[1]; uint z = ix[2];
+  uint3 size{ix.get_range()[0], ix.get_range()[1], ix.get_range()[2]};
+  float2 d{1.0f,0.0f};
+
+  data[x + y * size.x() + z * size.x() * size.y()] =
+    short2{d.x() * 32766.0f, d.y()};
 }
+
+}; // struct
 #else
 void initVolumeKernel(Volume volume) {
 	TICK();
@@ -443,8 +433,7 @@ inline float2 getVolume(/*const*/ Volume<T> v, /*const*/ uint3 pos) {
   /*const*/ short2 d = v.data[pos.x() +   // Making d a ref fixes it.
                               pos.y() * v.size.x() +
                               pos.z() * v.size.x() * v.size.y()];
-	return floa
-t2{1,2};//d.x() * 0.00003051944088f, d.y()}; //  / 32766.0f
+	return float2{d.x() * 0.00003051944088f, d.y()}; //  / 32766.0f
 }
 #endif
 
@@ -1219,6 +1208,7 @@ static void kernel(I ix, T *v_data, const uint3 v_size, const float3 v_dim,
   float3 pos     = Mat4TimeFloat3(invTrack, posVolume(vol,pix));
   float3 cameraX = Mat4TimeFloat3(K, pos);
 
+#if 0 // DEBUG
   //setVolume(vol,pix,float2{1,1}); // debug
   //return;
 //  for (pix.z = 0; pix.z < vol.size.z; ++pix.z) {
@@ -1245,8 +1235,8 @@ static void kernel(I ix, T *v_data, const uint3 v_size, const float3 v_dim,
     if (diff > -mu) {
 //      vol.data[pix.x() + pix.y() * vol.size.x() + pix.z() * vol.size.x() * vol.size.y()] = short2{1,1}; // 33554432
       const float sdf = fmin(1.f, diff/mu);
-//      float2 data = getVolume(vol,pix);
-      float2 data{0,0};
+      float2 data = getVolume(vol,pix);
+//      float2 data{0,0};
       data.x() = clamp((data.y()*data.x() + sdf)/(data.y() + 1),-1.f,1.f);
       data.y() = fmin(data.y()+1, maxweight);
       setVolume(vol,pix,data);
@@ -1256,6 +1246,7 @@ static void kernel(I ix, T *v_data, const uint3 v_size, const float3 v_dim,
   } // 65491364764 65474048270 65482169805
     // Becomes as below with data{0,0}: 58662553373 58619714801 58589747919
   return;
+#endif
 
   for (pix.z() = 0; pix.z() < vol.size.z();
          pix.z() = pix.z()+1, pos += delta, cameraX += cameraDelta)
@@ -1310,6 +1301,7 @@ void integrateKernel(Volume vol, const float* depth, uint2 depthSize,
 			float3 pos = invTrack * vol.pos(pix);
 			float3 cameraX = K * pos;
 
+#if 0
 //        vol.data[0] = short2{1,1}; // -32764
 //        vol.data[0] = short2{1,0}; // -32765
 //        vol.data[0] = short2{0,0}; // -32766
@@ -1349,6 +1341,7 @@ void integrateKernel(Volume vol, const float* depth, uint2 depthSize,
 // commons.h
 // data[pos.x + pos.y * size.x + pos.z * size.x * size.y] =
 //   make_short2(d.x * 32766.0f, d.y);
+#endif
 
 			for (pix.z = 0; pix.z < vol.size.z;
 					++pix.z,pos += delta,cameraX += cameraDelta) {

@@ -14,11 +14,12 @@
 #include <sycl/commons.h>
 
 ////////////////////////// COMPUTATION KERNELS PROTOTYPES //////////////////////
+struct initVolumeKernel;
 
+#ifndef SYCL // Surely SYCL is always defined here?
 template <typename T>
 void initVolumeKernel(Volume<T> volume);
 
-#ifndef SYCL
 void bilateralFilterKernel(float* out, const float* in, uint2 inSize,
 		const float * gaussian, float e_d, int r);
 
