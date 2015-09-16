@@ -2489,22 +2489,16 @@ void Kfusion::renderTrack(uchar4 * out, uint2 outputSize) {
 
   range<2> globalWorksize{computationSize.x(), computationSize.y()};
   dagr::run<renderTrackKernel,0>(q,globalWorksize,
-    dagr::wo(*ocl_output_render_buffer),
-    *const_cast<const buffer<TrackData,1> *>(ocl_trackingResult));
+    dagr::wo(*ocl_output_render_buffer), dagr::ro(*ocl_trackingResult));
 
   delete ocl_output_render_buffer; ocl_output_render_buffer = NULL; // get it
 
   const auto csize = computationSize.x() * computationSize.y();
-//  auto a_out = ocl_output_render_buffer->get_access<sycl_a::mode::read,
-//                                                 sycl_a::target::host_buffer>();
-  dbg_show4(out, "trackRender", csize, 11);
-
 #else
 	renderTrackKernel(out, trackingResult, outputSize);
-
   const auto csize = computationSize.x * computationSize.y;
-  dbg_show4(out, "trackRender", csize, 11);
 #endif
+  dbg_show4(out, "trackRender", csize, 11);
 }
 
 void Kfusion::renderDepth(uchar4 * out, uint2 outputSize) {
@@ -2520,16 +2514,12 @@ void Kfusion::renderDepth(uchar4 * out, uint2 outputSize) {
   delete ocl_output_render_buffer; ocl_output_render_buffer = NULL; // get it
 
   const auto osize = outputSize.x() * outputSize.y();
-//  auto a_out = ocl_output_render_buffer->get_access<sycl_a::mode::read,
-//                                                 sycl_a::target::host_buffer>();
-  dbg_show4(out, "depthRender", osize, 10); // 0!?
 
 #else
 	renderDepthKernel(out, floatDepth, outputSize, nearPlane, farPlane);
-
   const auto osize = outputSize.x * outputSize.y;
-  dbg_show4(out, "depthRender", osize, 10);
 #endif
+  dbg_show4(out, "depthRender", osize, 10);
 }
 
 void synchroniseDevices() {
