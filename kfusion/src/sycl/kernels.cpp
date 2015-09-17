@@ -1397,7 +1397,7 @@ static void kernel(item<2> ix, T *pos3D, T *normal, U *v_data,
 }; // struct
 #else
 void raycastKernel(float3* vertex, float3* normal, uint2 inputSize,
-		/*const*/ Volume integration, const Matrix4 view, const float nearPlane,
+		const Volume integration, const Matrix4 view, const float nearPlane,
 		const float farPlane, const float step, const float largestep) {
 	TICK();
 	unsigned int y;
@@ -1530,11 +1530,11 @@ static void kernel(item<2> ix, T *out, U const *depth,
 		else {
       float h = (d - nearPlane) / (farPlane - nearPlane);
       h *= 6.0f;
-      const int sextant = (int)h;
-      const float fract = h - sextant;
+      const int   sextant    = (int)h;
+      const float fract      = h - sextant;
       const float swift_half = 0.75f * 0.6667f; // 0.500025!! see vsf in gs2rgb
-      const float mid1 = 0.25f + (swift_half*fract);
-      const float mid2 = 0.75f - (swift_half*fract);
+      const float mid1       = 0.25f + (swift_half*fract);
+      const float mid2       = 0.75f - (swift_half*fract);
 // n.b. (char)(0.25*255) = 63  (and (char)(0.75*255) = 191) This is to match
 // the cpp version. Same result as the simpler: (f*256)-1
 			switch (sextant)
