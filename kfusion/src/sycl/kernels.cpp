@@ -63,23 +63,22 @@ float3 ** inputNormal;
 #ifdef SYCL
 // sycl specific
 cl::sycl::queue q(cl::sycl::intel_selector{});
-static_assert(std::is_standard_layout<TrackData>::value,"");
 
-buffer<float,1>    *ocl_gaussian             = NULL;
+buffer<float,1>      *ocl_gaussian             = NULL;
 
-buffer<float3,1>   *ocl_vertex               = NULL;
-buffer<float3,1>   *ocl_normal               = NULL;
-buffer<short2,1>   *ocl_volume_data          = NULL;
-buffer<uint16_t,1> *ocl_depth_buffer         = NULL;
+buffer<float3,1>     *ocl_vertex               = NULL;
+buffer<float3,1>     *ocl_normal               = NULL;
+buffer<short2,1>     *ocl_volume_data          = NULL;
+buffer<uint16_t,1>   *ocl_depth_buffer         = NULL;
 // Common buffer for track, depth and volume:
-buffer<uchar4,1>   *ocl_output_render_buffer = NULL;
+buffer<uchar4,1>     *ocl_output_render_buffer = NULL;
 
-buffer<float,1>             *ocl_reduce_output_buffer = NULL;
-buffer<TrackData,1>         *ocl_trackingResult       = NULL;
-buffer<float,1>             *ocl_FloatDepth           = NULL;
-buffer<float,1>            **ocl_ScaledDepth          = NULL;
-buffer<float3,1>           **ocl_inputVertex          = NULL;
-buffer<float3,1>           **ocl_inputNormal          = NULL;
+buffer<float,1>      *ocl_reduce_output_buffer = NULL;
+buffer<TrackData,1>  *ocl_trackingResult       = NULL;
+buffer<float,1>      *ocl_FloatDepth           = NULL;
+buffer<float,1>     **ocl_ScaledDepth          = NULL;
+buffer<float3,1>    **ocl_inputVertex          = NULL;
+buffer<float3,1>    **ocl_inputNormal          = NULL;
 float *reduceOutputBuffer = NULL;
 
 // reduction parameters
@@ -1964,9 +1963,9 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
                             computationSize.y() / (int) ::pow(2, i)};
 
     auto r   = range<2>{outSize.x(),outSize.y()};
-    auto out = dagr::wo(*ocl_ScaledDepth[i]);
+    auto out = dagr::wo(*ocl_ScaledDepth[i  ]);
+    auto in  = dagr::ro(*ocl_ScaledDepth[i-1]);
 		uint2 inSize{outSize.x()*2,outSize.y()*2}; // Seems redundant
-    auto &in = *const_cast<const buffer<float,1> *>(ocl_ScaledDepth[i-1]);
     dagr::run<halfSampleRobustImageKernel,0>(q,r,out,in,inSize,e_delta*3,1);
 #else
 		halfSampleRobustImageKernel(ScaledDepth[i], ScaledDepth[i - 1],
@@ -1998,14 +1997,14 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 		Matrix4 invK = getInverseCameraMatrix(tmp);   // Needs a non-const (tmp)
     const uint2    img_sz_ui2{localimagesize.x(),localimagesize.y()};
     const range<2>  imageSize{localimagesize.x(),localimagesize.y()};
-    auto &depth  = *const_cast<const buffer<float,1> *>(ocl_ScaledDepth[i]);
     dagr::run<depth2vertexKernel,0>(q,imageSize,
-      *ocl_inputVertex[i],img_sz_ui2,depth,img_sz_ui2,invK);
+               *ocl_inputVertex[i],  img_sz_ui2,
+      dagr::ro(*ocl_ScaledDepth[i]), img_sz_ui2, invK);
 
     const range<2>  imageSize2{localimagesize.x(),localimagesize.y()};
-    auto &vertex = *const_cast<const buffer<float3,1> *>(ocl_inputVertex[i]);
     dagr::run<vertex2normalKernel,0>(q,imageSize2,
-      *ocl_inputNormal[i],img_sz_ui2,vertex,img_sz_ui2);
+               *ocl_inputNormal[i],  img_sz_ui2,
+      dagr::wo(*ocl_inputVertex[i]), img_sz_ui2);
 
 		localimagesize = make_uint2(localimagesize.x() / 2, localimagesize.y() / 2);
 #else
@@ -2048,16 +2047,13 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 
     for (int i = 0; i < iterations[level]; ++i) {  // i<4,i<5,i<10
 #ifdef SYCL
-      using cbf3_t = const buffer<float3,1>;
-      auto &inVertex  = *const_cast<cbf3_t *>(ocl_inputVertex[level]);
-      auto &inNormal  = *const_cast<cbf3_t *>(ocl_inputNormal[level]);
-      auto &refVertex = *const_cast<cbf3_t *>(ocl_vertex);
-      auto &refNormal = *const_cast<cbf3_t *>(ocl_normal);
       range<2> imageSize{localimagesize.x(),localimagesize.y()};
       dagr::run<trackKernel,0>(q,imageSize,
         *ocl_trackingResult,computationSize,
-        inVertex,localimagesize,inNormal,localimagesize,
-        refVertex,computationSize,refNormal,computationSize,
+        dagr::ro(*ocl_inputVertex[level]),localimagesize,
+        dagr::ro(*ocl_inputNormal[level]),localimagesize,
+        dagr::ro(*ocl_vertex),computationSize,
+        dagr::ro(*ocl_normal),computationSize,
         pose,projectReference,dist_threshold,normal_threshold);
 
       const    range<1> nitems{size_of_group * number_of_groups};
@@ -2379,7 +2375,6 @@ bool Kfusion::integration(float4 k, uint integration_rate, float mu, uint frame)
 	if ((doIntegrate && ((frame % integration_rate) == 0)) || (frame <= 3)) {
 #ifdef SYCL
     range<2> globalWorksize{volumeResolution.x(), volumeResolution.y()};
-    auto depth = *const_cast<buffer<float,1>*>(ocl_FloatDepth);
 		const Matrix4 invTrack = inverse(pose);
 		const Matrix4 K = getCameraMatrix(k);
 		const float3 delta = myrotate(invTrack,
@@ -2387,7 +2382,8 @@ bool Kfusion::integration(float4 k, uint integration_rate, float mu, uint frame)
 
     // The SYCL lambda for integrateKernel demonstrates verbosity
     dagr::run<integrateKernel,0>(q, globalWorksize,
-      *ocl_volume_data, volumeResolution, volumeDimensions, depth,
+      *ocl_volume_data, volumeResolution, volumeDimensions,
+      dagr::ro(*ocl_FloatDepth),
       computationSize, invTrack, K, mu, maxweight, delta, myrotate(K, delta));
 
     const auto vsize = volume.size.x() * volume.size.y() * volume.size.z();
