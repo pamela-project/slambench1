@@ -2522,6 +2522,4 @@ void Kfusion::renderDepth(uchar4 * out, uint2 outputSize) {
   dbg_show4(out, "depthRender", osize, 10);
 }
 
-void synchroniseDevices() {
-	// Nothing to do in the C++ implementation
-}
+void synchroniseDevices() { q.wait(); }
