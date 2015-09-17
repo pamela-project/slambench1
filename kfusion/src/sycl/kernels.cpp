@@ -1521,6 +1521,17 @@ static void kernel(item<2> ix, T *out, U const *depth,
 	const int posy = ix[1];
   const int sizex = ix.get_range()[0];
 
+	float d_ = depth[posx + sizex * posy];
+	if (d_ < nearPlane)
+    out[posx + sizex * posy] = uchar4{0,0,0,0};
+  else {
+		if (d_ > farPlane)
+      out[posx + sizex * posy] = uchar4{1,1,1,1};
+    else
+      out[posx + sizex * posy] = uchar4{2,2,2,2};
+  }
+  return;
+
 	float d = depth[posx + sizex * posy];
 	if (d < nearPlane)
     out[posx + sizex * posy] = uchar4{255,255,255,0};
@@ -1563,6 +1574,16 @@ void renderDepthKernel(uchar4* out, float * depth, uint2 depthSize,
 		for (unsigned int x = 0; x < depthSize.x; x++) {
 
 			unsigned int pos = rowOffeset + x;
+
+  if (depth[pos] < nearPlane)
+    out[pos] = make_uchar4(0,0,0,0);
+  else {
+    if (depth[pos] > farPlane)
+      out[pos] = make_uchar4(1,1,1,1);
+    else
+      out[pos] = make_uchar4(2,2,2,2);
+  }
+  continue; // DEBUG
 
 			if (depth[pos] < nearPlane)
 				out[pos] = make_uchar4(255, 255, 255, 0); // The forth value is a padding in order to align memory
@@ -2430,4 +2451,8 @@ void Kfusion::renderDepth(uchar4 * out, uint2 outputSize) {
   dbg_show4(out, "depthRender", osize, 10);
 }
 
+#ifdef SYCL
 void synchroniseDevices() { q.wait(); }
+#else
+void synchroniseDevices() {           }
+#endif
