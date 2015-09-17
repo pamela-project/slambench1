@@ -1521,17 +1521,6 @@ static void kernel(item<2> ix, T *out, U const *depth,
 	const int posy = ix[1];
   const int sizex = ix.get_range()[0];
 
-	float d_ = depth[posx + sizex * posy];
-	if (d_ < nearPlane)
-    out[posx + sizex * posy] = uchar4{0,0,0,0};
-  else {
-		if (d_ > farPlane)
-      out[posx + sizex * posy] = uchar4{1,1,1,1};
-    else
-      out[posx + sizex * posy] = uchar4{2,2,2,2};
-  }
-  return;
-
 	float d = depth[posx + sizex * posy];
 	if (d < nearPlane)
     out[posx + sizex * posy] = uchar4{255,255,255,0};
@@ -1539,20 +1528,23 @@ static void kernel(item<2> ix, T *out, U const *depth,
 		if (d > farPlane)
       out[posx + sizex * posy] = uchar4{0,0,0,0};
 		else {
-			float h = (d - nearPlane) / (farPlane - nearPlane);
-			h *= 6.0f;
-			const int sextant = (int)h;
-			const float fract = h - sextant;
-			const float mid1  = 0.25f + (0.5f*fract);
-			const float mid2  = 0.75f - (0.5f*fract);
+      float h = (d - nearPlane) / (farPlane - nearPlane);
+      h *= 6.0f;
+      const int sextant = (int)h;
+      const float fract = h - sextant;
+      const float swift_half = 0.75f * 0.6667f; // 0.500025!! see vsf in gs2rgb
+      const float mid1 = 0.25f + (swift_half*fract);
+      const float mid2 = 0.75f - (swift_half*fract);
+// n.b. (char)(0.25*255) = 63  (and (char)(0.75*255) = 191) This is to match
+// the cpp version. Same result as the simpler: (f*256)-1
 			switch (sextant)
 			{
-        case 0: out[posx + sizex * posy] = uchar4{191, 255*mid1, 64, 0}; break;
-        case 1: out[posx + sizex * posy] = uchar4{255*mid2, 191, 64, 0}; break;
-        case 2: out[posx + sizex * posy] = uchar4{64, 191, 255*mid1, 0}; break;
-        case 3: out[posx + sizex * posy] = uchar4{64, 255*mid2, 191, 0}; break;
-        case 4: out[posx + sizex * posy] = uchar4{255*mid1, 64, 191, 0}; break;
-        case 5: out[posx + sizex * posy] = uchar4{191, 64, 255*mid2, 0}; break;
+        case 0: out[posx + sizex * posy] = uchar4{191, 255*mid1, 63, 0}; break;
+        case 1: out[posx + sizex * posy] = uchar4{255*mid2, 191, 63, 0}; break;
+        case 2: out[posx + sizex * posy] = uchar4{63, 191, 255*mid1, 0}; break;
+        case 3: out[posx + sizex * posy] = uchar4{63, 255*mid2, 191, 0}; break;
+        case 4: out[posx + sizex * posy] = uchar4{255*mid1, 63, 191, 0}; break;
+        case 5: out[posx + sizex * posy] = uchar4{191, 63, 255*mid2, 0}; break;
 			}
 		}
 	}
@@ -1574,16 +1566,6 @@ void renderDepthKernel(uchar4* out, float * depth, uint2 depthSize,
 		for (unsigned int x = 0; x < depthSize.x; x++) {
 
 			unsigned int pos = rowOffeset + x;
-
-  if (depth[pos] < nearPlane)
-    out[pos] = make_uchar4(0,0,0,0);
-  else {
-    if (depth[pos] > farPlane)
-      out[pos] = make_uchar4(1,1,1,1);
-    else
-      out[pos] = make_uchar4(2,2,2,2);
-  }
-  continue; // DEBUG
 
 			if (depth[pos] < nearPlane)
 				out[pos] = make_uchar4(255, 255, 255, 0); // The forth value is a padding in order to align memory
