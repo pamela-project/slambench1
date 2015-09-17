@@ -189,7 +189,8 @@ Kfusion::~Kfusion() {
 	  ocl_FloatDepth = NULL;
   }
 
-	for (unsigned int i = 0; i < iterations.size(); ++i) {
+	for (unsigned int i = 0; i < iterations.size(); ++i)
+  {
 		if (ocl_ScaledDepth[i]) {
 			delete ocl_ScaledDepth[i];
       ocl_ScaledDepth[i] = NULL;
@@ -202,12 +203,6 @@ Kfusion::~Kfusion() {
 			delete ocl_inputNormal[i];
       ocl_inputNormal[i] = NULL;
     }
-/*		if (ocl_inputVertex[i])
-			clReleaseMemObject(ocl_inputVertex[i]);
-		ocl_inputVertex[i] = NULL;
-		if (ocl_inputNormal[i])
-			clReleaseMemObject(ocl_inputNormal[i]);
-		ocl_inputNormal[i] = NULL; */
 	}
 	if (ocl_ScaledDepth) {
     free(ocl_ScaledDepth);
@@ -1207,46 +1202,6 @@ static void kernel(I ix, T *v_data, const uint3 v_size, const float3 v_dim,
   float3 pos     = Mat4TimeFloat3(invTrack, posVolume(vol,pix));
   float3 cameraX = Mat4TimeFloat3(K, pos);
 
-#if 0 // DEBUG
-  //setVolume(vol,pix,float2{1,1}); // debug
-  //return;
-//  for (pix.z = 0; pix.z < vol.size.z; ++pix.z) {
-  for (pix.z() = 0; pix.z() < vol.size.z();
-         pix.z() = pix.z()+1, pos += delta, cameraX += cameraDelta) {
-    vol.data[pix.x() + pix.y() * vol.size.x() + pix.z() * vol.size.x() * vol.size.y()] = short2{0,0};
-    if (pos.z() < 0.0001f) // some near plane constraint
-      continue;
-
-    /*const*/ float2 pixel{cameraX.x()/cameraX.z() + 0.5f,
-                           cameraX.y()/cameraX.z() + 0.5f};
-
-    if (pixel.x() < 0 || pixel.x() > depthSize.x()-1 ||
-        pixel.y() < 0 || pixel.y() > depthSize.y()-1)
-      continue;
-    /*const*/ uint2 px{pixel.x(), pixel.y()};
-    float depthpx = depth[px.x() + depthSize.x() * px.y()];
-
-    if (depthpx == 0)
-      continue;
-    const float diff = (depthpx - cameraX.z()) *
-         cl::sycl::sqrt(1+sq(pos.x()/pos.z()) + sq(pos.y()/pos.z()));
-
-    if (diff > -mu) {
-//      vol.data[pix.x() + pix.y() * vol.size.x() + pix.z() * vol.size.x() * vol.size.y()] = short2{1,1}; // 33554432
-      const float sdf = fmin(1.f, diff/mu);
-      float2 data = getVolume(vol,pix);
-//      float2 data{0,0};
-      data.x() = clamp((data.y()*data.x() + sdf)/(data.y() + 1),-1.f,1.f);
-      data.y() = fmin(data.y()+1, maxweight);
-      setVolume(vol,pix,data);
-    }
-//           = short2{2,0}; // 33554432
-//           = short2{1,0}; // 16777216
-  } // 65491364764 65474048270 65482169805
-    // Becomes as below with data{0,0}: 58662553373 58619714801 58589747919
-  return;
-#endif
-
   for (pix.z() = 0; pix.z() < vol.size.z();
          pix.z() = pix.z()+1, pos += delta, cameraX += cameraDelta)
   {
@@ -1299,48 +1254,6 @@ void integrateKernel(Volume vol, const float* depth, uint2 depthSize,
 			uint3 pix = make_uint3(x, y, 0); //pix.x() = x;pix.y() = y;
 			float3 pos = invTrack * vol.pos(pix);
 			float3 cameraX = K * pos;
-
-#if 0
-//        vol.data[0] = short2{1,1}; // -32764
-//        vol.data[0] = short2{1,0}; // -32765
-//        vol.data[0] = short2{0,0}; // -32766
-//        printf("%d %d %d - %d %d %d (%d)\n", 
-//          pix.x, pix.y, pix.z, vol.size.x, vol.size.y, vol.size.z,
-//          pix.x + pix.y * vol.size.x + pix.z * vol.size.x * vol.size.y);
-			for (pix.z = 0; pix.z < vol.size.z;
-					++pix.z,pos += delta,cameraX += cameraDelta) {
-        vol.data[pix.x + pix.y * vol.size.x + pix.z * vol.size.x * vol.size.y]
-           = short2{0,0}; // 33554432
-				if (pos.z < 0.0001f) // some near plane constraint
-					continue;
-				const float2 pixel = make_float2(cameraX.x / cameraX.z + 0.5f,
-						cameraX.y / cameraX.z + 0.5f);
-				if (pixel.x < 0 || pixel.x > depthSize.x - 1 || pixel.y < 0
-						|| pixel.y > depthSize.y - 1)
-					continue;
-				const uint2 px = make_uint2(pixel.x, pixel.y);
-				if (depth[px.x + px.y * depthSize.x] == 0)
-					continue;
-				const float diff = (depth[px.x + px.y * depthSize.x] - cameraX.z) *
-              std::sqrt(1 + sq(pos.x/pos.z) + sq(pos.y/pos.z));
-				if (diff > -mu) {
-//          vol.data[pix.x + pix.y * vol.size.x + pix.z * vol.size.x * vol.size.y] = short2{1,1}; // 33554432
-					const float sdf = fminf(1.f, diff / mu);
-//					float2 data = vol[pix];
-					float2 data = make_float2(0,0);
-					data.x = clamp((data.y * data.x + sdf) / (data.y + 1), -1.f, 1.f);
-					data.y = fminf(data.y + 1, maxweight);
-					vol.set(pix, data);
-        }
-//           = short2{2,0}; // 33554432
-//           = short2{1,0}; // 16777216
-      } // 58662553373 58619714801 58589747919
-//        vol.set(pix,float2{1,1}); // debug
-      continue;
-// commons.h
-// data[pos.x + pos.y * size.x + pos.z * size.x * size.y] =
-//   make_short2(d.x * 32766.0f, d.y);
-#endif
 
 			for (pix.z = 0; pix.z < vol.size.z;
 					++pix.z,pos += delta,cameraX += cameraDelta) {
@@ -2380,7 +2293,7 @@ bool Kfusion::integration(float4 k, uint integration_rate, float mu, uint frame)
 		const float3 delta = myrotate(invTrack,
 				float3{0, 0, volumeDimensions.z() / volumeResolution.z()});
 
-    // The SYCL lambda for integrateKernel demonstrates verbosity
+    // The SYCL lambda for integrateKernel demonstrates pre-DAGR verbosity
     dagr::run<integrateKernel,0>(q, globalWorksize,
       *ocl_volume_data, volumeResolution, volumeDimensions,
       dagr::ro(*ocl_FloatDepth),
@@ -2503,8 +2416,7 @@ void Kfusion::renderDepth(uchar4 * out, uint2 outputSize) {
 
   range<2> globalWorksize{computationSize.x(), computationSize.y()};
   dagr::run<renderDepthKernel,0>(q,globalWorksize,
-    dagr::wo(*ocl_output_render_buffer),
-    dagr::ro(*ocl_FloatDepth),
+    dagr::wo(*ocl_output_render_buffer), dagr::ro(*ocl_FloatDepth),
     nearPlane, farPlane);
 
   delete ocl_output_render_buffer; ocl_output_render_buffer = NULL; // get it
