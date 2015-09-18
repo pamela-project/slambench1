@@ -533,47 +533,34 @@ static void kernel(item<2> ix,       T *normal, const uint2 normalSize,
 void vertex2normalKernel(float3 * out, const float3 * in, uint2 imageSize) {
 	TICK();
 	unsigned int x, y;
-#ifdef SYCL
-	const uint imgSize_x = imageSize.x(); const uint imgSize_y = imageSize.y();
-#else
-	const uint imgSize_x = imageSize.x;   const uint imgSize_y = imageSize.y;
-#endif
-#pragma omp 0 // parallel for \
+#pragma omp parallel for \
         shared(out), private(x,y)
-	for (y = 0; y < imgSize_y; y++) {
-		for (x = 0; x < imgSize_x; x++) {
-			/*const*/ uint2 pleft  = make_uint2(max(int(x)-1,0),                y);
-			/*const*/ uint2 pright = make_uint2(min(int(x)+1,(int)imgSize_x-1), y);
-			/*const*/ uint2 pup    = make_uint2(x, max(int(y)-1, 0));
-			/*const*/ uint2 pdown  = make_uint2(x, min(int(y)+1, ((int)imgSize_y)-1));
+	for (y = 0; y < imageSize.y; y++) {
+		for (x = 0; x < imageSize.x; x++) {
+			const uint2 pleft = make_uint2(max(int(x) - 1, 0), y);
+			const uint2 pright = make_uint2(min(x + 1, (int) imageSize.x - 1),
+					y);
+			const uint2 pup = make_uint2(x, max(int(y) - 1, 0));
+			const uint2 pdown = make_uint2(x,
+					min(y + 1, ((int) imageSize.y) - 1));
 
-#ifdef SYCL
-			/*const*/ float3 left  = in[pleft.x()  + imgSize_x * pleft.y()];
-			/*const*/ float3 right = in[pright.x() + imgSize_x * pright.y()];
-			/*const*/ float3 up    = in[pup.x()    + imgSize_x * pup.y()];
-			/*const*/ float3 down  = in[pdown.x()  + imgSize_x * pdown.y()];
-
-			if (left.z() == 0 || right.z() == 0 || up.z() == 0 || down.z() == 0) {
-				out[x + y * imgSize_x].x() = INVALID;
-				continue;
-			}
-#else
-			const float3 left  = in[pleft.x  + imgSize_x * pleft.y];
-			const float3 right = in[pright.x + imgSize_x * pright.y];
-			const float3 up    = in[pup.x    + imgSize_x * pup.y];
-			const float3 down  = in[pdown.x  + imgSize_x * pdown.y];
+			const float3 left = in[pleft.x + imageSize.x * pleft.y];
+			const float3 right = in[pright.x + imageSize.x * pright.y];
+			const float3 up = in[pup.x + imageSize.x * pup.y];
+			const float3 down = in[pdown.x + imageSize.x * pdown.y];
 
 			if (left.z == 0 || right.z == 0 || up.z == 0 || down.z == 0) {
-				out[x + y * imgSize_x].x = INVALID;
+        const float3 invalid3{INVALID,INVALID,INVALID};
+				out[x + y * imageSize.x] = invalid3;
 				continue;
 			}
-#endif
+
 			const float3 dxv = right - left;
 			const float3 dyv = down - up;
-			out[x + y * imgSize_x] = normalize(cross(dyv, dxv)); // switched dx and dy to get factor -1
+			out[x + y * imageSize.x] = normalize(cross(dyv, dxv)); // switched dx and dy to get factor -1
 		}
 	}
-	TOCK("vertex2normalKernel", imgSize_x * imgSize_y);
+	TOCK("vertex2normalKernel", imageSize.x * imageSize.y);
 }
 
 #endif // SYCL
@@ -969,7 +956,7 @@ static void kernel(item<2> ix,
 
   if (length(diff) > dist_threshold) {
     row.result = -4;
-    return;  // !!!!!!!!!!!!
+    return;
   }
   if (dot(projectedNormal,referenceNormal)<normal_threshold) {
     row.result = -5;
