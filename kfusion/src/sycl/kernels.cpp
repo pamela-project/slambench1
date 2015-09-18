@@ -1710,6 +1710,7 @@ void renderVolumeKernel(uchar4* out, const uint2 depthSize, const Volume volume,
 }
 #endif
 
+#ifdef _DEBUG
 template <typename T>
 void dbg_show(T p, const char *fname, size_t sz, int id)
 {
@@ -1765,6 +1766,13 @@ void dbg_show_TrackData(T p, const char *fname, size_t sz, int id)
              p[i].J[3] + p[i].J[4] + p[i].J[5];
   printf("(%d) sum of %s: %g\n", id, fname, total);
 }
+#else
+template <typename T> void dbg_show (T, const char *, size_t, int) {}
+template <typename T> void dbg_show2(T, const char *, size_t, int) {}
+template <typename T> void dbg_show3(T, const char *, size_t, int) {}
+template <typename T> void dbg_show4(T, const char *, size_t, int) {}
+template <typename T> void dbg_show_TrackData(T, const char *, size_t, int) {}
+#endif // _DEBUG
 
 #ifdef SYCL
 template <typename T>
