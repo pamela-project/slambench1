@@ -2320,7 +2320,6 @@ bool Kfusion::integration(float4 k, uint integration_rate, float mu, uint frame)
 		doIntegrate = false;
 	}
 
-  printf("                    Kfusion::integration returns: %d\n", doIntegrate);
 	return doIntegrate;
 }
 
