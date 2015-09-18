@@ -1380,18 +1380,23 @@ static void kernel(item<2> ix, T *pos3D, T *normal, U *v_data,
     raycast_sycl(volume, pos, view, nearPlane, farPlane, step, largestep);
   const float3 test{hit.x(),hit.y(),hit.z()}; // as_float3(hit);
 
+  // The C++ version just sets the normal's x value to INVALID. This is a
+  // better approach - also used by the OpenCL version.
+  const float3 invalid3{INVALID,INVALID,INVALID};
+
   if (hit.w() > 0.0f) {
     pos3D[pos.x() + sizex * pos.y()] = test;
     float3 surfNorm = grad(test,volume);
-    if (cl::sycl::length(surfNorm) == 0) {
-      normal[pos.x() + sizex * pos.y()] = float3{INVALID,INVALID,INVALID};
-    } else {
+    if (cl::sycl::length(surfNorm) == 0)
+      normal[pos.x() + sizex * pos.y()] = invalid3;
+    else
       normal[pos.x() + sizex * pos.y()] = cl::sycl::normalize(surfNorm);
-    }
-  } else {
-    pos3D [pos.x() + sizex * pos.y()] = float3{0,0,0};
-    normal[pos.x() + sizex * pos.y()] = float3{INVALID,INVALID,INVALID};
   }
+  else {
+    pos3D [pos.x() + sizex * pos.y()] = float3{0,0,0};
+    normal[pos.x() + sizex * pos.y()] = invalid3;
+  }
+
 }
 
 }; // struct
@@ -1410,20 +1415,23 @@ void raycastKernel(float3* vertex, float3* normal, uint2 inputSize,
 
 			const float4 hit = raycast(integration, pos, view, nearPlane,
 					farPlane, step, largestep);
-			if (hit.w > 0.0) {
-				vertex[pos.x + pos.y * inputSize.x] = make_float3(hit);
-				float3 surfNorm = integration.grad(make_float3(hit));
-				if (length(surfNorm) == 0) {
-					//normal[pos] = normalize(surfNorm); // APN added
-					normal[pos.x + pos.y * inputSize.x].x = INVALID;
-				} else {
-					normal[pos.x + pos.y * inputSize.x] = normalize(surfNorm);
-				}
-			} else {
-				//std::cerr<< "RAYCAST MISS "<<  pos.x << " " << pos.y <<"  " << hit.w() <<"\n";
-				vertex[pos.x + pos.y * inputSize.x] = make_float3(0);
-				normal[pos.x + pos.y * inputSize.x] = make_float3(INVALID,0,0);
-			}
+
+      // The C++ version just sets the normal's x value to INVALID. This is a
+      // better approach - also used by the OpenCL version.
+      const float3 invalid3{INVALID,INVALID,INVALID};
+
+      if (hit.w > 0.0) {
+        vertex[pos.x + pos.y * inputSize.x] = make_float3(hit);
+        float3 surfNorm = integration.grad(make_float3(hit));
+        if (length(surfNorm) == 0)
+          normal[pos.x + pos.y * inputSize.x] = invalid3;
+        else
+          normal[pos.x + pos.y * inputSize.x] = normalize(surfNorm);
+      }
+      else {
+        vertex[pos.x + pos.y * inputSize.x] = make_float3(0);
+        normal[pos.x + pos.y * inputSize.x] = invalid3;
+      }
 		}
 	TOCK("raycastKernel", inputSize.x * inputSize.y);
 }
@@ -2084,7 +2092,7 @@ inline float3 grad(float3 pos, /*const*/ Volume<T> v) {
 			            cl::sycl::floor(scaled_pos.z())};
 	//const float3 basef{0,0,0};
 	//const float3 factor = (float3) fract(scaled_pos, (float3 *) &basef);
-  /*const*/ float3 factor =
+  /*const*/ float3 factor = // fract is absent; so use Khronos' definition:
     cl::sycl::fmin(scaled_pos - cl::sycl::floor(scaled_pos), 0x1.fffffep-1f);
   //float3 basef = cl::sycl::floor(scaled_pos);
 
