@@ -516,7 +516,7 @@ static void kernel(item<2> ix,       T *normal, const uint2 normalSize,
   /*const*/ float3 down  = vertex[vdown.x()  + ix.get_range()[0] * vdown.y()];
 
   if (left.z() == 0 || right.z() == 0|| up.z() == 0 || down.z() == 0) {
-    float3 invalid3{INVALID,INVALID,INVALID};
+    const float3 invalid3{INVALID,INVALID,INVALID};
     normal[pixel.x() + ix.get_range()[0] * pixel.y()] = invalid3;
     return;
   }
