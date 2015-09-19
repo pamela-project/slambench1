@@ -276,7 +276,7 @@ void clean() {
 struct initVolumeKernel {
 
 template <typename T>
-static void kernel(item<3> ix, T *data)
+static void k(item<3> ix, T *data)
 {
   uint x = ix[0]; uint y = ix[1]; uint z = ix[2];
   uint3 size{ix.get_range()[0], ix.get_range()[1], ix.get_range()[2]};
@@ -307,8 +307,8 @@ void initVolumeKernel(Volume volume) {
 struct bilateralFilterKernel {
 
 template <typename T>
-static void kernel(item<2> ix, T *out, const T *in, const T *gaussian,
-                   const float e_d, const int r)
+static void k(item<2> ix, T *out, const T *in, const T *gaussian,
+              const float e_d, const int r)
 {
   /*const*/ uint2 pos{ix[0],ix[1]};
   /*const*/ uint2 size{ix.get_range()[0], ix.get_range()[1]};
@@ -438,8 +438,8 @@ struct depth2vertexKernel {
 // vertex is actually an array of float3 (T == float3).
 // vertexSize and depthSize are unused.
 template <typename T, typename U>
-static void kernel(item<2> ix, T *vertex, const uint2 vertexSize,
-                   const U *depth, const uint2 depthSize, const Matrix4 invK)
+static void k(item<2> ix, T *vertex, const uint2 vertexSize,
+              const U *depth, const uint2 depthSize, const Matrix4 invK)
 {
   int2   pixel{ix[0],ix[1]};
   float3 vert{ix[0],ix[1],1.0f};
@@ -493,8 +493,8 @@ struct vertex2normalKernel {
 
 // normal and vertex are actually arrays of float3
 template <typename T>
-static void kernel(item<2> ix,       T *normal, const uint2 normalSize,
-                               const T *verte_, const uint2 vertexSize)
+static void k(item<2> ix,       T *normal, const uint2 normalSize,
+                          const T *verte_, const uint2 vertexSize)
 {
   using const_float3_as1_t = const __attribute__((address_space(1))) float3&;
   static_assert(std::is_same<decltype(verte_[0]),const_float3_as1_t>::value,"");
@@ -713,8 +713,8 @@ void new_reduce(int blockIndex, float * out, TrackData* J, const uint2 Jsize,
 struct reduceKernel {
 
 template <typename T, typename U, typename V>
-static void kernel(nd_item<1> ix, T *out, const U *J_,
-                   /*const*/ uint2 JSize, /*const*/ uint2 size, V *S)
+static void k(nd_item<1> ix, T *out, const U *J_,
+              /*const*/ uint2 JSize, /*const*/ uint2 size, V *S)
 {
   const TrackData *J = J_;  // See const_vec_ptr.cpp
 
@@ -910,14 +910,14 @@ void reduceKernel(float * out, TrackData* J, const uint2 Jsize,
 struct trackKernel {
 // inVertex, inNormal, refVertex, and refNormal are really float3 arrays.
 template <typename T, typename U>
-static void kernel(item<2> ix,
-                         T *output,            /*const*/ uint2 outputSize,
-                   const U *inVerte_,          const uint2 inVertexSize,
-                   const U *inNorma_,          const uint2 inNormalSize,
-                   const U *refVertex,         const uint2 refVertexSize,
-                   const U *refNorma_,         const uint2 refNormalSize,
-                   const Matrix4 Ttrack,       const Matrix4 view,
-                   const float dist_threshold, const float normal_threshold)
+static void k(item<2> ix,
+                    T *output,            /*const*/ uint2 outputSize,
+              const U *inVerte_,          const uint2 inVertexSize,
+              const U *inNorma_,          const uint2 inNormalSize,
+              const U *refVertex,         const uint2 refVertexSize,
+              const U *refNorma_,         const uint2 refNormalSize,
+              const Matrix4 Ttrack,       const Matrix4 view,
+              const float dist_threshold, const float normal_threshold)
 {
   const float3 *inNormal  = inNorma_;  // See const_vec_ptr.cpp
   const float3 *inVertex  = inVerte_;  // ""
@@ -1042,8 +1042,8 @@ void trackKernel(TrackData* output, const float3* inVertex,
 struct mm2metersKernel {
 
 template <typename T, typename U>
-static void kernel(item<2> ix, T *depth, /*const*/ uint2 depthSize,
-                   const U *in, /*const*/ uint2 inSize, const int ratio)
+static void k(item<2> ix, T *depth, /*const*/ uint2 depthSize,
+              const U *in, /*const*/ uint2 inSize, const int ratio)
 {
   uint2 pixel{ix[0],ix[1]};
   depth[pixel.x() + depthSize.x() * pixel.y()] =
@@ -1099,8 +1099,8 @@ void mm2metersKernel(float *out, uint2 outSize, const ushort *in, uint2 inSize)
 struct halfSampleRobustImageKernel {
 
 template <typename T>
-static void kernel(item<2> ix, T *out, const T *in,
-                   /*const*/ uint2 inSize, const float e_d, const int r)
+static void k(item<2> ix, T *out, const T *in,
+              /*const*/ uint2 inSize, const float e_d, const int r)
 {
   uint2 pixel{ix[0],ix[1]};
   uint2 outSize{inSize.x() / 2, inSize.y() / 2};
@@ -1174,11 +1174,11 @@ void halfSampleRobustImageKernel(float* out, const float* in, uint2 inSize,
 struct integrateKernel {
 
 template <typename I, typename T, typename U>
-static void kernel(I ix, T *v_data, const uint3 v_size, const float3 v_dim,
-                   const U *depth, /*const*/ uint2 depthSize,
-                   const Matrix4 invTrack, const Matrix4 K, const float mu,
-                   const float maxweight, const float3 delta,
-                   const float3 cameraDelta)
+static void k(I ix, T *v_data, const uint3 v_size, const float3 v_dim,
+              const U *depth, /*const*/ uint2 depthSize,
+              const Matrix4 invTrack, const Matrix4 K, const float mu,
+              const float maxweight, const float3 delta,
+              const float3 cameraDelta)
 {
   Volume<T *> vol;
   vol.data = &v_data[0]; vol.size = v_size; vol.dim = v_dim;
@@ -1353,10 +1353,10 @@ struct raycastKernel {
 // Actually, T is instantiated as float3. This is due to the declaration of
 // ocl_vertex, which was given a float3 type, rather than the uptyped OpenCL buf
 template <typename T, typename U>
-static void kernel(item<2> ix, T *pos3D, T *normal, U *v_data,
-                   const uint3 v_size, const float3 v_dim, const Matrix4 view,
-                   const float nearPlane, const float farPlane,
-                   const float step, const float largestep)
+static void k(item<2> ix, T *pos3D, T *normal, U *v_data,
+              const uint3 v_size, const float3 v_dim, const Matrix4 view,
+              const float nearPlane, const float farPlane,
+              const float step, const float largestep)
 {
   /*const*/ Volume<U *> volume;//{v_size,v_dim,v_data};
   volume.data = &v_data[0]; volume.size = v_size; volume.dim = v_dim;
@@ -1509,8 +1509,8 @@ void renderNormalKernel(uchar3* out, const float3* normal, uint2 normalSize) {
 struct renderDepthKernel {
 
 template <typename T, typename U>   // templates abstract over address spaces
-static void kernel(item<2> ix, T *out, U const *depth,
-                   const float nearPlane, const float farPlane)
+static void k(item<2> ix, T *out, U const *depth,
+              const float nearPlane, const float farPlane)
 {
 	const int posx = ix[0];
 	const int posy = ix[1];
@@ -1582,8 +1582,8 @@ void renderDepthKernel(uchar4* out, float * depth, uint2 depthSize,
 struct renderTrackKernel {
 
 template <typename T, typename U>
-static void kernel(item<2> ix, T * out, const U * data) {
-
+static void k(item<2> ix, T * out, const U * data)
+{
 	const int posx  = ix[0];
 	const int posy  = ix[1];
   const int sizex = ix.get_range()[0];
@@ -1643,11 +1643,11 @@ void renderTrackKernel(uchar4* out, const TrackData* data, uint2 outSize) {
 struct renderVolumeKernel {
 
 template <typename T, typename U>
-static void kernel(item<2> ix, T *render, U *v_data, const uint3 v_size,
-                   const float3 v_dim, const Matrix4 view,
-                   const float nearPlane, const float farPlane,
-                   const float step, const float largestep,
-                   const float3 light, const float3 ambient)
+static void k(item<2> ix, T *render, U *v_data, const uint3 v_size,
+              const float3 v_dim, const Matrix4 view,
+              const float nearPlane, const float farPlane,
+              const float step, const float largestep,
+              const float3 light, const float3 ambient)
 {
 	/*const*/ Volume<U *> v;//{v_size,v_dim,v_data};
   v.data = v_data; v.size = v_size; v.dim = v_dim;
@@ -1710,6 +1710,7 @@ void renderVolumeKernel(uchar4* out, const uint2 depthSize, const Volume volume,
 }
 #endif
 
+#define _DEBUG
 #ifdef _DEBUG
 template <typename T>
 void dbg_show(T p, const char *fname, size_t sz, int id)
