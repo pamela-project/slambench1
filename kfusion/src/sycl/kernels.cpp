@@ -436,10 +436,8 @@ inline float2 getVolume(/*const*/ Volume<T> v, /*const*/ uint3 pos) {
 struct depth2vertexKernel {
 
 // vertex is actually an array of float3 (T == float3).
-// vertexSize and depthSize are unused.
 template <typename T, typename U>
-static void k(item<2> ix, T *vertex, const uint2 vertexSize,
-              const U *depth, const uint2 depthSize, const Matrix4 invK)
+static void k(item<2> ix, T *vertex, const U *depth, const Matrix4 invK)
 {
   int2   pixel{ix[0],ix[1]};
   float3 vert{ix[0],ix[1],1.0f};
@@ -493,8 +491,7 @@ struct vertex2normalKernel {
 
 // normal and vertex are actually arrays of float3
 template <typename T>
-static void k(item<2> ix,       T *normal, const uint2 normalSize,
-                          const T *verte_, const uint2 vertexSize)
+static void k(item<2> ix, T *normal, const T *verte_)
 {
   using const_float3_as1_t = const __attribute__((address_space(1))) float3&;
   static_assert(std::is_same<decltype(verte_[0]),const_float3_as1_t>::value,"");
@@ -910,12 +907,9 @@ void reduceKernel(float * out, TrackData* J, const uint2 Jsize,
 struct trackKernel {
 // inVertex, inNormal, refVertex, and refNormal are really float3 arrays.
 template <typename T, typename U>
-static void k(item<2> ix,
-                    T *output,            /*const*/ uint2 outputSize,
-              const U *inVerte_,          const uint2 inVertexSize,
-              const U *inNorma_,          const uint2 inNormalSize,
-              const U *refVertex,         const uint2 refVertexSize,
-              const U *refNorma_,         const uint2 refNormalSize,
+static void k(item<2> ix, T *output,      /*const*/ uint2 outputSize,
+              const U *inVerte_,          const U *inNorma_,
+              const U *refVertex,         const U *refNorma_,
               const Matrix4 Ttrack,       const Matrix4 view,
               const float dist_threshold, const float normal_threshold)
 {
@@ -958,7 +952,7 @@ static void k(item<2> ix,
     row.result = -4;
     return;
   }
-  if (dot(projectedNormal,referenceNormal)<normal_threshold) {
+  if (dot(projectedNormal,referenceNormal) < normal_threshold) {
     row.result = -5;
     return;
   }
@@ -1655,7 +1649,7 @@ static void k(item<2> ix, T *render, U *v_data, const uint3 v_size,
 	/*const*/ uint2 pos{ix[0],ix[1]};
   const int sizex = ix.get_range()[0];
 
-  float4 hit = raycast(v, pos, view, nearPlane, farPlane,step, largestep);
+  float4 hit = raycast(v, pos, view, nearPlane, farPlane, step, largestep);
 
 	if (hit.w() > 0) {
     const float3 test{hit.x(),hit.y(),hit.z()}; // as_float3(hit);
@@ -1915,16 +1909,13 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 #ifdef SYCL
 		float4 tmp{k / float(1 << i)};
 		Matrix4 invK = getInverseCameraMatrix(tmp);   // Needs a non-const (tmp)
-    const uint2    img_sz_ui2{localimagesize.x(),localimagesize.y()};
     const range<2>  imageSize{localimagesize.x(),localimagesize.y()};
-    dagr::run<depth2vertexKernel,0>(q,imageSize,
-               *ocl_inputVertex[i],  img_sz_ui2,
-      dagr::ro(*ocl_ScaledDepth[i]), img_sz_ui2, invK);
+    dagr::run<depth2vertexKernel,0>(q, imageSize,
+               *ocl_inputVertex[i], dagr::ro(*ocl_ScaledDepth[i]), invK);
 
     const range<2>  imageSize2{localimagesize.x(),localimagesize.y()};
-    dagr::run<vertex2normalKernel,0>(q,imageSize2,
-               *ocl_inputNormal[i],  img_sz_ui2,
-      dagr::wo(*ocl_inputVertex[i]), img_sz_ui2);
+    dagr::run<vertex2normalKernel,0>(q, imageSize2,
+               *ocl_inputNormal[i], dagr::wo(*ocl_inputVertex[i]));
 
 		localimagesize = make_uint2(localimagesize.x() / 2, localimagesize.y() / 2);
 #else
@@ -1968,12 +1959,9 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
     for (int i = 0; i < iterations[level]; ++i) {  // i<4,i<5,i<10
 #ifdef SYCL
       range<2> imageSize{localimagesize.x(),localimagesize.y()};
-      dagr::run<trackKernel,0>(q,imageSize,
-        *ocl_trackingResult,computationSize,
-        dagr::ro(*ocl_inputVertex[level]),localimagesize,
-        dagr::ro(*ocl_inputNormal[level]),localimagesize,
-        dagr::ro(*ocl_vertex),computationSize,
-        dagr::ro(*ocl_normal),computationSize,
+      dagr::run<trackKernel,0>(q,imageSize,*ocl_trackingResult,computationSize,
+        dagr::ro(*ocl_inputVertex[level]), dagr::ro(*ocl_inputNormal[level]),
+        dagr::ro(*ocl_vertex),             dagr::ro(*ocl_normal),
         pose,projectReference,dist_threshold,normal_threshold);
 
       const    range<1> nitems{size_of_group * number_of_groups};
@@ -1982,11 +1970,7 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
         dagr::ro(*ocl_trackingResult), computationSize, localimagesize,
         dagr::lo<float>(size_of_group * 32));
 
-//    ocl_reduce_output_buffer->set_final_data(myptr);
       copy_back(reduceOutputBuffer, *ocl_reduce_output_buffer);
-//      memcpy(reductionoutput,
-//             reduceOutputBuffer,
-//             number_of_groups * 32 * sizeof(float));
 
       TooN::Matrix<TooN::Dynamic, TooN::Dynamic, float,
         TooN::Reference::RowMajor> values(reduceOutputBuffer,
