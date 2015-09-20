@@ -42,8 +42,6 @@ buffer<float3,1>     *ocl_vertex               = NULL;
 buffer<float3,1>     *ocl_normal               = NULL;
 buffer<short2,1>     *ocl_volume_data          = NULL;
 buffer<uint16_t,1>   *ocl_depth_buffer         = NULL;
-// Common buffer for track, depth and volume:
-buffer<uchar4,1>     *ocl_output_render_buffer = NULL;
 
 buffer<float,1>      *ocl_reduce_output_buffer = NULL;
 buffer<TrackData,1>  *ocl_trackingResult       = NULL;
@@ -2287,25 +2285,6 @@ void Kfusion::dumpVolume(std::string filename) {
 
 }
 
-#ifdef SYCL
-inline void update_ocl_output_render_buffer(uchar4 *out,
-                                            /*const*/ uint2 &outputSize)
-{
-  if (outputImageSizeBkp.x() < outputSize.x() ||
-      outputImageSizeBkp.y() < outputSize.y() ||
-      ocl_output_render_buffer == NULL) 
-  {
-	  outputImageSizeBkp = make_uint2(outputSize.x(), outputSize.y());
-	  if (ocl_output_render_buffer != NULL) {
-	    delete ocl_output_render_buffer;
-	    ocl_output_render_buffer = NULL;
-	  }
-	  ocl_output_render_buffer =
-      new buffer<uchar4,1>(out, range<1>{outputSize.x() * outputSize.y()});
-  }
-}
-#endif
-
 void Kfusion::renderVolume(uchar4 * out, uint2 outputSize, int frame,
                            int raycast_rendering_rate, float4 k,
                            float largestep)
@@ -2313,16 +2292,14 @@ void Kfusion::renderVolume(uchar4 * out, uint2 outputSize, int frame,
 	if (frame % raycast_rendering_rate != 0) return;
 
 #ifdef SYCL
-  update_ocl_output_render_buffer(out, outputSize);
 
   range<2> globalWorksize{computationSize.x(), computationSize.y()};
   Matrix4 view = *(this->viewPose) * getInverseCameraMatrix(k);
   dagr::run<renderVolumeKernel,0>(q,globalWorksize,
-    dagr::wo(*ocl_output_render_buffer),
+    dagr::wo(buffer<uchar4,1>(out,range<1>{outputSize.x() * outputSize.y()})),
     *ocl_volume_data,volumeResolution,volumeDimensions,view,nearPlane,farPlane,
     step,largestep,light,ambient);
 
-  delete ocl_output_render_buffer; ocl_output_render_buffer = NULL; // get it
 #else
 		renderVolumeKernel(out, outputSize, volume,
 				*(this->viewPose) * getInverseCameraMatrix(k), nearPlane,
@@ -2332,13 +2309,11 @@ void Kfusion::renderVolume(uchar4 * out, uint2 outputSize, int frame,
 
 void Kfusion::renderTrack(uchar4 * out, uint2 outputSize) {
 #ifdef SYCL
-  update_ocl_output_render_buffer(out, outputSize);
 
   range<2> globalWorksize{computationSize.x(), computationSize.y()};
   dagr::run<renderTrackKernel,0>(q,globalWorksize,
-    dagr::wo(*ocl_output_render_buffer), dagr::ro(*ocl_trackingResult));
-
-  delete ocl_output_render_buffer; ocl_output_render_buffer = NULL; // get it
+    dagr::wo(buffer<uchar4,1>(out,range<1>{outputSize.x() * outputSize.y()})),
+    dagr::ro(*ocl_trackingResult));
 
   const auto csize = computationSize.x() * computationSize.y();
 #else
@@ -2350,14 +2325,12 @@ void Kfusion::renderTrack(uchar4 * out, uint2 outputSize) {
 
 void Kfusion::renderDepth(uchar4 * out, uint2 outputSize) {
 #ifdef SYCL
-  update_ocl_output_render_buffer(out, outputSize);
 
   range<2> globalWorksize{computationSize.x(), computationSize.y()};
   dagr::run<renderDepthKernel,0>(q,globalWorksize,
-    dagr::wo(*ocl_output_render_buffer), dagr::ro(*ocl_FloatDepth),
+    dagr::wo(buffer<uchar4,1>(out,range<1>{outputSize.x() * outputSize.y()})),
+    dagr::ro(*ocl_FloatDepth),
     nearPlane, farPlane);
-
-  delete ocl_output_render_buffer; ocl_output_render_buffer = NULL; // get it
 
   const auto osize = outputSize.x() * outputSize.y();
 
