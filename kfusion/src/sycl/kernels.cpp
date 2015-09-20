@@ -10,34 +10,6 @@
 #include <dagr/dagr.hpp>
 #include <kernels.h>
 
-#ifdef __APPLE__
-#include <mach/clock.h>
-#include <mach/mach.h>
-
-	
-	#define TICK()    {if (print_kernel_timing) {\
-		host_get_clock_service(mach_host_self(), SYSTEM_CLOCK, &cclock);\
-		clock_get_time(cclock, &tick_clockData);\
-		mach_port_deallocate(mach_task_self(), cclock);\
-		}}
-
-	#define TOCK(str,size)  {if (print_kernel_timing) {\
-		host_get_clock_service(mach_host_self(), SYSTEM_CLOCK, &cclock);\
-		clock_get_time(cclock, &tock_clockData);\
-		mach_port_deallocate(mach_task_self(), cclock);\
-		std::cerr<< str << " ";\
-		if((tock_clockData.tv_sec > tick_clockData.tv_sec) && (tock_clockData.tv_nsec >= tick_clockData.tv_nsec))   std::cerr<< tock_clockData.tv_sec - tick_clockData.tv_sec << std::setfill('0') << std::setw(9);\
-		std::cerr  << (( tock_clockData.tv_nsec - tick_clockData.tv_nsec) + ((tock_clockData.tv_nsec<tick_clockData.tv_nsec)?1000000000:0)) << " " <<  size << std::endl;}}
-#else
-	
-	#define TICK()    {if (print_kernel_timing) {clock_gettime(CLOCK_MONOTONIC, &tick_clockData);}}
-
-	#define TOCK(str,size)  {if (print_kernel_timing) {clock_gettime(CLOCK_MONOTONIC, &tock_clockData); std::cerr<< str << " ";\
-		if((tock_clockData.tv_sec > tick_clockData.tv_sec) && (tock_clockData.tv_nsec >= tick_clockData.tv_nsec))   std::cerr<< tock_clockData.tv_sec - tick_clockData.tv_sec << std::setfill('0') << std::setw(9);\
-		std::cerr  << (( tock_clockData.tv_nsec - tick_clockData.tv_nsec) + ((tock_clockData.tv_nsec<tick_clockData.tv_nsec)?1000000000:0)) << " " <<  size << std::endl;}}
-
-#endif
-
 // input once
 float * gaussian;
 
@@ -89,20 +61,7 @@ uint2 computationSizeBkp = make_uint2(0, 0);
 uint2 outputImageSizeBkp = make_uint2(0, 0);
 #endif
 
-bool print_kernel_timing = false;
-#ifdef __APPLE__
-	clock_serv_t cclock;
-	mach_timespec_t tick_clockData;
-	mach_timespec_t tock_clockData;
-#else
-	struct timespec tick_clockData;
-	struct timespec tock_clockData;
-#endif
-
 void Kfusion::languageSpecificConstructor() {
-
-	if (getenv("KERNEL_TIMINGS"))
-		print_kernel_timing = true;
 
 #ifdef SYCL
   const auto csize = computationSize.x() * computationSize.y();
@@ -1421,7 +1380,6 @@ void raycastKernel(float3* vertex, float3* normal, uint2 inputSize,
 bool updatePoseKernel(Matrix4 & pose, const float * output, float icp_threshold)
 {
 	bool res = false;
-	TICK();
 	// Update the pose regarding the tracking result
 	TooN::Matrix<8, 32, const float, TooN::Reference::RowMajor> values(output);
 	TooN::Vector<6> x = solve(values[0].slice<1, 27>());
@@ -1434,7 +1392,6 @@ bool updatePoseKernel(Matrix4 & pose, const float * output, float icp_threshold)
 	if (norm(x) < icp_threshold)
 		res = true;
 
-	TOCK("updatePoseKernel", 1);
 	return res;
 }
 
@@ -1461,7 +1418,6 @@ bool checkPoseKernel(Matrix4 & pose, Matrix4 oldPose, const float * output,
 
 #ifdef SYCL
 void renderNormalKernel(uchar3* out, const float3* normal, uint2 normalSize) {
-	TICK();
 	unsigned int y;
 #pragma omp parallel for \
         shared(out), private(y)
@@ -1476,11 +1432,9 @@ void renderNormalKernel(uchar3* out, const float3* normal, uint2 normalSize) {
 				out[pos] = make_uchar3(n.x()*128+128, n.y()*128+128, n.z()*128+128);
 			}
 		}
-	TOCK("renderNormalKernel", normalSize.x() * normalSize.y());
 }
 #else
 void renderNormalKernel(uchar3* out, const float3* normal, uint2 normalSize) {
-	TICK();
 	unsigned int y;
 #pragma omp parallel for \
         shared(out), private(y)
@@ -1495,7 +1449,6 @@ void renderNormalKernel(uchar3* out, const float3* normal, uint2 normalSize) {
 				out[pos] = make_uchar3(n.x*128+128, n.y*128+128, n.z*128+128);
 			}
 		}
-	TOCK("renderNormalKernel", normalSize.x * normalSize.y);
 }
 #endif
 
@@ -1543,7 +1496,6 @@ static void k(item<2> ix, T *out, U const *depth,
 #else
 void renderDepthKernel(uchar4* out, float * depth, uint2 depthSize,
 		const float nearPlane, const float farPlane) {
-	TICK();
 
 	float rangeScale = 1 / (farPlane - nearPlane);
 
@@ -1568,7 +1520,6 @@ void renderDepthKernel(uchar4* out, float * depth, uint2 depthSize,
 			}
 		}
 	}
-	TOCK("renderDepthKernel", depthSize.x * depthSize.y);
 }
 #endif
 
@@ -1584,11 +1535,11 @@ static void k(item<2> ix, T * out, const U * data)
 
 	switch (data[posx + sizex * posy].result) {
 		case  1: out[posx + sizex * posy] = uchar4{128, 128, 128, 0}; break;
-		case -1: out[posx + sizex * posy] = uchar4{000, 000, 000, 0}; break;
-		case -2: out[posx + sizex * posy] = uchar4{255, 000, 000, 0}; break;
-		case -3: out[posx + sizex * posy] = uchar4{000, 255, 000, 0}; break;
-		case -4: out[posx + sizex * posy] = uchar4{000, 000, 255, 0}; break;
-		case -5: out[posx + sizex * posy] = uchar4{255, 255, 000, 0}; break;
+		case -1: out[posx + sizex * posy] = uchar4{  0,   0,   0, 0}; break;
+		case -2: out[posx + sizex * posy] = uchar4{255,   0,   0, 0}; break;
+		case -3: out[posx + sizex * posy] = uchar4{  0, 255,   0, 0}; break;
+		case -4: out[posx + sizex * posy] = uchar4{  0,   0, 255, 0}; break;
+		case -5: out[posx + sizex * posy] = uchar4{255, 255,   0, 0}; break;
 		default: out[posx + sizex * posy] = uchar4{255, 128, 128, 0}; break;
 	}
 }
@@ -1597,7 +1548,6 @@ static void k(item<2> ix, T * out, const U * data)
 
 #else
 void renderTrackKernel(uchar4* out, const TrackData* data, uint2 outSize) {
-	TICK();
 
 	unsigned int y;
 #pragma omp parallel for \
@@ -1629,7 +1579,6 @@ void renderTrackKernel(uchar4* out, const TrackData* data, uint2 outSize) {
 				break;
 			}
 		}
-	TOCK("renderTrackKernel", outSize.x * outSize.y);
 }
 #endif
 
@@ -1674,7 +1623,6 @@ void renderVolumeKernel(uchar4* out, const uint2 depthSize, const Volume volume,
     const Matrix4 view, const float nearPlane,
     const float farPlane, const float step, const float largestep,
     const float3 light, const float3 ambient) {
-	TICK();
 	unsigned int y;
 #pragma omp parallel for \
         shared(out), private(y)
