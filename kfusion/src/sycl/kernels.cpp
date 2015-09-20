@@ -43,7 +43,6 @@ buffer<float3,1>     *ocl_normal               = NULL;
 buffer<short2,1>     *ocl_volume_data          = NULL;
 buffer<uint16_t,1>   *ocl_depth_buffer         = NULL;
 
-buffer<float,1>      *ocl_reduce_output_buffer = NULL;
 buffer<TrackData,1>  *ocl_trackingResult       = NULL;
 buffer<float,1>      *ocl_FloatDepth           = NULL;
 buffer<float,1>     **ocl_ScaledDepth          = NULL;
@@ -86,10 +85,7 @@ void Kfusion::languageSpecificConstructor() {
   ocl_normal = new f3_buf(range<1>{csize});
   ocl_trackingResult=new buffer<TrackData,1>(range<1>{csize});
 
-  // number_of_groups is 8
 	reduceOutputBuffer = (float*) malloc(number_of_groups * 32 * sizeof(float));
-  ocl_reduce_output_buffer =
-    new f_buf(reduceOutputBuffer, range<1>{32 * number_of_groups});
 #endif
 
 	// internal buffers to initialize
@@ -184,10 +180,6 @@ Kfusion::~Kfusion() {
 	if (ocl_depth_buffer) {
 		delete ocl_depth_buffer;
 		ocl_depth_buffer = NULL;
-  }
-	if (ocl_reduce_output_buffer) {
-	  delete ocl_reduce_output_buffer;
-	  ocl_reduce_output_buffer = NULL;
   }
 	if (ocl_trackingResult) {
 		delete ocl_trackingResult;
@@ -1715,21 +1707,6 @@ template <typename T> void dbg_show4(T, const char *, size_t, int) {}
 template <typename T> void dbg_show_TrackData(T, const char *, size_t, int) {}
 #endif // _DEBUG
 
-#ifdef SYCL
-template <typename T>
-void copy_back(T *p, buffer<T,1> &buf) {
-  const auto  r = sycl_a::mode::read;
-  const auto hb = sycl_a::target::host_buffer;
-  auto ha = buf.template get_access<r, hb>();
-  const range<1> extents = buf.get_range();
-
-  const size_t e1 = extents[0];
-  for (size_t i = 0; i < e1; ++i) {
-    p[i] = ha[i];
-  }
-}
-#endif
-
 bool Kfusion::preprocessing(const uint16_t * inputDepth, /*const*/ uint2 inSize) {
 
 	// bilateral_filter(ScaledDepth[0], inputDepth, inputSize , gaussian, e_delta, radius);
@@ -1912,11 +1889,11 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 
       const    range<1> nitems{size_of_group * number_of_groups};
       const nd_range<1> ndr{nd_range<1>(nitems, range<1>{size_of_group})};
-      dagr::run<reduceKernel,0>(q,ndr,dagr::wo(*ocl_reduce_output_buffer),
+      dagr::run<reduceKernel,0>(q,ndr,
+        dagr::wo(buffer<float,1>(reduceOutputBuffer,
+                                 range<1>{32 * number_of_groups})),
         dagr::ro(*ocl_trackingResult), computationSize, localimagesize,
         dagr::lo<float>(size_of_group * 32));
-
-      copy_back(reduceOutputBuffer, *ocl_reduce_output_buffer);
 
       TooN::Matrix<TooN::Dynamic, TooN::Dynamic, float,
         TooN::Reference::RowMajor> values(reduceOutputBuffer,
@@ -1950,11 +1927,6 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
   dbg_show_TrackData(tres, "trackingResult",
                      computationSize.x() * computationSize.y(), 5);
 
-  auto red = ocl_reduce_output_buffer->get_access<
-    sycl_a::mode::read,
-    sycl_a::target::host_buffer
-  >();
-//  dbg_show(red,"reduceOutputBuffer",32*number_of_groups/*8*/,6);
   dbg_show(reduceOutputBuffer,"reduction",32*number_of_groups/*8*/,6);
 	return checkPoseKernel(pose, oldPose, reduceOutputBuffer, computationSize,
 			track_threshold);
