@@ -10,7 +10,7 @@
 #ifndef _KERNELS_
 #define _KERNELS_
 
-#define SYCL
+//#define SYCL // now set via add_definitions in kfusion/CMakeLists.txt
 #ifdef SYCL
 #include <sycl/kernels.h> // myfloatN.x -> myfloatN.x() many times
 #else
