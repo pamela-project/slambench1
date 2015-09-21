@@ -15,18 +15,9 @@ float * gaussian;
 
 // inter-frame
 Volume<short2 *> volume;
-float3 * vertex;
-float3 * normal;
 
 // intra-frame
-TrackData * trackingResult;
-float* reductionoutput;
-float ** ScaledDepth;
-float * floatDepth;
-Matrix4 oldPose;
-Matrix4 raycastPose;
-float3 ** inputVertex;
-float3 ** inputNormal;
+Matrix4 oldPose, raycastPose;
 
 // sycl specific
 cl::sycl::queue q(cl::sycl::intel_selector{});
@@ -76,30 +67,11 @@ void Kfusion::languageSpecificConstructor() {
 
 	reduceOutputBuffer = (float*) malloc(number_of_groups * 32 * sizeof(float));
 
-	// internal buffers to initialize
-	reductionoutput = (float*) calloc(sizeof(float) * 8 * 32, 1);
-
-	ScaledDepth = (float**)  calloc(sizeof(float*)  * iterations.size(), 1);
-	inputVertex = (float3**) calloc(sizeof(float3*) * iterations.size(), 1);
-	inputNormal = (float3**) calloc(sizeof(float3*) * iterations.size(), 1);
-
-	for (unsigned int i = 0; i < iterations.size(); ++i) {
-		ScaledDepth[i] = (float*)  calloc(sizeof(float) *csize / (int) pow(2,i), 1);
-		inputVertex[i] = (float3*) calloc(sizeof(float3)*csize / (int) pow(2,i), 1);
-		inputNormal[i] = (float3*) calloc(sizeof(float3)*csize / (int) pow(2,i), 1);
-	}
-
-	floatDepth     = (float*)     calloc(sizeof(float)     * csize, 1);
-	vertex         = (float3*)    calloc(sizeof(float3)    * csize, 1);
-	normal         = (float3*)    calloc(sizeof(float3)    * csize, 1);
-	trackingResult = (TrackData*) calloc(sizeof(TrackData) * csize, 1);
-
 	// ********* BEGIN : Generate the gaussian *************
 	size_t gaussianS = radius * 2 + 1;
 	gaussian = (float*) calloc(gaussianS * sizeof(float), 1);
-	int x;
 	for (unsigned int i = 0; i < gaussianS; i++) {
-		x = i - 2;
+		int x = i - 2;
 		gaussian[i] = expf(-(x * x) / (2 * delta * delta));
 	}
 
@@ -169,20 +141,6 @@ Kfusion::~Kfusion() {
 		ocl_trackingResult = NULL;
   }
 
-//
-
-	free(reductionoutput);
-	for (unsigned int i = 0; i < iterations.size(); ++i) {
-		free(ScaledDepth[i]);
-		free(inputVertex[i]);
-		free(inputNormal[i]);
-	}
-	free(ScaledDepth);
-	free(inputVertex);
-	free(inputNormal);
-
-	free(vertex);
-	free(normal);
 	free(gaussian);
 
 	volume.release();
@@ -781,7 +739,6 @@ static void k(item<2> ix, T *render, U *v_data, const uint3 v_size,
 
 bool Kfusion::preprocessing(const uint16_t *inputDepth, /*const*/ uint2 inSize)
 {
-	// bilateral_filter(ScaledDepth[0], inputDepth, inputSize , gaussian, e_delta, radius);
 	uint2 outSize = computationSize;
 	const uint inSize_x  = inSize.x(); const uint inSize_y = inSize.y();
 	const uint outSize_x = computationSize.x();
