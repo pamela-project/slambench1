@@ -1213,83 +1213,6 @@ void integrateKernel(Volume vol, const float* depth, uint2 depthSize,
 #endif
 
 #ifdef SYCL
-template <typename T>
-float4 raycast(/*const*/ Volume<T> volume,
-#else
-float4 raycast(const     Volume    volume,
-#endif
-    /*const*/ uint2 pos, const Matrix4 view, const float nearPlane,
-    const float farPlane, const float step, const float largestep) {
-
-	const float3 origin = get_translation(view);
-#ifdef SYCL
-	const float3 direction = rotate(view, make_float3(pos.x(), pos.y(), 1.f));
-#else
-	const float3 direction = rotate(view, make_float3(pos.x,   pos.y,   1.f));
-#endif
-
-	// intersect ray with a box
-	// http://www.siggraph.org/education/materials/HyperGraph/raytrace/rtinter3.htm
-	// compute intersection of ray with all six bbox planes
-	const float3 invR = make_float3(1.0f) / direction;
-	const float3 tbot = -1 * invR * origin;
-	const float3 ttop = invR * (volume.dim - origin);
-
-	// re-order intersections to find smallest and largest on each axis
-	/*const*/ float3 tmin = fminf(ttop, tbot);
-	/*const*/ float3 tmax = fmaxf(ttop, tbot);
-
-	// find the largest tmin and the smallest tmax
-#ifdef SYCL
-	const float largest_tmin =
-    fmaxf(fmaxf(tmin.x(), tmin.y()), fmaxf(tmin.x(), tmin.z()));
-	const float smallest_tmax =
-    fminf(fminf(tmax.x(), tmax.y()), fminf(tmax.x(), tmax.z()));
-#else
-	const float largest_tmin  = fmaxf(fmaxf(tmin.x,tmin.y),fmaxf(tmin.x,tmin.z));
-	const float smallest_tmax = fminf(fminf(tmax.x,tmax.y),fminf(tmax.x,tmax.z));
-#endif
-
-	// check against near and far plane
-	const float tnear = fmaxf(largest_tmin, nearPlane);
-	const float tfar = fminf(smallest_tmax, farPlane);
-
-	if (tnear < tfar) {
-		// first walk with largesteps until we found a hit
-		float t = tnear;
-		float stepsize = largestep;
-#ifdef SYCL
-    float3 tmp{origin + direction * t};
-		float f_t = volume.interp(tmp); // interp is nonconst
-#else
-		float f_t = volume.interp(origin + direction * t);
-#endif
-		float f_tt = 0;
-		if (f_t > 0) { // ups, if we were already in it, then don't render anything here
-			for (; t < tfar; t += stepsize) {
-#ifdef SYCL
-        float3 tmp{origin + direction * t};
-				f_tt = volume.interp(tmp);   // interp is nonconst
-#else
-				f_tt = volume.interp(origin + direction * t);
-#endif
-				if (f_tt < 0)                  // got it, jump out of inner loop
-					break;
-				if (f_tt < 0.8f)               // coming closer, reduce stepsize
-					stepsize = step;
-				f_t = f_tt;
-			}
-			if (f_tt < 0) {           // got it, calculate accurate intersection
-				t = t + stepsize * f_tt / (f_t - f_tt);
-				return make_float4(origin + direction * t, t);
-			}
-		}
-	}
-	return make_float4(0);
-
-}
-
-#ifdef SYCL
 struct raycastKernel {
 
 // Although T is instantiated float, pos3D and normal are targeting float3 data
@@ -1307,7 +1230,7 @@ static void k(item<2> ix, T *pos3D, T *normal, U *v_data,
   const int sizex = ix.get_range()[0];
 
   /*const*/ float4 hit =
-    raycast_sycl(volume, pos, view, nearPlane, farPlane, step, largestep);
+    raycast(volume, pos, view, nearPlane, farPlane, step, largestep);
   const float3 test{hit.x(),hit.y(),hit.z()}; // as_float3(hit);
 
   // The C++ version just sets the normal's x value to INVALID. This is a
@@ -2090,11 +2013,9 @@ inline float3 grad(float3 pos, /*const*/ Volume<T> v) {
 }
 
 template <typename T>
-cl::sycl::float4 raycast_sycl(/*const*/ Volume<T>  v,
-                         /*const*/ cl::sycl::uint2 pos,
-                         const Matrix4 view, const float nearPlane,
-                         const float farPlane, const float step,
-                         const float largestep)
+float4 raycast(/*const*/ Volume<T> v, /*const*/ uint2 pos, const Matrix4 view,
+               const float nearPlane, const float farPlane, const float step,
+               const float largestep)
 {
   const float3 origin = get_translation(view);
   /*const*/ float3 direction = myrotate(view, float3{pos.x(), pos.y(), 1.f});
