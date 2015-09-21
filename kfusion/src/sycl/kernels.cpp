@@ -14,11 +14,7 @@
 float * gaussian;
 
 // inter-frame
-#ifdef SYCL
 Volume<short2 *> volume;
-#else
-Volume           volume;
-#endif
 float3 * vertex;
 float3 * normal;
 
@@ -32,7 +28,6 @@ Matrix4 raycastPose;
 float3 ** inputVertex;
 float3 ** inputNormal;
 
-#ifdef SYCL
 // sycl specific
 cl::sycl::queue q(cl::sycl::intel_selector{});
 
@@ -56,17 +51,11 @@ static const size_t number_of_groups = 8;
 
 uint2 computationSizeBkp = make_uint2(0, 0);
 uint2 outputImageSizeBkp = make_uint2(0, 0);
-#endif
 
 void Kfusion::languageSpecificConstructor() {
 
-#ifdef SYCL
   const auto csize = computationSize.x() * computationSize.y();
-#else
-  const auto csize = computationSize.x   * computationSize.y;
-#endif
 
-#ifdef SYCL
   using f_buf  = buffer<float,1>;
   using f3_buf = buffer<float3,1>;
 	ocl_FloatDepth = new f_buf(range<1>{csize});
@@ -86,7 +75,6 @@ void Kfusion::languageSpecificConstructor() {
   ocl_trackingResult=new buffer<TrackData,1>(range<1>{csize});
 
 	reduceOutputBuffer = (float*) malloc(number_of_groups * 32 * sizeof(float));
-#endif
 
 	// internal buffers to initialize
 	reductionoutput = (float*) calloc(sizeof(float) * 8 * 32, 1);
@@ -115,24 +103,19 @@ void Kfusion::languageSpecificConstructor() {
 		gaussian[i] = expf(-(x * x) / (2 * delta * delta));
 	}
 
-#ifdef SYCL
   ocl_gaussian = new buffer<float,1>(gaussian, range<1>{gaussianS});
-#endif
 	// ********* END : Generate the gaussian *************
 
-#ifdef SYCL
   const auto vsize = volumeResolution.x() *
                      volumeResolution.y() * volumeResolution.z();
   ocl_volume_data = new buffer<short2>(range<1>{vsize});
 
-#endif
 	volume.init(volumeResolution, volumeDimensions);
 	reset();
 }
 
 Kfusion::~Kfusion() {
 
-#ifdef SYCL
 	if (reduceOutputBuffer)
 		free(reduceOutputBuffer);
 	reduceOutputBuffer = NULL;
@@ -185,7 +168,8 @@ Kfusion::~Kfusion() {
 		delete ocl_trackingResult;
 		ocl_trackingResult = NULL;
   }
-#endif
+
+//
 
 	free(reductionoutput);
 	for (unsigned int i = 0; i < iterations.size(); ++i) {
@@ -203,25 +187,16 @@ Kfusion::~Kfusion() {
 
 	volume.release();
 }
+
 void Kfusion::reset() {
-#ifdef SYCL
   uint3 &vr = volumeResolution; // declared in kernels.h
   const auto r = range<3>{vr.x(),vr.y(),vr.x()};
 	dagr::run<initVolumeKernel,0>(q,r,*ocl_volume_data);
-#else
-	initVolumeKernel(volume);
-#endif
 }
-void init() {
-}
-;
-// stub
-void clean() {
-}
-;
-// stub
 
-#ifdef SYCL
+void init()  { } // stub
+void clean() { } // stub
+
 struct initVolumeKernel {
 
 template <typename T>
@@ -236,22 +211,6 @@ static void k(item<3> ix, T *data)
 }
 
 }; // struct
-#else
-void initVolumeKernel(Volume volume) {
-	TICK();
-	for (unsigned int x = 0; x < volume.size.x; x++)
-		for (unsigned int y = 0; y < volume.size.y; y++) {
-			for (unsigned int z = 0; z < volume.size.z; z++) {
-				//std::cout <<  x << " " << y << " " << z <<"\n";
-        /*const*/ float2 w{1.0f, 0.0f};
-				volume.setints(x, y, z, w /*make_float2(1.0f, 0.0f)*/); // w = nonconst
-			}
-		}
-	TOCK("initVolumeKernel", volume.size.x * volume.size.y * volume.size.z);
-}
-#endif
-
-#ifdef SYCL
 
 struct bilateralFilterKernel {
 
@@ -296,52 +255,6 @@ static void k(item<2> ix, T *out, const T *in, const T *gaussian,
 
 };
 
-#else
-
-void bilateralFilterKernel(float* out, const float* in, uint2 size,
-		const float * gaussian, float e_d, int r) {
-	TICK()
-		uint y;
-		float e_d_squared_2 = e_d * e_d * 2;
-#pragma omp parallel for \
-	    shared(out),private(y)   
-		for (y = 0; y < size.y; y++) {
-			for (uint x = 0; x < size.x; x++) {
-				uint pos = x + y * size.x;
-				if (in[pos] == 0) {
-					out[pos] = 0;
-					continue;
-				}
-
-				float sum = 0.0f;
-				float t = 0.0f;
-
-				const float center = in[pos];
-
-				for (int i = -r; i <= r; ++i) {
-					for (int j = -r; j <= r; ++j) {
-						uint2 curPos = make_uint2(clamp(x + i, 0u, size.x - 1),
-								clamp(y + j, 0u, size.y - 1));
-						const float curPix = in[curPos.x + curPos.y * size.x];
-						if (curPix > 0) {
-							const float mod = sq(curPix - center);
-							const float factor = gaussian[i + r]
-									* gaussian[j + r]
-									* expf(-mod / e_d_squared_2);
-							t += factor * curPix;
-							sum += factor;
-						}
-					}
-				}
-				out[pos] = t / sum;
-			}
-		}
-		TOCK("bilateralFilterKernel", size.x * size.y);
-}
-
-#endif // SYCL
-
-#ifdef SYCL
 template <typename F3>
 inline F3 myrotate(/*const*/ Matrix4 M, const F3 v) {
 	return F3{my_dot(F3{M.data[0].x(), M.data[0].y(), M.data[0].z()}, v),
@@ -378,9 +291,6 @@ inline float2 getVolume(/*const*/ Volume<T> v, /*const*/ uint3 pos) {
                               pos.z() * v.size.x() * v.size.y()];
 	return float2{d.x() * 0.00003051944088f, d.y()}; //  / 32766.0f
 }
-#endif
-
-#ifdef SYCL
 
 struct depth2vertexKernel {
 
@@ -409,30 +319,6 @@ static void k(item<2> ix, T *vertex, const U *depth, const Matrix4 invK)
 }
 
 }; // struct
-
-#else // SYCL
-
-void depth2vertexKernel(float3* vertex, const float * depth, uint2 imageSize,
-		const Matrix4 invK) {
-	TICK();
-	unsigned int x, y;
-#pragma omp parallel for \
-         shared(vertex), private(x, y)
-	for (y = 0; y < imageSize.y; y++) {
-		for (x = 0; x < imageSize.x; x++) {
-
-			if (depth[x + y * imageSize.x] > 0) {
-				vertex[x + y * imageSize.x] = depth[x + y * imageSize.x]
-						* (rotate(invK, make_float3(x, y, 1.f)));
-			} else {
-				vertex[x + y * imageSize.x] = make_float3(0);
-			}
-		}
-	}
-	TOCK("depth2vertexKernel", imageSize.x * imageSize.y);
-}
-
-#endif // SYCL
 
 #ifdef SYCL
 
