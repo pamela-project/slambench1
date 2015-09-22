@@ -765,10 +765,13 @@ bool Kfusion::preprocessing(const uint16_t *inputDepth, /*const*/ uint2 inSize)
     ocl_depth_buffer = new buffer<uint16_t,1>(inputDepth, in_sz);
 	}
 
+
   auto r = range<2>{outSize.x(),outSize.y()};
+  //auto in_sz = range<1>{inSize.x() * inSize.y()};
+  //auto ocl_depth_buffer = buffer<uint16_t,1>(inputDepth,in_sz);
   dagr::run<mm2metersKernel,0>(q, r, *ocl_FloatDepth, outSize,
                                dagr::ro(*ocl_depth_buffer), inSize, ratio);
-  delete ocl_depth_buffer; ocl_depth_buffer = NULL; // debug only
+  delete ocl_depth_buffer; ocl_depth_buffer = NULL; // debug only - no, needed!
 
   dagr::run<bilateralFilterKernel,0>(q, r, *ocl_ScaledDepth[0],
                                      dagr::ro(*ocl_FloatDepth),
