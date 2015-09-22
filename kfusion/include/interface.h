@@ -111,7 +111,6 @@ public:
 	~SceneDepthReader() {
 	  if (FloatdepthMap) free(FloatdepthMap);
 	}
-	;
 	SceneDepthReader(std::string dir, int fps, bool blocking_read) :
 			DepthReader(), _dir(dir), _size(make_uint2(640, 480)) {
 		std::cerr << "No such directory " << dir << std::endl;
@@ -131,7 +130,6 @@ public:
 		}
 
 	}
-	;
 	ReaderType getType() {
 		return (READER_SCENE);
 	}
@@ -147,7 +145,6 @@ public:
 	}
 
 	inline bool readNextDepthFrame(uchar3*, unsigned short int * depthMap) {
-
 
 		bool res = readNextDepthFrame(FloatdepthMap);
 
@@ -228,7 +225,7 @@ public:
 			_blocking_read = blocking_read;
 			fseek(_pFile, 0, SEEK_SET);
 
-		UintdepthMap = (unsigned short int*) malloc(_size.x * _size.y * sizeof(unsigned short int));
+ 		UintdepthMap = (unsigned short int*) malloc(_size.x * _size.y * sizeof(unsigned short int));
 		}
 	};
 	ReaderType getType() {

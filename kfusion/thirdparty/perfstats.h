@@ -125,7 +125,7 @@ struct PerfStats {
 	double getLastData(const std::string & key);
 	Type getType(const std::string & key);
 	double getSampleTime(const std::string & key);
-    void printHeader(std::ostream& out = std::cout) const;
+  void printHeader(std::ostream& out = std::cout) const;
 	void print(std::ostream& out = std::cout) const;
 	void debug();
 	void print_all_data(std::ostream& out) const;

@@ -50,6 +50,7 @@ int papi_read();
     double elapsed_time;
 
 #endif
+
 PowerMonitor::PowerMonitor() {
 	powerA7 = NULL;
 	powerA15 = NULL;

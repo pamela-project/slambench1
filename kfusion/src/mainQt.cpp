@@ -199,6 +199,7 @@ int main(int argc, char ** argv) {
 			config.log_filestream.close();
 		}
     }
+
 	//  =========  FREE BASIC BUFFERS  =========
 
 	free(inputDepth);

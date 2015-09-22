@@ -66,15 +66,12 @@ void init() {
 
 void clean() {
 	opencl_clean();
-
-
 }
 
 void Kfusion::languageSpecificConstructor() {
 
 	init();
 
-	
 	cl_ulong maxMemAlloc;
 	clGetDeviceInfo(device_id, CL_DEVICE_MAX_MEM_ALLOC_SIZE, sizeof(maxMemAlloc), &maxMemAlloc, NULL);
 	
@@ -169,7 +166,6 @@ void Kfusion::languageSpecificConstructor() {
 	clError = clEnqueueNDRangeKernel(commandQueue, initVolume_ocl_kernel, 3,
 			NULL, globalWorksize, NULL, 0, NULL, NULL);
 	checkErr(clError, "clEnqueueNDRangeKernel");
-
 
 	//Kernels
 	mm2meters_ocl_kernel = clCreateKernel(program, "mm2metersKernel", &clError);
@@ -947,7 +943,6 @@ void Kfusion::computeFrame(const ushort * inputDepth, const uint2 inputSize,
   _integrated = integration(k, integration_rate, mu, frame);
   raycasting(k, mu, frame);
 }
-
 
 void synchroniseDevices() {
 	clFinish(commandQueue);

@@ -335,8 +335,7 @@ struct TrackData {
 };
 
 // SYCL's host dot implementation is missing
-inline /*__host__      __device__*/ float3 operator*(/*const*/ Matrix4 & M,
-		const float3 & v) {
+inline float3 operator*(/*const*/ Matrix4 & M, const float3 & v) {
 	return make_float3(my_dot(make_float3(M.data[0]), v) + M.data[0].w(),
                      my_dot(make_float3(M.data[1]), v) + M.data[1].w(),
                      my_dot(make_float3(M.data[2]), v) + M.data[2].w());

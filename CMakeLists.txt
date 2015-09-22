@@ -21,7 +21,6 @@ endif(APPLE)
 # was 5.4.0 and this went into /usr/local
 set(PAPI_PREFIX "/usr/local") 
 
-
  # ---- PREPARE COMMON DEPENDENCIES  ------------ 
 
 

@@ -170,7 +170,7 @@ struct Configuration {
 		out << "integration-rate: " << integration_rate << std::endl;		
 		out << "rendering-rate: " << rendering_rate << std::endl;
 		out << "fps: " << fps << std::endl;
-}
+  }
 
 #ifdef SYCL
 	inline float3 atof3(char * optarg) {

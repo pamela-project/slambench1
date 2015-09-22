@@ -1,8 +1,6 @@
 /*
 
- Copyright (c) 2014 University of Edinburgh, Imperial College, University of Manchester.
- Developed in the PAMELA project, EPSRC Programme Grant EP/K008730/1
-
+ Copyright (c) 2014 Paul Keir, University of the West of Scotland
  This code is licensed under the MIT License.
 
  */
@@ -11,7 +9,7 @@
 #include <kernels.h>
 
 // input once
-float * gaussian;
+float *gaussian;
 
 // inter-frame
 Volume<short2 *> volume;
@@ -63,7 +61,7 @@ void Kfusion::languageSpecificConstructor() {
 
   ocl_vertex = new f3_buf(range<1>{csize});
   ocl_normal = new f3_buf(range<1>{csize});
-  ocl_trackingResult=new buffer<TrackData,1>(range<1>{csize});
+  ocl_trackingResult = new buffer<TrackData,1>(range<1>{csize});
 
 	reduceOutputBuffer = (float*) malloc(number_of_groups * 32 * sizeof(float));
 
@@ -88,13 +86,14 @@ void Kfusion::languageSpecificConstructor() {
 
 Kfusion::~Kfusion() {
 
-	if (reduceOutputBuffer)
-		free(reduceOutputBuffer);
-	reduceOutputBuffer = NULL;
+	if (reduceOutputBuffer) {
+    free(reduceOutputBuffer);
+    reduceOutputBuffer = NULL;
+  }
 
 	if (ocl_FloatDepth) {
-		delete ocl_FloatDepth;
-	  ocl_FloatDepth = NULL;
+    delete ocl_FloatDepth;
+    ocl_FloatDepth = NULL;
   }
 
 	for (unsigned int i = 0; i < iterations.size(); ++i)
@@ -142,7 +141,6 @@ Kfusion::~Kfusion() {
   }
 
 	free(gaussian);
-
 	volume.release();
 }
 
@@ -213,19 +211,16 @@ static void k(item<2> ix, T *out, const T *in, const T *gaussian,
 
 };
 
-template <typename F3>
-inline F3 myrotate(/*const*/ Matrix4 M, const F3 v) {
-	return F3{my_dot(F3{M.data[0].x(), M.data[0].y(), M.data[0].z()}, v),
-            my_dot(F3{M.data[1].x(), M.data[1].y(), M.data[1].z()}, v),
-            my_dot(F3{M.data[2].x(), M.data[2].y(), M.data[2].z()}, v)};
-}
-
-template <typename F3>
-inline F3 Mat4TimeFloat3(/*const*/ Matrix4 M, const F3 v) {
-	return
-  F3{cl::sycl::dot(F3{M.data[0].x(), M.data[0].y(), M.data[0].z()}, v) + M.data[0].w(),
-     cl::sycl::dot(F3{M.data[1].x(), M.data[1].y(), M.data[1].z()}, v) + M.data[1].w(),
-     cl::sycl::dot(F3{M.data[2].x(), M.data[2].y(), M.data[2].z()}, v) + M.data[2].w()};
+inline float3 Mat4TimeFloat3(/*const*/ Matrix4 M, const float3 v) {
+  using cl::sycl::dot; // device-only
+	return make_float3(
+           dot(make_float3(M.data[0].x(),M.data[0].y(),M.data[0].z()),v) +
+             M.data[0].w(),
+           dot(make_float3(M.data[1].x(),M.data[1].y(),M.data[1].z()),v) +
+             M.data[1].w(),
+           dot(make_float3(M.data[2].x(),M.data[2].y(),M.data[2].z()),v) +
+             M.data[2].w()
+         );
 }
 
 template <typename T>
@@ -263,8 +258,8 @@ static void k(item<2> ix, T *vertex, const U *depth, const Matrix4 invK)
   float elem = depth[pixel.x() + ix.get_range()[0] * pixel.y()];
   if (elem > 0) {
     float3 tmp3{pixel.x(), pixel.y(), 1.f};
-//          res = elem * myrotate(invK, tmp3); // SYCL needs this (*) operator
-    float3 rot = myrotate(invK, tmp3);
+//          res = elem * rotate(invK, tmp3); // SYCL needs this (*) operator
+    float3 rot = rotate(invK, tmp3);
     res.x() = elem * rot.x();
     res.y() = elem * rot.y();
     res.z() = elem * rot.z();
@@ -445,7 +440,7 @@ static void k(item<2> ix, T *output,      /*const*/ uint2 outputSize,
 
   const float3 diff = refVertex[refPixel.x() + outputSize.x() * refPixel.y()] -
                       projectedVertex;
-  const float3 projectedNormal = myrotate(Ttrack, inNormalPixel);
+  const float3 projectedNormal = rotate(Ttrack, inNormalPixel);
 
   if (length(diff) > dist_threshold) {
     row.result = -4;
@@ -635,7 +630,6 @@ bool checkPoseKernel(Matrix4 & pose, Matrix4 oldPose, const float * output,
 	} else {
 		return true;
 	}
-
 }
 
 struct renderDepthKernel {
@@ -768,18 +762,17 @@ bool Kfusion::preprocessing(const uint16_t *inputDepth, /*const*/ uint2 inSize)
       ocl_depth_buffer = NULL;
 		}
     auto in_sz = range<1>{inSize.x() * inSize.y()};
-		ocl_depth_buffer = new buffer<uint16_t,1>(inputDepth, in_sz);
+    ocl_depth_buffer = new buffer<uint16_t,1>(inputDepth, in_sz);
 	}
 
-    auto r = range<2>{outSize.x(),outSize.y()};
+  auto r = range<2>{outSize.x(),outSize.y()};
+  dagr::run<mm2metersKernel,0>(q, r, *ocl_FloatDepth, outSize,
+                               dagr::ro(*ocl_depth_buffer), inSize, ratio);
+  delete ocl_depth_buffer; ocl_depth_buffer = NULL; // debug only
 
-    dagr::run<mm2metersKernel,0>(q, r, *ocl_FloatDepth, outSize,
-                                 dagr::ro(*ocl_depth_buffer), inSize, ratio);
-    delete ocl_depth_buffer; ocl_depth_buffer = NULL; // debug only
-
-    dagr::run<bilateralFilterKernel,0>(q, r, *ocl_ScaledDepth[0],
-                                       dagr::ro(*ocl_FloatDepth),
-                                       dagr::ro(*ocl_gaussian),e_delta,radius);
+  dagr::run<bilateralFilterKernel,0>(q, r, *ocl_ScaledDepth[0],
+                                     dagr::ro(*ocl_FloatDepth),
+                                     dagr::ro(*ocl_gaussian),e_delta,radius);
 	return true;
 }
 
@@ -1014,7 +1007,7 @@ float4 raycast(/*const*/ Volume<T> v, /*const*/ uint2 pos, const Matrix4 view,
                const float largestep)
 {
   const float3 origin = get_translation(view);
-  /*const*/ float3 direction = myrotate(view, float3{pos.x(), pos.y(), 1.f});
+  /*const*/ float3 direction = rotate(view, float3{pos.x(), pos.y(), 1.f});
 
 	// intersect ray with a box
 	//
@@ -1091,14 +1084,14 @@ bool Kfusion::integration(float4 k, uint integration_rate, float mu, uint frame)
     range<2> globalWorksize{volumeResolution.x(), volumeResolution.y()};
 		const Matrix4 invTrack = inverse(pose);
 		const Matrix4 K = getCameraMatrix(k);
-		const float3 delta = myrotate(invTrack,
+		const float3 delta = rotate(invTrack,
 				float3{0, 0, volumeDimensions.z() / volumeResolution.z()});
 
     // The SYCL lambda for integrateKernel demonstrates pre-DAGR verbosity
     dagr::run<integrateKernel,0>(q, globalWorksize,
       *ocl_volume_data, volumeResolution, volumeDimensions,
       dagr::ro(*ocl_FloatDepth),
-      computationSize, invTrack, K, mu, maxweight, delta, myrotate(K, delta));
+      computationSize, invTrack, K, mu, maxweight, delta, rotate(K, delta));
 
 		doIntegrate = true;
 	} else {
