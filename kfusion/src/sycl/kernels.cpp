@@ -183,13 +183,13 @@ static void k(item<2> ix, T *out, const T *in, const T *gaussian,
       // n.b. unsigned + signed is unsigned! Bug in OpenCL C version?
       const int px = pos.x()+i; const int sx = size.x()-1;
       const int py = pos.y()+i; const int sy = size.y()-1;
-      const int curPosx = cl::sycl::clamp(px,0,sx);
-      const int curPosy = cl::sycl::clamp(py,0,sy);
+      const int curPosx = clamp(px,0,sx);
+      const int curPosy = clamp(py,0,sy);
       const float curPix = in[curPosx + curPosy * size.x()];
       if (curPix > 0) {
         const float mod    = sq(curPix - center);
         const float factor = gaussian[i + r] * gaussian[j + r] *
-                             cl::sycl::exp(-mod / (2 * e_d * e_d));
+                             exp(-mod / (2 * e_d * e_d));
         t   += factor * curPix;
         sum += factor;
       } else {
