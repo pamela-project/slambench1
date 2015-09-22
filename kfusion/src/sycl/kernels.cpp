@@ -36,6 +36,7 @@ float                *reduceOutputBuffer       = NULL;
 // reduction parameters
 static const size_t size_of_group    = 64;
 static const size_t number_of_groups = 8;
+const float inv_32766 = 0.00003051944088f;
 
 void Kfusion::languageSpecificConstructor() {
 
@@ -203,16 +204,11 @@ static void k(item<2> ix, T *out, const T *in, const T *gaussian,
 
 };
 
+// Remove once param #1 is const: operator*(Matrix4 &, const float3 &) commons.h
 inline float3 Mat4TimeFloat3(/*const*/ Matrix4 M, const float3 v) {
-  using cl::sycl::dot; // device-only
-	return make_float3(
-           dot(make_float3(M.data[0].x(),M.data[0].y(),M.data[0].z()),v) +
-             M.data[0].w(),
-           dot(make_float3(M.data[1].x(),M.data[1].y(),M.data[1].z()),v) +
-             M.data[1].w(),
-           dot(make_float3(M.data[2].x(),M.data[2].y(),M.data[2].z()),v) +
-             M.data[2].w()
-         );
+	return float3{dot(make_float3(M.data[0]), v) + M.data[0].w(),
+                dot(make_float3(M.data[1]), v) + M.data[1].w(),
+                dot(make_float3(M.data[2]), v) + M.data[2].w()};
 }
 
 template <typename T>
@@ -234,7 +230,7 @@ inline float2 getVolume(/*const*/ Volume<T> v, /*const*/ uint3 pos) {
   /*const*/ short2 d = v.data[pos.x() +   // Making d a ref fixes it.
                               pos.y() * v.size.x() +
                               pos.z() * v.size.x() * v.size.y()];
-	return float2{d.x() * 0.00003051944088f, d.y()}; //  / 32766.0f
+	return float2{d.x() * inv_32766, d.y()};
 }
 
 struct depth2vertexKernel {
@@ -726,25 +722,22 @@ static void k(item<2> ix, T *render, U *v_data, const uint3 v_size,
 bool Kfusion::preprocessing(const uint16_t *inputDepth, /*const*/ uint2 inSize)
 {
 	uint2 outSize = computationSize;
-	const uint inSize_x  = inSize.x(); const uint inSize_y = inSize.y();
-	const uint outSize_x = computationSize.x();
-  const uint outSize_y = computationSize.y();
 
 	// Check for unsupported conditions
-	if ((inSize_x < outSize_x) || (inSize_y < outSize_y)) {
+	if ((inSize.x() < outSize.x()) || (inSize.y() < outSize.y())) {
 		std::cerr << "Invalid ratio." << std::endl;
 		exit(1);
 	}
-	if ((inSize_x % outSize_x != 0) || (inSize_y % outSize_y != 0)) {
+	if ((inSize.x() % outSize.x() != 0) || (inSize.y() % outSize.y() != 0)) {
 		std::cerr << "Invalid ratio." << std::endl;
 		exit(1);
 	}
-	if ((inSize_x / outSize_x != inSize_y / outSize_y)) {
+	if ((inSize.x() / outSize.x() != inSize.y() / outSize.y())) {
 		std::cerr << "Invalid ratio." << std::endl;
 		exit(1);
 	}
 
-	int ratio = inSize_x / outSize_x;
+	int ratio = inSize.x() / outSize.x();
 
   const auto r = range<2>{outSize.x(),outSize.y()};
 
@@ -758,9 +751,9 @@ bool Kfusion::preprocessing(const uint16_t *inputDepth, /*const*/ uint2 inSize)
 	return true;
 }
 
-bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
-		uint frame) {
-
+bool Kfusion::tracking(float4 k, float icp_threshold,
+                       const uint tracking_rate, const uint frame)
+{
 	if (frame % tracking_rate != 0)
 		return false;
 
@@ -858,20 +851,18 @@ inline float interp(/*const*/ float3 pos, /*const*/ Volume<T> v) {
   /*const*/ int3 upper = min(base + int3{1,1,1},
                              int3{v.size.x()-1,v.size.y()-1,v.size.z()-1});
 	return (((vs(uint3{lower.x(), lower.y(), lower.z()}, v) * (1 - factor.x())
-			+ vs(uint3{upper.x(), lower.y(), lower.z()}, v) * factor.x())
-			* (1 - factor.y())
-			+ (vs(uint3{lower.x(), upper.y(), lower.z()}, v) * (1 - factor.x())
-					+ vs(uint3{upper.x(), upper.y(), lower.z()}, v) * factor.x())
-					* factor.y()) * (1 - factor.z())
-			+ ((vs(uint3{lower.x(), lower.y(), upper.z()}, v) * (1 - factor.x())
-					+ vs(uint3{upper.x(), lower.y(), upper.z()}, v) * factor.x())
-					* (1 - factor.y())
-					+ (vs(uint3{lower.x(), upper.y(), upper.z()}, v)
-							* (1 - factor.x())
-							+ vs(uint3{upper.x(), upper.y(), upper.z()}, v)
-									* factor.x()) * factor.y()) * factor.z())
-			* 0.00003051944088f;
-  return 0;
+      + vs(uint3{upper.x(), lower.y(), lower.z()}, v) * factor.x())
+      * (1 - factor.y())
+      + (vs(uint3{lower.x(), upper.y(), lower.z()}, v) * (1 - factor.x())
+          + vs(uint3{upper.x(), upper.y(), lower.z()}, v) * factor.x())
+          * factor.y()) * (1 - factor.z())
+      + ((vs(uint3{lower.x(), lower.y(), upper.z()}, v) * (1 - factor.x())
+          + vs(uint3{upper.x(), lower.y(), upper.z()}, v) * factor.x())
+          * (1 - factor.y())
+          + (vs(uint3{lower.x(), upper.y(), upper.z()}, v)
+              * (1 - factor.x())
+              + vs(uint3{upper.x(), upper.y(), upper.z()}, v)
+                  * factor.x()) * factor.y()) * factor.z()) * inv_32766;
 }
 
 template <typename T>
@@ -980,7 +971,7 @@ inline float3 grad(float3 pos, /*const*/ Volume<T> v) {
 
 	return gradient * float3{v.dim.x() / v.size.x(),
                            v.dim.y() / v.size.y(),
-                           v.dim.z() / v.size.z()} * (0.5f * 0.00003051944088f);
+                           v.dim.z() / v.size.z()} * (0.5f * inv_32766);
 }
 
 template <typename T>
@@ -1057,7 +1048,8 @@ bool Kfusion::raycasting(float4 k, float mu, uint frame) {
 	return doRaycast;
 }
 
-bool Kfusion::integration(float4 k, uint integration_rate, float mu, uint frame)
+bool Kfusion::integration(float4 k, const uint integration_rate,
+                          const float mu, const uint frame)
 {
 	bool doIntegrate = checkPoseKernel(pose, oldPose, reduceOutputBuffer,
 			computationSize, track_threshold);
