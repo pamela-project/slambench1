@@ -25,21 +25,17 @@ buffer<float,1>      *ocl_gaussian             = NULL;
 buffer<float3,1>     *ocl_vertex               = NULL;
 buffer<float3,1>     *ocl_normal               = NULL;
 buffer<short2,1>     *ocl_volume_data          = NULL;
-buffer<uint16_t,1>   *ocl_depth_buffer         = NULL;
 
 buffer<TrackData,1>  *ocl_trackingResult       = NULL;
 buffer<float,1>      *ocl_FloatDepth           = NULL;
 buffer<float,1>     **ocl_ScaledDepth          = NULL;
 buffer<float3,1>    **ocl_inputVertex          = NULL;
 buffer<float3,1>    **ocl_inputNormal          = NULL;
-float *reduceOutputBuffer = NULL;
+float                *reduceOutputBuffer       = NULL;
 
 // reduction parameters
 static const size_t size_of_group    = 64;
 static const size_t number_of_groups = 8;
-
-uint2 computationSizeBkp = make_uint2(0, 0);
-uint2 outputImageSizeBkp = make_uint2(0, 0);
 
 void Kfusion::languageSpecificConstructor() {
 
@@ -130,10 +126,6 @@ Kfusion::~Kfusion() {
 	if (ocl_volume_data) {
 		delete ocl_volume_data;
 		ocl_volume_data = NULL;
-  }
-	if (ocl_depth_buffer) {
-		delete ocl_depth_buffer;
-		ocl_depth_buffer = NULL;
   }
 	if (ocl_trackingResult) {
 		delete ocl_trackingResult;
@@ -754,24 +746,11 @@ bool Kfusion::preprocessing(const uint16_t *inputDepth, /*const*/ uint2 inSize)
 
 	int ratio = inSize_x / outSize_x;
 
-	if (computationSizeBkp.x() < inSize.x() ||
-      computationSizeBkp.y() < inSize.y() || ocl_depth_buffer == NULL) {
-		computationSizeBkp = make_uint2(inSize.x(), inSize.y());
-		if (ocl_depth_buffer != NULL) {
-      delete ocl_depth_buffer;
-      ocl_depth_buffer = NULL;
-		}
-    auto in_sz = range<1>{inSize.x() * inSize.y()};
-    ocl_depth_buffer = new buffer<uint16_t,1>(inputDepth, in_sz);
-	}
+  const auto r = range<2>{outSize.x(),outSize.y()};
 
-
-  auto r = range<2>{outSize.x(),outSize.y()};
-  //auto in_sz = range<1>{inSize.x() * inSize.y()};
-  //auto ocl_depth_buffer = buffer<uint16_t,1>(inputDepth,in_sz);
   dagr::run<mm2metersKernel,0>(q, r, *ocl_FloatDepth, outSize,
-                               dagr::ro(*ocl_depth_buffer), inSize, ratio);
-  delete ocl_depth_buffer; ocl_depth_buffer = NULL; // debug only - no, needed!
+	  dagr::ro(buffer<uint16_t,1>(inputDepth, range<1>{inSize.x() * inSize.y()})),
+    inSize, ratio);
 
   dagr::run<bilateralFilterKernel,0>(q, r, *ocl_ScaledDepth[0],
                                      dagr::ro(*ocl_FloatDepth),
@@ -1130,7 +1109,7 @@ void Kfusion::dumpVolume(std::string filename) {
 	fDumpFile.close();
 }
 
-void Kfusion::renderVolume(uchar4 * out, uint2 outputSize, int frame,
+void Kfusion::renderVolume(uchar4 *out, uint2 outputSize, int frame,
                            int raycast_rendering_rate, float4 k,
                            float largestep)
 {
@@ -1144,7 +1123,7 @@ void Kfusion::renderVolume(uchar4 * out, uint2 outputSize, int frame,
     step,largestep,light,ambient);
 }
 
-void Kfusion::renderTrack(uchar4 * out, uint2 outputSize)
+void Kfusion::renderTrack(uchar4 *out, uint2 outputSize)
 {
   range<2> globalWorksize{computationSize.x(), computationSize.y()};
   dagr::run<renderTrackKernel,0>(q,globalWorksize,
@@ -1152,7 +1131,7 @@ void Kfusion::renderTrack(uchar4 * out, uint2 outputSize)
     dagr::ro(*ocl_trackingResult));
 }
 
-void Kfusion::renderDepth(uchar4 * out, uint2 outputSize) {
+void Kfusion::renderDepth(uchar4 *out, uint2 outputSize) {
 
   range<2> globalWorksize{computationSize.x(), computationSize.y()};
   dagr::run<renderDepthKernel,0>(q,globalWorksize,
