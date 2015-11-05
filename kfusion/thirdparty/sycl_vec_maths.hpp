@@ -19,7 +19,7 @@ using cl::sycl::int2;      using cl::sycl::int3;
 using cl::sycl::uint2;     using cl::sycl::uint3;
 using cl::sycl::short2;
 
-using cl::sycl::uchar;     using cl::sycl::uchar3; using cl::sycl::uchar4;
+using cl::sycl::uchar3;    using cl::sycl::uchar4;
 using cl::sycl::clamp;     using cl::sycl::min;    using cl::sycl::max;
 using cl::sycl::normalize; using cl::sycl::cross;  using cl::sycl::length;
 using cl::sycl::dot;
@@ -32,8 +32,11 @@ inline float4 make_float4(float x, float y, float z, float w)  {
 }
 inline
 uint3  make_uint3(unsigned x, unsigned y, unsigned z) { return uint3{x,y,z}; }
-inline uchar3 make_uchar3(uchar a, uchar b, uchar c)  { return uchar3{a,b,c}; }
-inline uchar4 make_uchar4(uchar a, uchar b, uchar c, uchar d) {
+inline uchar3 make_uchar3(unsigned char a, unsigned char b, unsigned char c) {
+  return uchar3{a,b,c};
+}
+inline uchar4 make_uchar4(unsigned char a, unsigned char b,
+                          unsigned char c, unsigned char d) {
   return uchar4{a,b,c,d};
 }
 inline int2   make_int2(int x, int y)                 { return int2{x,y};    }
