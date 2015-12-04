@@ -87,6 +87,7 @@ void opencl_init(void) {
 
 	// Create a command commands
 	//
+    #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 	commandQueue = clCreateCommandQueue(context, device_id, 0, &clError);
 	checkErr(clError, "Failed to create a command commands!");
 

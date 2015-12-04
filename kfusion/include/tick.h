@@ -18,8 +18,8 @@ inline float tick() {
 	struct timeval diff = t;
 	gettimeofday(&t, NULL);
 
-	return ((t.tv_sec - diff.tv_sec) * 1000000u + t.tv_usec - diff.tv_usec)
-			/ 1.e6;
+	return ((uint64_t)(t.tv_sec - diff.tv_sec) * 1000000u + t.tv_usec - diff.tv_usec) / 1.e6;
+
 	/*
 	 static  clock_t t = clock();
 	 clock_t diff = clock() - t ;

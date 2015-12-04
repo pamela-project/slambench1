@@ -1,0 +1,17 @@
+http://icl.cs.utk.edu/projects/papi/wiki/PAPITopics:RAPL_Access
+
+As root
+sudo modprobe msr
+chmod 666 /dev/cpu/*/msr
+
+# NOT REQUIRED
+#setcap cap_sys_rawio=ep <user_executable>
+#For any user executable needing to access RAPL
+
+
+REMEMBER to:
+# NOT REQUIRED
+# configure --with-perf-events --with-perfctr --with-components="rapl"
+ configure --with-components="rapl"
+
+/usr/local/include/papi.h could be used to check for papi installation

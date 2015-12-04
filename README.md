@@ -254,7 +254,7 @@ An example of use of the mainQt application is:
 KERNEL_TIMINGS=1 ./build/kfusion/kfusion-benchmark-cpp -s 4.8 -p 0.34,0.5,0.24 -z 4 -c 2 -r 1 -k 481.2,480,320,240 -i  living_room_traj2_loop.raw -o  benchmark.2.cpp.log 2> kernels.2.cpp.log
 ```
 
-### OpernMP ###
+### OpenMP ###
 ```
 #!plain
 KERNEL_TIMINGS=1 ./build/kfusion/kfusion-benchmark-openmp -s 4.8 -p 0.34,0.5,0.24 -z 4 -c 2 -r 1 -k 481.2,480,320,240 -i  living_room_traj2_loop.raw -o  benchmark.2.openmp.log 2> kernels.2.openmp.log
@@ -431,13 +431,20 @@ export DYLD_LIBRARY_PATH=/Users/lnardi/sw/OpenNI-MacOSX-x64-2.2/Samples/Bin:$DYL
 
 ## Release history ##
 
-Release candidat 1.1 (17 Mar 2015)  
-  * Bugfix : Move bilateralFilterKernel from preprocessing to tracking
-  * Bugfix : Wrong interpretation of ICP Threshold parameter.
-  * Esthetic : Uniformisation of HalfSampleRobustImage kernel
-  * Performance : Change float3 to float4 for the rendering kernels (No effect on OpenCL, but high performance improvement with CUDA)
-  * Performance : Add a dedicated buffer for the OpenCL rendering
-  * Feature : Add OSX support
+Release candidate 1.2 (To be define)
+
+* Bugfix : remove extra line of log.
+* ...
+
+Release candidate 1.1 (17 Mar 2015)
+
+* Bugfix : Move bilateralFilterKernel from preprocessing to tracking
+* Bugfix : Wrong interpretation of ICP Threshold parameter.
+* Esthetic : Uniformisation of HalfSampleRobustImage kernel
+* Performance : Change float3 to float4 for the rendering kernels (No effect on OpenCL, but high performance improvement with CUDA)
+* Performance : Add a dedicated buffer for the OpenCL rendering
+* Feature : Add OSX support
  
-Release candidat 1.0 (12 Nov 2014)
-  * First public release
+Release candidate 1.0 (12 Nov 2014)
+
+* First public release

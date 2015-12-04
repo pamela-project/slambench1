@@ -16,7 +16,10 @@ public:
 		SENSOR_A7 = 45, SENSOR_A15 = 40, SENSOR_GPU = 44, SENSOR_DRAM = 41
 	};
 	enum PowerMethod {
-		ODROID, ARM_PROBE, PERFORMANCE_COUNTERS, NONE
+		// For now we assume PAPI_CPU to mean CPU
+		// and PAPI_CUDA to mean GPU 
+		// and PAPI_ALL to potantially mean GPU and CPU
+		ODROID, ARM_PROBE, PAPI_CPU, PAPI_CUDA, PAPI_ALL, DUMMY, NONE
 	};
 	PowerMonitor();
 	~PowerMonitor();

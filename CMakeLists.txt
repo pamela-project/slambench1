@@ -4,8 +4,8 @@ project(pamela_testcases)
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_SOURCE_DIR}/cmake)
 
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -g -O3   ")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -O3  ")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -g -O3 -std=gnu++11   ")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -O3 -std=gnu++11  ")
 
 #set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -g -O3      -Wall -Wno-unknown-pragmas -Wextra -Werror ")
 #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -O3  -Wall -Wno-unknown-pragmas -Wextra -Werror ")
@@ -13,6 +13,13 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -O3  ")
 if(APPLE)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -D__APPLE__")
 endif(APPLE)
+
+# Set the directory for PAPI_PREFIX if you have trouble finding PAPI
+# think this is the right place or else do it in the FindPAPI.cmake
+# this is because I needed Haswell support and the installed version in 
+# /usr was 5.3.0 and the defualt installation via download of the latest version
+# was 5.4.0 and this went into /usr/local
+set(PAPI_PREFIX "/usr/local") 
 
 
  # ---- PREPARE COMMON DEPENDENCIES  ------------ 
@@ -27,6 +34,10 @@ else(APPLE)
 endif(APPLE)
 
 set(main_common_compile_flags ${compile_flags})
+if (PAPI_FOUND) 
+	set(main_common_compile_flags "-DPAPI_MONITORING ${main_common_compile_flags}")
+	set(main_common_libraries   "${main_common_libraries} ${PAPI_LIBRARIES}")
+endif(PAPI_FOUND)
 
 if (OPENNI2_FOUND)
     include_directories(${OPENNI2_INCLUDE_PATHS})
@@ -46,7 +57,6 @@ endif(OPENNI2_FOUND)
 #  ------ MAIN --------
   if (GLUT_FOUND)
     add_executable(${appname}-main-${version} src/mainQt.cpp src/PowerMonitor.cpp src/reader.cpp)
-
       SET_TARGET_PROPERTIES(${appname}-main-${version}
                              PROPERTIES COMPILE_FLAGS "${main_common_compile_flags}")
 

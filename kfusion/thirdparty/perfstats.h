@@ -125,6 +125,7 @@ struct PerfStats {
 	double getLastData(const std::string & key);
 	Type getType(const std::string & key);
 	double getSampleTime(const std::string & key);
+    void printHeader(std::ostream& out = std::cout) const;
 	void print(std::ostream& out = std::cout) const;
 	void debug();
 	void print_all_data(std::ostream& out) const;
@@ -146,18 +147,13 @@ inline void PerfStats::reset(const std::string & key) {
  }
  }
  */
-inline void PerfStats::print(std::ostream& out) const {
-	static int first = 1;
-	if (first) {
-
+inline void PerfStats::printHeader(std::ostream& out) const {	
 		for (std::map<int, std::string>::const_iterator it = order.begin();
 				it != order.end(); it++) {
-
 			out << std::left << std::setw(10) << it->second << "\t";
 		}
-		out << std::endl;
-		first = 0;
-	}
+} 
+inline void PerfStats::print(std::ostream& out) const {
 	out.setf(std::ios::fixed, std::ios::floatfield);
 	out.precision(10);
 	//for (std::map<std::string,Stats>::const_iterator it=stats.begin(); it!=stats.end(); it++){
@@ -197,7 +193,6 @@ inline void PerfStats::print(std::ostream& out) const {
 			break;
 		}
 	}
-	out << std::endl;
 }
 inline double PerfStats::getLastData(const std::string & key) {
 	std::map<std::string, Stats>::iterator s = stats.find(key);
@@ -283,7 +278,6 @@ inline void PerfStats::print_all_data(std::ostream& out) const {
 
 	bool first2 = true;
 	int count;
-	std::cerr << " Done max min\n";
 	while (count < insertion_id) {
 		res = resPtr;
 		for (std::map<int, std::string>::const_iterator kt = order.begin();
@@ -351,14 +345,9 @@ inline void PerfStats::print_all_data(std::ostream& out) const {
 				kt->second);
 		if (it == stats.end())
 			continue;
-		out << "# " << std::setw(13) << it->first << "\tMean:\t" << (*res).mean;
-		out << "\tStandard deviation:\t" << sqrt((*res).sd / idx);
-		out << "\tmin:\t" << (*res).min;
-		out << "\tmax:\t" << (*res).max;
-		out << std::endl;
+
 		std::cout.precision(10);
-		std::cout << "# " << std::setw(13) << it->first << "\tMean:\t"
-				<< (*res).mean;
+		std::cout << "# " << std::setw(13) << it->first << "\tMean:\t"<< (*res).mean;
 		std::cout << "\tStandard deviation:\t" << sqrt((*res).sd / idx);
 		std::cout << "\tmin:\t" << (*res).min;
 		std::cout << "\tmax:\t" << (*res).max;

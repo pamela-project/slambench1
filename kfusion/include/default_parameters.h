@@ -18,6 +18,8 @@
 
 #include <constant_parameters.h>
 
+extern int optind;
+
 ////////////////////////// RUNTIME PARAMETERS //////////////////////
 
 #define DEFAULT_ITERATION_COUNT 3
@@ -87,6 +89,8 @@ struct Configuration {
 	std::string dump_volume_file;
 	std::string input_file;
 	std::string log_file;
+	std::ofstream log_filestream;
+	std::ostream *log_stream;
 
 	float4 camera;
 	bool camera_overrided;
@@ -99,7 +103,6 @@ struct Configuration {
 	bool render_volume_fullsize;
 	inline
 	void print_arguments() {
-
 		std ::cerr << "-c  (--compute-size-ratio)       : default is " << default_compute_size_ratio << "   (same size)      " << std::endl;
 		std ::cerr << "-d  (--dump-volume) <filename>   : Output volume file              " << std::endl;
 		std ::cerr << "-f  (--fps)                      : default is " << default_fps       << std::endl;
@@ -116,9 +119,39 @@ struct Configuration {
 		std ::cerr << "-v  (--volume-resolution)        : default is " << default_volume_resolution.x << "," << default_volume_resolution.y << "," << default_volume_resolution.z << "    " << std::endl;
 		std ::cerr << "-y  (--pyramid-levels)           : default is 10,5,4     " << std::endl;
 		std ::cerr << "-z  (--rendering-rate)   : default is " << default_rendering_rate << std::endl;
-
 	}
-
+	void print_values(std::ostream& out) {
+time_t rawtime;
+		struct tm *timeinfo;
+		char buffer[80];
+		time(&rawtime);
+		timeinfo=localtime(&rawtime);
+		strftime(buffer,80,"%Y-%m-%d %I:%M:%S",timeinfo);
+		out << "SLAMBench Report run started:\t" << buffer << std::endl<< std::endl;
+		out << "Scene properties:" << std::endl<<"=================" << std::endl<< std::endl;
+		out << "input-file: " << input_file <<std::endl;
+		out << "volume-size: " << volume_size.x << "," << volume_size.y << "," << volume_size.z << std::endl;		
+		out << "camera: "<< camera.x<<","<< camera.y<<","<< camera.z<<","<< camera.w<<  std::endl;
+		out << "init-pose: " << initial_pos_factor.x << "," << initial_pos_factor.y << "," <<initial_pos_factor.z << std::endl;
+		
+		out << std::endl;	
+		out << "Algorithmic properties:"<<std::endl<<"======================="<<std::endl << std::endl;
+		out << "compute-size-ratio: " << compute_size_ratio << std::endl;	
+		out << "volume-resolution: " << volume_resolution.x << "," << volume_resolution.y << "," << volume_resolution.z << "    " << std::endl;
+		out << "mu: " << mu << std::endl;
+		out << "icp-threshold: " << icp_threshold << std::endl;
+		out << "pyramid-levels: " ;
+		for(int i=0; i< pyramid.size();i++){
+			if(i!=0)
+				out<<",";
+			out<<pyramid[i];
+		}		
+		out << std::endl;		
+		out << "tracking-rate: "  << tracking_rate << std::endl;		
+		out << "integration-rate: " << integration_rate << std::endl;		
+		out << "rendering-rate: " << rendering_rate << std::endl;
+		out << "fps: " << fps << std::endl;
+}
 	inline float3 atof3(char * optarg) {
 		float3 res;
 		std::istringstream dotargs(optarg);
@@ -226,6 +259,7 @@ struct Configuration {
 		int c;
 		int option_index = 0;
 		int flagErr = 0;
+		optind = 1;
 		while ((c = getopt_long(argc, argv, short_options.c_str(), long_options,
 				&option_index)) != -1)
 			switch (c) {

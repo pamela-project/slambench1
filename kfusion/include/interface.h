@@ -101,9 +101,11 @@ private:
 
 	std::string _dir;
 	uint2 _size;
+	float* FloatdepthMap;
 
 public:
 	~SceneDepthReader() {
+	  if (FloatdepthMap) free(FloatdepthMap);
 	}
 	;
 	SceneDepthReader(std::string dir, int fps, bool blocking_read) :
@@ -117,6 +119,7 @@ public:
 			_frame = -1;
 			_fps = fps;
 			_blocking_read = blocking_read;
+			 FloatdepthMap = (float*) malloc(_size.x * _size.y * sizeof(float));
 		} else {
 			std::cerr << "No such directory " << dir << std::endl;
 			cameraOpen = false;
@@ -141,14 +144,13 @@ public:
 
 	inline bool readNextDepthFrame(uchar3*, unsigned short int * depthMap) {
 
-		float* FloatdepthMap = (float*) malloc(
-				_size.x * _size.y * sizeof(float));
+
 		bool res = readNextDepthFrame(FloatdepthMap);
 
 		for (unsigned int i = 0; i < _size.x * _size.y; i++) {
 			depthMap[i] = FloatdepthMap[i] * 1000.0f;
 		}
-		free(FloatdepthMap);
+
 		return res;
 
 	}
@@ -198,8 +200,13 @@ class RawDepthReader: public DepthReader {
 private:
 	FILE* _pFile;
 	uint2 _size;
+	unsigned short int* UintdepthMap;
 
 public:
+	~RawDepthReader() {
+	  if (UintdepthMap) free(UintdepthMap);
+	  if (_pFile)       fclose(_pFile);
+	}
 	RawDepthReader(std::string filename, int fps, bool blocking_read) :
 			DepthReader(), _pFile(fopen(filename.c_str(), "rb")) {
 
@@ -216,6 +223,8 @@ public:
 			_fps = fps;
 			_blocking_read = blocking_read;
 			fseek(_pFile, 0, SEEK_SET);
+
+		UintdepthMap = (unsigned short int*) malloc(_size.x * _size.y * sizeof(unsigned short int));
 		}
 	};
 	ReaderType getType() {
@@ -291,14 +300,11 @@ public:
 
 	inline bool readNextDepthFrame(float * depthMap) {
 
-		unsigned short int* UintdepthMap = (unsigned short int*) malloc(
-				_size.x * _size.y * sizeof(unsigned short int));
 		bool res = readNextDepthFrame(NULL, UintdepthMap);
 
 		for (unsigned int i = 0; i < _size.x * _size.y; i++) {
 			depthMap[i] = (float) UintdepthMap[i] / 1000.0f;
 		}
-		free(UintdepthMap);
 		return res;
 	}
 
@@ -416,14 +422,12 @@ public:
 
 			if (rc != openni::STATUS_OK) {
 				std::cout << "Couldn't create depth stream" << std::endl << openni::OpenNI::getExtendedError() << std::endl;
-				//exit(3);
 				return;
 			} else {
 				rc = depth.start();
 				if (rc != openni::STATUS_OK) {
 					printf("Couldn't start depth stream:\n%s\n", openni::OpenNI::getExtendedError());
 					depth.destroy();
-					//exit(3);
 					return;
 				}
 				depth.stop();
@@ -434,7 +438,6 @@ public:
 
 			if (rc != openni::STATUS_OK) {
 				std::cout << "Couldn't create color stream" << std::endl << openni::OpenNI::getExtendedError() << std::endl;
-				//exit(3);
 				return;
 			}
 
@@ -453,7 +456,6 @@ public:
 			if(rc != openni::STATUS_OK)
 			{
 				std::cout << "Could not set videomode" << std::endl;
-				//exit(3);
 				return;
 			}
 
@@ -549,7 +551,6 @@ public:
 		if (depthMap) {
 			memcpy(depthMap,depthImage,_size.x * _size.y*sizeof(uint16_t));
 		}
-
 		get_next_frame ();
 
 		return true;
@@ -583,7 +584,6 @@ public:
 	}
 
 };
-
 #else
 class OpenNIDepthReader: public DepthReader {
 public:
@@ -607,6 +607,201 @@ public:
 		return (READER_OPENNI);
 	}
 };
-#endif /* DO_OPENNI*/
+#endif /* DO_OPENNI    (OpenNI 2.0) */
+
+
+
+#ifdef DO_OPENNI15
+
+#include <XnOpenNI.h>
+#include <XnLog.h>
+#include <XnCppWrapper.h>
+
+using namespace xn;
+
+class OpenNI15DepthReader: public DepthReader {
+
+private:
+
+    uint2          _size;
+    XnStatus       _rc  ;
+    Context        _context;
+
+    DepthGenerator _depth;
+    ImageGenerator _image;
+
+
+    bool           _image_available;
+
+
+
+public:
+
+    ~OpenNI15DepthReader() {
+
+	    _context.StopGeneratingAll();
+        _image.Release();
+        _depth.Release();
+        _context.Release();
+        cameraOpen = false;
+        cameraActive = false;
+    	_image_available = false;
+
+
+    };
+
+    ReaderType getType() {
+        return(READER_OPENNI);
+    }
+
+    OpenNI15DepthReader(std::string filename, int fps, bool blocking_read) :
+    DepthReader() {
+
+      std::cout << "Start OpenNI15DepthReader DepthReader ... " << std::endl;
+
+        cameraActive = false;
+        cameraOpen = false;
+
+        _rc = _context.Init();
+
+        if (_rc != XN_STATUS_OK) {
+
+	    return;
+        }
+
+        if (filename != "") {
+            std::cout << ( "OpenNI15DepthReader UNSUPPORTED FEATURE !!!") << std::endl;
+	    return;
+        }
+
+        _rc = _depth.Create(_context);
+        if (_rc != XN_STATUS_OK) {
+ std::cout << ( "OpenNI15DepthReader ERROR !!!") << std::endl;
+	   		return;
+        }
+
+        _rc = _image.Create(_context);
+        if (_rc != XN_STATUS_OK) {
+ std::cout << ( "OpenNI15DepthReader ERROR !!!") << std::endl;
+        } else {
+	  _image_available = true;
+	}
+
+        _rc = _context.StartGeneratingAll();
+        if (_rc != XN_STATUS_OK) {
+ std::cout << ( "OpenNI15DepthReader ERROR !!!") << std::endl;
+	    return;
+        }
+
+
+        _size.x = 640;
+        _size.y = 480;
+
+
+        cameraOpen =true;
+        cameraActive =true;
+        _frame=-1;
+        _fps = fps;
+        _blocking_read = blocking_read;
+ 		std::cout << ( "OpenNI15DepthReader Ready !!!") << std::endl;
+
+    };
+    inline bool readNextDepthFrame(uchar3* raw_rgb, unsigned short int * depthMap) {
+
+        _rc = _context.WaitOneUpdateAll(_depth);
+        if (_rc != XN_STATUS_OK) {
+ std::cout << ( "OpenNI15DepthReader ERROR !!!") << std::endl;
+            return false;
+        }
+    DepthMetaData  _depthMD;
+
+        _depth.GetMetaData(_depthMD);
+        const XnDepthPixel* pDepthMap = _depthMD.Data();
+
+
+        if (depthMap) {
+            memcpy(depthMap,pDepthMap,_size.x * _size.y*sizeof(uint16_t));
+        }
+
+
+
+	if (_image_available) {
+	  _rc = _context.WaitOneUpdateAll(_image);
+	  if (_rc != XN_STATUS_OK) {
+ std::cout << ( "OpenNI15DepthReader ERROR !!!") << std::endl;
+	    return false;
+	  }
+    ImageMetaData  _imageMD;
+
+	  _image.GetMetaData(_imageMD);
+	  const XnRGB24Pixel* pimageMap = _imageMD.RGB24Data();
+
+	  if (raw_rgb) {
+            memcpy(raw_rgb,pimageMap,_size.x * _size.y*sizeof(uchar3));
+	  }
+
+	}
+
+
+
+
+        get_next_frame ();
+
+        return true;
+
+    }
+
+    inline void restart() {
+        _frame=-1;
+        //FIXME : how to rewind OpenNI ?
+
+    }
+
+    inline bool readNextDepthFrame(float * depthMap) {
+
+        unsigned short int* UintdepthMap = (unsigned short int*) malloc(_size.x * _size.y * sizeof(unsigned short int));
+        bool res = readNextDepthFrame(NULL,UintdepthMap);
+
+        for (unsigned int i = 0; i < _size.x * _size.y; i++) {
+            depthMap[i] = (float) UintdepthMap[i] / 1000.0f;
+        }
+        free(UintdepthMap);
+        return res;
+    }
+
+    inline uint2 getinputSize() {
+        return _size;
+    }
+    inline float4 getK() {
+        return make_float4(481.2, 480, 640/2, 480/2);
+
+    }
+
+};
+
+#else
+class OpenNI15DepthReader: public DepthReader {
+public:
+	OpenNI15DepthReader(std::string, int, bool) {
+ std::cout << ( "OpenNI15DepthReader ERROR !!!") << std::endl;
+		cameraOpen = false;
+		cameraActive = false;
+	}
+	bool readNextDepthFrame(float * depthMap) {
+	}
+	bool readNextDepthFrame(uchar3* raw_rgb, unsigned short int * depthMap) {
+	}
+	float4 getK() {
+	}
+	uint2 getinputSize() {
+	}
+	void restart() {
+	}
+
+	ReaderType getType() {
+		return (READER_OPENNI);
+	}
+};
+#endif /* DO_OPENNI15    (OpenNI 1.5) */
 
 #endif /* INTERFACE_H_ */
