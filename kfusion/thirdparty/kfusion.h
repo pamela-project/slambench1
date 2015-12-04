@@ -48,6 +48,13 @@ struct __device_builtin__uchar3 {
 	unsigned char z;
 };
 
+struct __device_builtin__uchar4 {
+	unsigned char x;
+	unsigned char y;
+	unsigned char z;
+	unsigned char w;
+};
+
 #if defined(__GNUC__)
 // circumvent packaging problems in gcc 4.7.0
 #undef _GLIBCXX_ATOMIC_BUILTINS 

@@ -26,6 +26,8 @@ cl_mem ocl_vertex = NULL;
 cl_mem ocl_normal = NULL;
 cl_mem ocl_volume_data = NULL;
 cl_mem ocl_depth_buffer = NULL;
+cl_mem ocl_output_render_buffer = NULL; // Common buffer for rendering track, depth and volume
+
 
 // intra-frame
 cl_mem ocl_reduce_output_buffer = NULL;
@@ -53,7 +55,10 @@ cl_kernel renderDepth_ocl_kernel;
 
 // reduction parameters
 static const size_t size_of_group = 64;
-static const size_t number_of_group = 8;
+static const size_t number_of_groups = 8;
+
+uint2 computationSizeBkp = make_uint2(0, 0);
+uint2 outputImageSizeBkp = make_uint2(0, 0);
 
 void init() {
 	opencl_init();
@@ -97,8 +102,8 @@ void Kfusion::languageSpecificConstructor() {
 			&clError);
 
 	ocl_reduce_output_buffer = clCreateBuffer(context, CL_MEM_WRITE_ONLY,
-			32 * number_of_group * sizeof(float), NULL, &clError);
-	reduceOutputBuffer = (float*) malloc(number_of_group * 32 * sizeof(float));
+			32 * number_of_groups * sizeof(float), NULL, &clError);
+	reduceOutputBuffer = (float*) malloc(number_of_groups * 32 * sizeof(float));
 	// ********* BEGIN : Generate the gaussian *************
 	size_t gaussianS = radius * 2 + 1;
 	float *gaussian = (float*) malloc(gaussianS * sizeof(float));
@@ -223,6 +228,10 @@ Kfusion::~Kfusion() {
 	if (ocl_depth_buffer)
 		clReleaseMemObject(ocl_depth_buffer);
 	ocl_depth_buffer = NULL;
+	if(ocl_output_render_buffer)
+	    clReleaseMemObject(ocl_output_render_buffer);
+	ocl_output_render_buffer = NULL;
+
 	if (ocl_reduce_output_buffer)
 		clReleaseMemObject(ocl_reduce_output_buffer);
 	ocl_reduce_output_buffer = NULL;
@@ -280,17 +289,28 @@ void Kfusion::reset() {
 	exit(1);
 }
 
-void Kfusion::renderVolume(uchar3 * out, uint2 outputSize, int frame, int rate,
-		float4 k, float largestep) {
-	if (frame % rate != 0)
-		return;
-	// Create buffers
-	CREATE_OUT_BUFFER(out, out, outputSize.x * outputSize.y * sizeof(uchar3));
+void Kfusion::renderVolume(uchar4 * out, uint2 outputSize, int frame, int rate,
+	float4 k, float largestep) {
+    if (frame % rate != 0) return;
+    // Create render opencl buffer if needed
+    if(outputImageSizeBkp.x < outputSize.x || outputImageSizeBkp.y < outputSize.y || ocl_output_render_buffer == NULL) 
+    {
+	outputImageSizeBkp = make_uint2(outputSize.x, outputSize.y);
+	if(ocl_output_render_buffer != NULL){
+	    std::cout << "Release" << std::endl;
+	    clError = clReleaseMemObject(ocl_output_render_buffer);
+	    checkErr( clError, "clReleaseMemObject");
+	}
+	ocl_output_render_buffer = clCreateBuffer(context,  CL_MEM_WRITE_ONLY, outputSize.x * outputSize.y * sizeof(uchar4), NULL , &clError);
+	checkErr( clError, "clCreateBuffer output" );
+    }
+
 	Matrix4 view = *viewPose * getInverseCameraMatrix(k);
 	// set param and run kernel
 
-	clError = clSetKernelArg(renderVolume_ocl_kernel, 0, sizeof(cl_mem),
-			(void*) &outBuffer);
+
+
+    clError = clSetKernelArg(renderVolume_ocl_kernel, 0, sizeof(cl_mem), (void*) &ocl_output_render_buffer);
 	checkErr(clError, "clSetKernelArg0");
 
 	clError = clSetKernelArg(renderVolume_ocl_kernel, 1, sizeof(cl_mem),
@@ -330,18 +350,27 @@ void Kfusion::renderVolume(uchar3 * out, uint2 outputSize, int frame, int rate,
 	NULL, globalWorksize, NULL, 0, NULL, NULL);
 	checkErr(clError, "clEnqueueNDRangeKernel");
 
-	RELEASE_OUT_BUFFER(out);
-
+    clError = clEnqueueReadBuffer(commandQueue, ocl_output_render_buffer, CL_FALSE, 0, outputSize.x * outputSize.y * sizeof(uchar4), out, 0, NULL, NULL );  
+    checkErr( clError, "clEnqueueReadBuffer");
 }
 
-void Kfusion::renderTrack(uchar3 * out, uint2 outputSize) {
-
-	// Create buffers
-	CREATE_OUT_BUFFER(out, out, outputSize.x * outputSize.y * sizeof(uchar3));
+void Kfusion::renderTrack(uchar4 * out, uint2 outputSize) {
+    // Create render opencl buffer if needed
+    if(outputImageSizeBkp.x < outputSize.x || outputImageSizeBkp.y < outputSize.y || ocl_output_render_buffer == NULL) 
+    {
+	outputImageSizeBkp = make_uint2(outputSize.x, outputSize.y);
+	if(ocl_output_render_buffer != NULL){
+	    std::cout << "Release" << std::endl;
+	    clError = clReleaseMemObject(ocl_output_render_buffer);
+	    checkErr( clError, "clReleaseMemObject");
+	}
+	ocl_output_render_buffer = clCreateBuffer(context,  CL_MEM_WRITE_ONLY, outputSize.x * outputSize.y * sizeof(uchar4), NULL , &clError);
+	checkErr( clError, "clCreateBuffer output" );
+    }
 
 	// set param and run kernel
 	clError = clSetKernelArg(renderTrack_ocl_kernel, 0, sizeof(cl_mem),
-			&outBuffer);
+			&ocl_output_render_buffer);
 	checkErr(clError, "clSetKernelArg");
 	clError = clSetKernelArg(renderTrack_ocl_kernel, 1, sizeof(cl_mem),
 			&ocl_trackingResult);
@@ -353,19 +382,28 @@ void Kfusion::renderTrack(uchar3 * out, uint2 outputSize) {
 			NULL, globalWorksize, NULL, 0, NULL, NULL);
 	checkErr(clError, "clEnqueueNDRangeKernel");
 
-	RELEASE_OUT_BUFFER(out);
+    clError = clEnqueueReadBuffer(commandQueue, ocl_output_render_buffer, CL_FALSE, 0, outputSize.x * outputSize.y * sizeof(uchar4), out, 0, NULL, NULL );  
+    checkErr( clError, "clEnqueueReadBuffer");
 
 }
 
-void Kfusion::renderDepth(uchar3 * out, uint2 outputSize) {
-
-	// Create buffers
-
-	CREATE_OUT_BUFFER(out, out, outputSize.x * outputSize.y * sizeof(uchar3));
+void Kfusion::renderDepth(uchar4 * out, uint2 outputSize) {
+    // Create render opencl buffer if needed
+    if(outputImageSizeBkp.x < outputSize.x || outputImageSizeBkp.y < outputSize.y || ocl_output_render_buffer == NULL) 
+    {
+	outputImageSizeBkp = make_uint2(outputSize.x, outputSize.y);
+	if(ocl_output_render_buffer != NULL){
+	    std::cout << "Release" << std::endl;
+	    clError = clReleaseMemObject(ocl_output_render_buffer);
+	    checkErr( clError, "clReleaseMemObject");
+	}
+	ocl_output_render_buffer = clCreateBuffer(context,  CL_MEM_WRITE_ONLY, outputSize.x * outputSize.y * sizeof(uchar4), NULL , &clError);
+	checkErr( clError, "clCreateBuffer output" );
+    }
 
 	// set param and run kernel
 	clError = clSetKernelArg(renderDepth_ocl_kernel, 0, sizeof(cl_mem),
-			&outBuffer);
+			&ocl_output_render_buffer);
 	clError &= clSetKernelArg(renderDepth_ocl_kernel, 1, sizeof(cl_mem),
 			&ocl_FloatDepth);
 	clError &= clSetKernelArg(renderDepth_ocl_kernel, 2, sizeof(cl_float),
@@ -380,7 +418,9 @@ void Kfusion::renderDepth(uchar3 * out, uint2 outputSize) {
 			NULL, globalWorksize, NULL, 0, NULL, NULL);
 	checkErr(clError, "clEnqueueNDRangeKernel");
 
-	RELEASE_OUT_BUFFER(out);
+
+    clError = clEnqueueReadBuffer(commandQueue, ocl_output_render_buffer, CL_FALSE, 0, outputSize.x * outputSize.y * sizeof(uchar4), out, 0, NULL, NULL );  
+    checkErr( clError, "clEnqueueReadBuffer");
 
 }
 
@@ -440,9 +480,7 @@ bool Kfusion::preprocessing(const uint16_t * inputDepth, const uint2 inSize) {
 
 	int ratio = inSize.x / outSize.x;
 
-	static uint2 computationSizeBkp = make_uint2(0, 0);
-	if (computationSizeBkp.x
-			< inSize.x|| computationSizeBkp.y < inSize.y || ocl_depth_buffer == NULL) {
+	if (computationSizeBkp.x < inSize.x|| computationSizeBkp.y < inSize.y || ocl_depth_buffer == NULL) {
 		computationSizeBkp = make_uint2(inSize.x, inSize.y);
 		if (ocl_depth_buffer != NULL) {
 			clError = clReleaseMemObject(ocl_depth_buffer);
@@ -496,8 +534,7 @@ bool Kfusion::preprocessing(const uint16_t * inputDepth, const uint2 inSize) {
 			&radius);
 	checkErr(clError, "clSetKernelArg");
 
-	clError = clEnqueueNDRangeKernel(commandQueue, bilateralFilter_ocl_kernel,
-			2,
+	clError = clEnqueueNDRangeKernel(commandQueue, bilateralFilter_ocl_kernel, 2,
 			NULL, globalWorksize, NULL, 0, NULL, NULL);
 	checkErr(clError, "clEnqueueNDRangeKernel");
 
@@ -679,7 +716,7 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 					size_of_group * 32 * sizeof(float), NULL);
 			checkErr(clError, "clSetKernelArg");
 
-			size_t RglobalWorksize[1] = { size_of_group * number_of_group };
+			size_t RglobalWorksize[1] = { size_of_group * number_of_groups };
 			size_t RlocalWorksize[1] = { size_of_group }; // Dont change it !
 
 			clError = clEnqueueNDRangeKernel(commandQueue, reduce_ocl_kernel, 1,
@@ -688,15 +725,15 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 
 			clError = clEnqueueReadBuffer(commandQueue,
 					ocl_reduce_output_buffer, CL_TRUE, 0,
-					32 * number_of_group * sizeof(float), reduceOutputBuffer, 0,
+					32 * number_of_groups * sizeof(float), reduceOutputBuffer, 0,
 					NULL, NULL);
 			checkErr(clError, "clEnqueueReadBuffer");
 
 			TooN::Matrix<TooN::Dynamic, TooN::Dynamic, float,
 					TooN::Reference::RowMajor> values(reduceOutputBuffer,
-					number_of_group, 32);
+					number_of_groups, 32);
 
-			for (int j = 1; j < number_of_group; ++j) {
+			for (int j = 1; j < number_of_groups; ++j) {
 				values[0] += values[j];
 			}
 

@@ -10,9 +10,9 @@ endif(OPENNI2_FOUND)
 
 if (OPENCL_FOUND)
  
-include_directories(${OPENCL_INCLUDE_DIRS})
-add_library(oclwrapper SHARED OCLWrapper.cpp)
-target_link_libraries(oclwrapper ${OpenCL_LIBRARIES})
+    include_directories(${OPENCL_INCLUDE_DIRS})
+    add_library(oclwrapper SHARED OCLWrapper.cpp)
+    target_link_libraries(oclwrapper ${OPENCL_LIBRARIES})
 
 endif(OPENCL_FOUND)
 

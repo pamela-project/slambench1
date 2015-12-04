@@ -9,14 +9,48 @@
 
  */
 
-#define TICK(str)    {static const std::string str_tick = str; if (print_kernel_timing) {clock_gettime(CLOCK_MONOTONIC, &tick_clockData);}
-#define TOCK()        if (print_kernel_timing) {cudaDeviceSynchronize(); clock_gettime(CLOCK_MONOTONIC, &tock_clockData); std::cerr<< str_tick << " ";\
-	if((tock_clockData.tv_sec > tick_clockData.tv_sec) && (tock_clockData.tv_nsec >= tick_clockData.tv_nsec))   std::cerr<< tock_clockData.tv_sec - tick_clockData.tv_sec << std::setfill('0') << std::setw(9);\
-	std::cerr  << (( tock_clockData.tv_nsec - tick_clockData.tv_nsec) + ((tock_clockData.tv_nsec<tick_clockData.tv_nsec)?1000000000:0)) << std::endl;}}
+#ifdef __APPLE__
+	#include <mach/clock.h>
+	#include <mach/mach.h>
+
+	#define TICK(str)    {static const std::string str_tick = str; \
+		if (print_kernel_timing) {\
+		    host_get_clock_service(mach_host_self(), SYSTEM_CLOCK, &cclock);\
+		    clock_get_time(cclock, &tick_clockData);\
+		    mach_port_deallocate(mach_task_self(), cclock);\
+		}}
+
+	#define TOCK()  {if (print_kernel_timing) {cudaDeviceSynchronize(); \
+		host_get_clock_service(mach_host_self(), SYSTEM_CLOCK, &cclock);\
+		clock_get_time(cclock, &tock_clockData);\
+		mach_port_deallocate(mach_task_self(), cclock);\
+		if((tock_clockData.tv_sec > tick_clockData.tv_sec) && (tock_clockData.tv_nsec >= tick_clockData.tv_nsec))   std::cerr<< tock_clockData.tv_sec - tick_clockData.tv_sec << std::setfill('0') << std::setw(9);\
+		std::cerr  << (( tock_clockData.tv_nsec - tick_clockData.tv_nsec) + ((tock_clockData.tv_nsec<tick_clockData.tv_nsec)?1000000000:0)) << std::endl;}}
+#else
+	
+	#define TICK(str)    {static const std::string str_tick = str; \
+		if (print_kernel_timing) {clock_gettime(CLOCK_MONOTONIC, &tick_clockData);}
+	
+	#define TOCK()        if (print_kernel_timing) {cudaDeviceSynchronize(); \
+		clock_gettime(CLOCK_MONOTONIC, &tock_clockData); \
+		std::cerr<< str_tick << " ";\
+		if((tock_clockData.tv_sec > tick_clockData.tv_sec) && (tock_clockData.tv_nsec >= tick_clockData.tv_nsec)) std::cerr<< tock_clockData.tv_sec - tick_clockData.tv_sec << std::setfill('0') << std::setw(9);\
+		    std::cerr  << (( tock_clockData.tv_nsec - tick_clockData.tv_nsec) + ((tock_clockData.tv_nsec<tick_clockData.tv_nsec)?1000000000:0)) << std::endl;}}
+
+#endif
+
+
 
 bool print_kernel_timing = false;
-struct timespec tick_clockData;
-struct timespec tock_clockData;
+
+#ifdef __APPLE__
+	clock_serv_t cclock;
+	mach_timespec_t tick_clockData;
+	mach_timespec_t tock_clockData;
+#else
+	struct timespec tick_clockData;
+	struct timespec tock_clockData;
+#endif
 
 #include "kfusion.h"
 
@@ -38,15 +72,15 @@ struct timespec tock_clockData;
 
 using namespace std;
 
-__global__ void renderDepthKernel(Image<uchar3> out, const Image<float> depth,
+__global__ void renderDepthKernel(Image<uchar4> out, const Image<float> depth,
 		const float nearPlane, const float farPlane) {
 	//const float d = (clamp(depth.el(), nearPlane, farPlane) - nearPlane) / (farPlane - nearPlane);
 	//out.el() = make_uchar3(d * 255, d * 255, d * 255);
 	if (depth.el() < nearPlane)
-		out.el() = make_uchar3(255, 255, 255);
+		out.el() = make_uchar4(255, 255, 255, 0); // The forth value is padding for memory alignement and so it is for following uchar4
 	else {
 		if (depth.el() > farPlane)
-			out.el() = make_uchar3(0, 0, 0);
+			out.el() = make_uchar4(0, 0, 0, 0); 
 		else {
 			float h = (depth.el() - nearPlane) / (farPlane - nearPlane);
 			h *= 6.0;
@@ -55,56 +89,33 @@ __global__ void renderDepthKernel(Image<uchar3> out, const Image<float> depth,
 			const float mid1 = 0.25 + (0.5 * fract);
 			const float mid2 = 0.75 - (0.5 * fract);
 			switch (sextant) {
-			case 0:
-				out.el() = make_uchar3(191, 255 * mid1, 64);
-				break;
-			case 1:
-				out.el() = make_uchar3(255 * mid2, 191, 64);
-				break;
-			case 2:
-				out.el() = make_uchar3(64, 191, 255 * mid1);
-				break;
-			case 3:
-				out.el() = make_uchar3(64, 255 * mid2, 191);
-				break;
-			case 4:
-				out.el() = make_uchar3(255 * mid1, 64, 191);
-				break;
-			case 5:
-				out.el() = make_uchar3(191, 64, 255 * mid2);
-				break;
+			    case 0: out.el() = make_uchar4(191, 255 * mid1, 64, 0); break;
+			    case 1: out.el() = make_uchar4(255 * mid2, 191, 64, 0); break;
+			    case 2: out.el() = make_uchar4(64, 191, 255 * mid1, 0); break;
+			    case 3: out.el() = make_uchar4(64, 255 * mid2, 191, 0); break;
+			    case 4: out.el() = make_uchar4(255 * mid1, 64, 191, 0); break;
+			    case 5: out.el() = make_uchar4(191, 64, 255 * mid2, 0); break;
 			}
 			// out.el() = gs2rgb(d);
 		}
 	}
 }
 
-__global__ void renderTrackKernel(Image<uchar3> out,
+__global__ void renderTrackKernel(Image<uchar4> out,
 		const Image<TrackData> data) {
 	const uint2 pos = thr2pos2();
+	// The forth value is padding for memory alignement and so it is for following uchar4
 	switch (data[pos].result) {
-	case 1:
-		out[pos] = make_uchar3(128, 128, 128);  // ok
-		break;
-	case -1:
-		out[pos] = make_uchar3(0, 0, 0);      // no input
-		break;
-	case -2:
-		out[pos] = make_uchar3(255, 0, 0);        // not in image
-		break;
-	case -3:
-		out[pos] = make_uchar3(0, 255, 0);        // no correspondence
-		break;
-	case -4:
-		out[pos] = make_uchar3(0, 0, 255);        // to far away
-		break;
-	case -5:
-		out[pos] = make_uchar3(255, 255, 0);     // wrong normal
-		break;
+	    case  1: out[pos] = make_uchar4(128, 128, 128, 0);	break; // ok
+	    case -1: out[pos] = make_uchar4(0, 0, 0, 0);	break; // no input 
+	    case -2: out[pos] = make_uchar4(255, 0, 0, 0);	break; // not in image 
+	    case -3: out[pos] = make_uchar4(0, 255, 0, 0);	break; // no correspondence
+	    case -4: out[pos] = make_uchar4(0, 0, 255, 0);	break; // too far away
+	    case -5: out[pos] = make_uchar4(255, 255, 0, 0);	break; // wrong normal
 	}
 }
 
-__global__ void renderVolumeKernel(Image<uchar3> render, const Volume volume,
+__global__ void renderVolumeKernel(Image<uchar4> render, const Volume volume,
 		const Matrix4 view, const float nearPlane, const float farPlane,
 		const float step, const float largestep, const float3 light,
 		const float3 ambient) {
@@ -120,12 +131,12 @@ __global__ void renderVolumeKernel(Image<uchar3> render, const Volume volume,
 			const float dir = fmaxf(dot(normalize(surfNorm), diff), 0.f);
 			const float3 col = clamp(make_float3(dir) + ambient, 0.f, 1.f)
 					* 255;
-			render.el() = make_uchar3(col.x, col.y, col.z);
+			render.el() = make_uchar4(col.x, col.y, col.z, 0); // The forth value is padding for memory alignement and so it is for following uchar4
 		} else {
-			render.el() = make_uchar3(0, 0, 0);
+			render.el() = make_uchar4(0, 0, 0, 0);
 		}
 	} else {
-		render.el() = make_uchar3(0, 0, 0);
+		render.el() = make_uchar4(0, 0, 0, 0);
 	}
 }
 /*
@@ -554,14 +565,12 @@ public:
 			float mu, uint frame);
 
 	void dumpVolume(std::string filename);
-	void renderVolume(__device_builtin__uchar3 * out,
+	void renderVolume(__device_builtin__uchar4 * out,
 			const __device_builtin__uint2 outputSize, int, int,
 			__device_builtin__float4 k, float largestep);
-	void renderVolumeByPass(__device_builtin__uchar3 * out,
+	void renderTrack(__device_builtin__uchar4 * out,
 			const __device_builtin__uint2 outputSize);
-	void renderTrack(__device_builtin__uchar3 * out,
-			const __device_builtin__uint2 outputSize);
-	void renderDepth(__device_builtin__uchar3 * out,
+	void renderDepth(__device_builtin__uchar4 * out,
 			__device_builtin__uint2 outputSize);
 	sMatrix4 getPose() {
 		return pose;
@@ -607,8 +616,9 @@ Image<float, HostDevice> output;
 
 Image<float, Device> gaussian;
 
-Image<uchar3, HostDevice> lightScene, trackModel, lightModel, texModel;
-Image<uchar3, HostDevice> depthModel;
+Image<uchar3, HostDevice> lightScene, texModel;
+Image<uchar4, HostDevice> lightModel, trackModel, depthModel;
+
 
 static bool firstAcquire = true;
 
@@ -739,31 +749,36 @@ if ((std::sqrt(values(0, 0) / values(0, 28)) > 2e-2)
 
 }
 
-bool Kfusion::preprocessing(const ushort * inputDepth,
-	const __device_builtin__uint2 inputSize) {
-uint2 s = make_uint2(inputSize.x, inputSize.y);
+bool Kfusion::preprocessing(const ushort * inputDepth, const __device_builtin__uint2 inputSize) {
+    uint2 s = make_uint2(inputSize.x, inputSize.y);
 
-//Image<uint16_t, Ref> myDepthImage(s,(void*)inputDepth);
-Image<uint16_t, HostDevice> myDepthImage(s);
-cudaMemcpy(myDepthImage.data(), inputDepth, s.x * s.y * sizeof(ushort),
-		cudaMemcpyHostToHost);
-TICK("mm2meters");
-if(computationSize.x == myDepthImage.size.x)
-mm2metersKernel<0><<<divup(rawDepth.size, imageBlock), imageBlock>>>(rawDepth, myDepthImage);
-else if(computationSize.x == myDepthImage.size.x / 2 )
-mm2metersKernel<1><<<divup(rawDepth.size, imageBlock), imageBlock>>>(rawDepth, myDepthImage);
-else if(computationSize.x == myDepthImage.size.x / 4 )
-mm2metersKernel<3><<<divup(rawDepth.size, imageBlock), imageBlock>>>(rawDepth, myDepthImage);
-else if(computationSize.x == myDepthImage.size.x / 8 )
-mm2metersKernel<7><<<divup(rawDepth.size, imageBlock), imageBlock>>>(rawDepth, myDepthImage);
-else
-assert(false);
-TOCK();
-return true;
+    //Image<uint16_t, Ref> myDepthImage(s,(void*)inputDepth);
+    Image<uint16_t, HostDevice> myDepthImage(s);
+    cudaMemcpy(myDepthImage.data(), inputDepth, s.x * s.y * sizeof(ushort),
+	    cudaMemcpyHostToHost);
+    TICK("mm2meters");
+    if(computationSize.x == myDepthImage.size.x)
+	mm2metersKernel<0><<<divup(rawDepth.size, imageBlock), imageBlock>>>(rawDepth, myDepthImage);
+    else if(computationSize.x == myDepthImage.size.x / 2 )
+	mm2metersKernel<1><<<divup(rawDepth.size, imageBlock), imageBlock>>>(rawDepth, myDepthImage);
+    else if(computationSize.x == myDepthImage.size.x / 4 )
+	mm2metersKernel<3><<<divup(rawDepth.size, imageBlock), imageBlock>>>(rawDepth, myDepthImage);
+    else if(computationSize.x == myDepthImage.size.x / 8 )
+	mm2metersKernel<7><<<divup(rawDepth.size, imageBlock), imageBlock>>>(rawDepth, myDepthImage);
+    else
+	assert(false);
+    TOCK();
+
+    // filter the input depth map
+    dim3 grid = divup(make_uint2(computationSize.x, computationSize.y), imageBlock);
+    TICK("bilateral_filter");
+    bilateralFilterKernel<<<grid, imageBlock>>>(scaledDepth[0], rawDepth, gaussian, e_delta, radius);
+    TOCK();
+    
+    return true;
 }
 
-bool Kfusion::tracking(__device_builtin__float4 sk, float icp_threshold,
-	uint tracking_rate, uint frame) {
+bool Kfusion::tracking(__device_builtin__float4 sk, float icp_threshold, uint tracking_rate, uint frame) {
 
 if (frame % tracking_rate != 0)
 	return false;
@@ -773,14 +788,8 @@ const Matrix4 invK = getInverseCameraMatrix(k);
 
 vector<dim3> grids;
 for (int i = 0; i < iterations.size(); ++i)
-	grids.push_back(
-			divup(make_uint2(computationSize.x, computationSize.y) >> i,
-					imageBlock));
+	grids.push_back(divup(make_uint2(computationSize.x, computationSize.y) >> i, imageBlock));
 
-// filter the input depth map
-TICK("bilateral_filter");
-bilateralFilterKernel<<<grids[0], imageBlock>>>(scaledDepth[0], rawDepth, gaussian, e_delta, radius);
-TOCK();
 // half sample the input depth maps into the pyramid levels
 for (int i = 1; i < iterations.size(); ++i) {
 	TICK("halfSampleRobust");
@@ -897,7 +906,7 @@ if (hostData) {
 }
 }
 
-void Kfusion::renderVolume(__device_builtin__uchar3 * out,
+void Kfusion::renderVolume(__device_builtin__uchar4 * out,
 	__device_builtin__uint2 outputSize, int frame, int rate,
 	__device_builtin__float4 k, float largestep) {
 if (frame % rate != 0)
@@ -913,26 +922,26 @@ if((outputSize.x != lightModel.size.x) || (outputSize.y != lightModel.size.y)) {
 renderVolumeKernel<<<divup(lightModel.getDeviceImage().size, block), block>>>( lightModel.getDeviceImage(),volume,Matrix4(this->viewPose) * getInverseCameraMatrix(make_float4(k.x,k.y,k.z,k.w)) , nearPlane, farPlane, volume.dim.x/volume.size.x, largestep,light, ambient );
 TOCK();
 cudaMemcpy(out, lightModel.getDeviceImage().data(),
-		outputSize.x * outputSize.y * sizeof(__device_builtin__uchar3 ),
+		outputSize.x * outputSize.y * sizeof(uchar4),
 		cudaMemcpyDeviceToHost);
 }
 
-void Kfusion::renderTrack(__device_builtin__uchar3 * out,
+void Kfusion::renderTrack(__device_builtin__uchar4 * out,
 	__device_builtin__uint2 outputSize) {
 TICK("renderTrack");
 dim3 block(32,16);
 renderTrackKernel<<<divup(trackModel.getDeviceImage().size, block), block>>>( trackModel.getDeviceImage(), reduction );
 TOCK();
-cudaMemcpy(out, trackModel.getDeviceImage().data(), outputSize.x * outputSize.y * sizeof(__device_builtin__uchar3), cudaMemcpyDeviceToHost);
+cudaMemcpy(out, trackModel.getDeviceImage().data(), outputSize.x * outputSize.y * sizeof(uchar4), cudaMemcpyDeviceToHost);
 }
 
-void Kfusion::renderDepth(__device_builtin__uchar3 * out,
+void Kfusion::renderDepth(__device_builtin__uchar4 * out,
 		__device_builtin__uint2 outputSize) {
 	TICK("renderDepthKernel");
 	dim3 block(32,16);
 	renderDepthKernel<<<divup(depthModel.getDeviceImage().size, block), block>>>( depthModel.getDeviceImage(), rawDepth, nearPlane, farPlane );
 	TOCK();
-	cudaMemcpy(out, depthModel.getDeviceImage().data(), outputSize.x * outputSize.y * sizeof(__device_builtin__uchar3), cudaMemcpyDeviceToHost);
+	cudaMemcpy(out, depthModel.getDeviceImage().data(), outputSize.x * outputSize.y * sizeof(uchar4), cudaMemcpyDeviceToHost);
 }
 
 void synchroniseDevices() {

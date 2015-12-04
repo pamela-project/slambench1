@@ -26,7 +26,7 @@ if len(sys.argv) != 3 :
     exit (1)
 
 # open benchmark log file first
-print "Get kfusion output data." 
+print "Get KFusion output data." 
 framesDropped = 0
 validFrames = 0
 lastFrame = -1
@@ -42,7 +42,7 @@ if len(headers) == 15 :
     if headers[14] == "" :
         del headers[14]
 if len(headers) != 14 :
-    print "Wrong kfusion log  file. Expected 14 columns but found " + str(len(headers))
+    print "Wrong KFusion log  file. Expected 14 columns but found " + str(len(headers))
     exit(1)
 for variable in  headers :
     fulldata[variable] = []
@@ -66,7 +66,7 @@ for line in lines[1:] :
         
         lastFrame = int(matching.group(1))
     else :
-        print "Skip kfusion line : " + line
+        #print "Skip KFusion line : " + line
         break
 
 # open benchmark log file first
@@ -80,19 +80,19 @@ for line in lines :
     if matching :
         nuim_traj.append( (matching.group(2),matching.group(3),matching.group(4)) )
     else :
-        print "Skip nuim line : " + line
+        #print "Skip nuim line : " + line
         break
 
 working_position = min ( len(kfusion_traj) , len(nuim_traj) )
-print "kfusion file: Valid frames " + str(validFrames) + "  dropped frames: " + str(framesDropped)
-print "kfusion result        : " + str(len(kfusion_traj)) + " positions."
+print "KFusion valid frames " + str(validFrames) + ",  dropped frames: " + str(framesDropped)
+print "KFusion result        : " + str(len(kfusion_traj)) + " positions."
 print "NUIM  result        : " + str(len(nuim_traj)) + " positions."
 print "Working position is : " + str(working_position) 
 print "Untracked frames: " +str(untracked)
 nuim_traj=nuim_traj[0:working_position]
 kfusion_traj=kfusion_traj[0:working_position]
 
-print "Shift kfusion trajectory..."
+print "Shift KFusion trajectory..."
 
 first = nuim_traj[0]
 fulldata["ATE"] = []
@@ -137,7 +137,9 @@ for p in range(working_position) :
 #print ("MRdata:,%s,%6.6f,%6.6f,%d,%d") % ( sys.argv[1], numpy.mean(fulldata["ATE"]), numpy.mean(fulldata["computation"]), framesDropped, untracked)
 
 print "\nA detailed statistical analysis is provided."
-print "All durations are in seconds and the absolute trajectory error (ATE) is in centimeters." 
+print "Runtimes are in seconds and the absolute trajectory error (ATE) is in meters." 
+print "The ATE measure accuracy, check this number to see how precise your computation is."
+print "Acceptable values are in the range of few centimeters."
 
 for variable in sorted(fulldata.keys()) :
     if "X" in variable or "Z" in variable or "Y" in variable or "frame" in variable  or "tracked" in variable      or "integrated" in variable  :  

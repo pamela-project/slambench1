@@ -56,14 +56,14 @@ void raycastKernel(float3* vertex, float3* normal, uint2 inputSize,
 
 ////////////////////////// RENDER KERNELS PROTOTYPES //////////////////////
 
-void renderDepthKernel(uchar3* out, float * depth, uint2 depthSize,
+void renderDepthKernel(uchar4* out, float * depth, uint2 depthSize,
 		const float nearPlane, const float farPlane);
 
 void renderNormaKernell(uchar3* out, const float3* normal, uint2 normalSize);
 
-void renderTrackKernel(uchar3* out, const TrackData* data, uint2 outSize);
+void renderTrackKernel(uchar4* out, const TrackData* data, uint2 outSize);
 
-void renderVolumeKernel(uchar3* out, const uint2 depthSize, const Volume volume,
+void renderVolumeKernel(uchar4* out, const uint2 depthSize, const Volume volume,
 		const Matrix4 view, const float nearPlane, const float farPlane,
 		const float step, const float largestep, const float3 light,
 		const float3 ambient);
@@ -171,10 +171,10 @@ public:
 	bool integration(float4 k, uint integration_rate, float mu, uint frame);
 
 	void dumpVolume(std::string filename);
-	void renderVolume(uchar3 * out, const uint2 outputSize, int frame, int rate,
+	void renderVolume(uchar4 * out, const uint2 outputSize, int frame, int rate,
 			float4 k, float mu);
-	void renderTrack(uchar3 * out, const uint2 outputSize);
-	void renderDepth(uchar3 * out, uint2 outputSize);
+	void renderTrack(uchar4 * out, const uint2 outputSize);
+	void renderDepth(uchar4* out, uint2 outputSize);
 	Matrix4 getPose() {
 		return pose;
 	}

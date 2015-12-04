@@ -11,7 +11,13 @@
 #define _COMMON_OPENCL_
 
 #define __NO_STD_VECTOR // Use cl::vector instead of STL version
-#include <CL/cl.h>
+
+#ifdef __APPLE__
+    #include <OpenCL/cl.h>
+#else
+    #include <CL/cl.h>
+#endif
+
 #include <commons.h>
 
 // OPEN CL STUFF

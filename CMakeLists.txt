@@ -10,6 +10,9 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -O3  ")
 #set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -g -O3      -Wall -Wno-unknown-pragmas -Wextra -Werror ")
 #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -O3  -Wall -Wno-unknown-pragmas -Wextra -Werror ")
 
+if(APPLE)
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -D__APPLE__")
+endif(APPLE)
 
 
  # ---- PREPARE COMMON DEPENDENCIES  ------------ 
@@ -17,8 +20,12 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -O3  ")
 
 function(add_version appname version compile_flags link_flags)
 
- 
-set(main_common_libraries     ${link_flags} rt stdc++ pthread)
+if(APPLE)
+    set(main_common_libraries     ${link_flags} stdc++ pthread)
+else(APPLE)
+    set(main_common_libraries     ${link_flags} rt stdc++ pthread)
+endif(APPLE)
+
 set(main_common_compile_flags ${compile_flags})
 
 if (OPENNI2_FOUND)
@@ -43,7 +50,12 @@ endif(OPENNI2_FOUND)
       SET_TARGET_PROPERTIES(${appname}-main-${version}
                              PROPERTIES COMPILE_FLAGS "${main_common_compile_flags}")
 
+
+if(APPLE)
+    target_link_libraries(${appname}-main-${version} ${appname}-${version} ${GLUT_LIBRARIES} ${OPENGL_LIBRARIES}  ${main_common_libraries} )
+else(APPLE)
     target_link_libraries(${appname}-main-${version} ${appname}-${version} ${GLUT_LIBRARIES} ${OPENGL_LIBRARIES}  ${main_common_libraries} GL )
+endif(APPLE)
   endif(GLUT_FOUND)
   #  ------ QT --------
   if (Qt5OpenGL_FOUND)
@@ -74,7 +86,14 @@ endif(OPENNI2_FOUND)
     include_directories(${Qt5Gui_INCLUDE_DIRS})
     
     SET_TARGET_PROPERTIES(${appname}-qt-${version} PROPERTIES COMPILE_FLAGS "${main_common_compile_flags} -std=c++0x  -D__QT__")
-    target_link_libraries(${appname}-qt-${version} Qt5::Core Qt5::Gui Qt5::Widgets Qt5::OpenGL Qt5::PrintSupport ${main_common_libraries} ${appname}-${version}  ${GLUT_LIBRARIES} ${OPENGL_LIBRARIES}   GL )  
+
+if(APPLE)
+    target_link_libraries(${appname}-qt-${version} Qt5::Core Qt5::Gui Qt5::Widgets Qt5::OpenGL Qt5::PrintSupport 
+			    ${main_common_libraries} ${appname}-${version}  ${GLUT_LIBRARIES} ${OPENGL_LIBRARIES}   )  
+else(APPLE) 
+    target_link_libraries(${appname}-qt-${version} Qt5::Core Qt5::Gui Qt5::Widgets Qt5::OpenGL Qt5::PrintSupport 
+			    ${main_common_libraries} ${appname}-${version}  ${GLUT_LIBRARIES} ${OPENGL_LIBRARIES}  GL )  
+endif(APPLE)
     
     
   endif(Qt5OpenGL_FOUND)

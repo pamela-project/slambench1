@@ -32,9 +32,9 @@ PerfStats Stats;
 PowerMonitor *powerMonitor = NULL;
 uint16_t * inputDepth = NULL;
 static uchar3 * inputRGB = NULL;
-static uchar3 * depthRender = NULL;
-static uchar3 * trackRender = NULL;
-static uchar3 * volumeRender = NULL;
+static uchar4 * depthRender = NULL;
+static uchar4 * trackRender = NULL;
+static uchar4 * volumeRender = NULL;
 static DepthReader *reader = NULL;
 static Kfusion *kfusion = NULL;
 /*
@@ -50,12 +50,21 @@ static Kfusion *kfusion = NULL;
 DepthReader *createReader(Configuration *config, std::string filename = "");
 int processAll(DepthReader *reader, bool processFrame, bool renderImages,
 		Configuration *config, bool reset = false);
+
 inline double tock() {
-	struct timespec clockData;
 	synchroniseDevices();
-	clock_gettime(CLOCK_MONOTONIC, &clockData);
-	return (double) clockData.tv_sec + clockData.tv_nsec / 1000000000.0;
-}
+#ifdef __APPLE__
+		clock_serv_t cclock;
+		mach_timespec_t clockData;
+		host_get_clock_service(mach_host_self(), SYSTEM_CLOCK, &cclock);
+		clock_get_time(cclock, &clockData);
+		mach_port_deallocate(mach_task_self(), cclock);
+#else
+		struct timespec clockData;
+		clock_gettime(CLOCK_MONOTONIC, &clockData);
+#endif
+		return (double) clockData.tv_sec + clockData.tv_nsec / 1000000000.0;
+}	
 
 void qtLinkKinectQt(int argc, char *argv[], Kfusion **_kfusion,
 		DepthReader **_depthReader, Configuration *config, void *depthRender,
@@ -105,9 +114,9 @@ int main(int argc, char ** argv) {
 	//we could allocate a more appropriate amount of memory (less) but this makes life hard if we switch up resolution later;
 	inputDepth = (uint16_t*) malloc(sizeof(uint16_t) * width * height);
 	inputRGB = (uchar3*) malloc(sizeof(uchar3) * inputSize.x * inputSize.y);
-	depthRender = (uchar3*) malloc(sizeof(uchar3) * width * height);
-	trackRender = (uchar3*) malloc(sizeof(uchar3) * width * height);
-	volumeRender = (uchar3*) malloc(sizeof(uchar3) * width * height);
+	depthRender = (uchar4*) malloc(sizeof(uchar4) * width * height);
+	trackRender = (uchar4*) malloc(sizeof(uchar4) * width * height);
+	volumeRender = (uchar4*) malloc(sizeof(uchar4) * width * height);
 
 	float3 init_pose = config.initial_pos_factor * config.volume_size;
 	kfusion = new Kfusion(computationSize, config.volume_resolution,

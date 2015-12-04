@@ -24,11 +24,21 @@
 #include <getopt.h>
 
 inline double tock() {
-	struct timespec clockData;
 	synchroniseDevices();
-	clock_gettime(CLOCK_MONOTONIC, &clockData);
-	return (double) clockData.tv_sec + clockData.tv_nsec / 1000000000.0;
-}
+#ifdef __APPLE__
+		clock_serv_t cclock;
+		mach_timespec_t clockData;
+		host_get_clock_service(mach_host_self(), SYSTEM_CLOCK, &cclock);
+		clock_get_time(cclock, &clockData);
+		mach_port_deallocate(mach_task_self(), cclock);
+#else
+		struct timespec clockData;
+		clock_gettime(CLOCK_MONOTONIC, &clockData);
+#endif
+		return (double) clockData.tv_sec + clockData.tv_nsec / 1000000000.0;
+}	
+
+
 
 /***
  * This program loop over a scene recording
@@ -92,12 +102,12 @@ int main(int argc, char ** argv) {
 	// Construction Scene reader and input buffer
 	uint16_t* inputDepth = (uint16_t*) malloc(
 			sizeof(uint16_t) * inputSize.x * inputSize.y);
-	uchar3* depthRender = (uchar3*) malloc(
-			sizeof(uchar3) * computationSize.x * computationSize.y);
-	uchar3* trackRender = (uchar3*) malloc(
-			sizeof(uchar3) * computationSize.x * computationSize.y);
-	uchar3* volumeRender = (uchar3*) malloc(
-			sizeof(uchar3) * computationSize.x * computationSize.y);
+	uchar4* depthRender = (uchar4*) malloc(
+			sizeof(uchar4) * computationSize.x * computationSize.y);
+	uchar4* trackRender = (uchar4*) malloc(
+			sizeof(uchar4) * computationSize.x * computationSize.y);
+	uchar4* volumeRender = (uchar4*) malloc(
+			sizeof(uchar4) * computationSize.x * computationSize.y);
 
 	uint frame = 0;
 

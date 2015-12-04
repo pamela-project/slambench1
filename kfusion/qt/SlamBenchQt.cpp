@@ -375,13 +375,13 @@ appWindow	->addButtonChoices("Compute Res",
 	FImage rgbImage = { width, height, GL_RGB, GL_UNSIGNED_BYTE, inputRGB };
 	bool rgbDepthEnabled = true;
 	FImage depthImage =
-			{ cwidth, cheight, GL_RGB, GL_UNSIGNED_BYTE, depthRender };
+			{ cwidth, cheight, GL_RGBA, GL_UNSIGNED_BYTE, depthRender };
 	FImage trackImage =
-			{ cwidth, cheight, GL_RGB, GL_UNSIGNED_BYTE, trackRender };
+			{ cwidth, cheight, GL_RGBA, GL_UNSIGNED_BYTE, trackRender };
 	bool trackResultEnabled = true;
 	//FImage volumeImage = { width, height, GL_RGB, GL_UNSIGNED_BYTE, volumeRender};
 	FImage volumeImage = { config->render_volume_fullsize ? width : cwidth,
-			config->render_volume_fullsize ? height : cheight, GL_RGB,
+			config->render_volume_fullsize ? height : cheight, GL_RGBA,
 			GL_UNSIGNED_BYTE, volumeRender };
 	bool volResultEnabled = true;
 	appWindow->viewers->addViewer(rgbImage, (const char *) "RGB image",

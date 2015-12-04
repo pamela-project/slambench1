@@ -8,7 +8,7 @@
 all : 
 	mkdir -p build/
 	cd build/ && cmake ..
-	$(MAKE) -C build  $(MFLAGS)
+	$(MAKE) -C build  $(MFLAGS) 
 
 #### DATA SET GENERATION ####
 
@@ -53,11 +53,11 @@ livingRoom%.gt.freiburg :
 #### GENERAL GENERATION ####
 
 clean :
-	rm build -rf
+	rm -rf build
 cleanall : 
-	rm build -rf
-	rm living_room_traj*_loop livingRoom*.gt.freiburg living_room_traj*_loop.raw -rf
-	rm *.log -f
+	rm -rf build
+	rm -rf living_room_traj*_loop livingRoom*.gt.freiburg living_room_traj*_loop.raw
+	rm -f *.log 
 
 
 .PHONY : clean bench test all validate

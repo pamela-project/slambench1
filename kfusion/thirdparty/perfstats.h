@@ -11,6 +11,12 @@
 #ifndef PERFSTATS_H
 #define PERFSTATS_H
 
+#ifdef __APPLE__
+    #include <mach/clock.h>
+    #include <mach/mach.h>
+#endif
+
+
 #include <algorithm>
 #include <iostream>
 #include <map>
@@ -38,7 +44,6 @@ struct PerfStats {
 		FRAME,
 		UNDEFINED
 	};
-	struct timespec clockData;
 	struct Stats {
 		std::vector<double> data;
 		Type type;
@@ -69,8 +74,16 @@ struct PerfStats {
 	double last;
 
 	double get_time() {
-		//return double(std::clock())/CLOCKS_PER_SEC;
+#ifdef __APPLE__
+		clock_serv_t cclock;
+		mach_timespec_t clockData;
+		host_get_clock_service(mach_host_self(), SYSTEM_CLOCK, &cclock);
+		clock_get_time(cclock, &clockData);
+		mach_port_deallocate(mach_task_self(), cclock);
+#else
+		struct timespec clockData;
 		clock_gettime(CLOCK_MONOTONIC, &clockData);
+#endif
 		return (double) clockData.tv_sec + clockData.tv_nsec / 1000000000.0;
 	}
 

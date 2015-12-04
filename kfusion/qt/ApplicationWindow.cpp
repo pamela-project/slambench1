@@ -20,6 +20,11 @@
 #include <assert.h>
 #include <unistd.h>
 
+#ifdef __APPLE__
+    #include <mach/clock.h>
+    #include <mach/mach.h>
+#endif
+
 void ApplicationWindow::enableMenuItem(FileMenuEnum entry) {
 	for (int i = 0; i < fileMenu->actions().length(); i++) {
 		if (fileMenu->actions().at(i)->data().toInt() == entry)
@@ -1084,7 +1089,12 @@ static int numSamples = 0;
 static PerfStats *stats = NULL;
 QMessageBox *messageBox = NULL;
 double now;
-struct timespec clockData;
+#ifdef __APPLE__
+    clock_serv_t cclock;
+    mach_timespec_t clockData;
+#else
+    struct timespec clockData;
+#endif
 double elapsed;
 bool forceLabel = false;
 if (stats == NULL) {
@@ -1137,7 +1147,14 @@ if (stats != NULL) {
 	cumulativeTime = cumulativeTime + elapsed;
 	numSamples++;
 
-	clock_gettime(CLOCK_MONOTONIC, &clockData);
+#ifdef __APPLE__
+		host_get_clock_service(mach_host_self(), SYSTEM_CLOCK, &cclock);
+		clock_get_time(cclock, &clockData);
+		mach_port_deallocate(mach_task_self(), cclock);
+#else
+		clock_gettime(CLOCK_MONOTONIC, &clockData);
+#endif
+
 	now = clockData.tv_sec + clockData.tv_nsec / 1000000000.0;
 
 	if ((now - lastUpdateTime > 1.0) || (forceLabel)) {

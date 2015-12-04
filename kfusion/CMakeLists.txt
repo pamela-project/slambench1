@@ -20,8 +20,13 @@ include_directories(./include ${TOON_INCLUDE_PATHS} ./thirdparty)
 
 
  # ---- PREPARE COMMON DEPENDENCIES  ------------ 
- 
-set(common_libraries     rt stdc++ pthread)
+if(APPLE)
+    set(common_libraries     stdc++ pthread)
+else(APPLE)
+    set(common_libraries     rt stdc++ pthread)
+endif(APPLE)
+
+
 set(common_compile_flags "")
 
 

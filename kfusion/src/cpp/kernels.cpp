@@ -8,10 +8,33 @@
  */
 #include <kernels.h>
 
-#define TICK()    {if (print_kernel_timing) {clock_gettime(CLOCK_MONOTONIC, &tick_clockData);}
-#define TOCK(str,size)  if (print_kernel_timing) {clock_gettime(CLOCK_MONOTONIC, &tock_clockData); std::cerr<< str << " ";\
-	if((tock_clockData.tv_sec > tick_clockData.tv_sec) && (tock_clockData.tv_nsec >= tick_clockData.tv_nsec))   std::cerr<< tock_clockData.tv_sec - tick_clockData.tv_sec << std::setfill('0') << std::setw(9);\
-	std::cerr  << (( tock_clockData.tv_nsec - tick_clockData.tv_nsec) + ((tock_clockData.tv_nsec<tick_clockData.tv_nsec)?1000000000:0)) << " " <<  size << std::endl;}}
+#ifdef __APPLE__
+#include <mach/clock.h>
+#include <mach/mach.h>
+
+	
+	#define TICK()    {if (print_kernel_timing) {\
+		host_get_clock_service(mach_host_self(), SYSTEM_CLOCK, &cclock);\
+		clock_get_time(cclock, &tick_clockData);\
+		mach_port_deallocate(mach_task_self(), cclock);\
+		}}
+
+	#define TOCK(str,size)  {if (print_kernel_timing) {\
+		host_get_clock_service(mach_host_self(), SYSTEM_CLOCK, &cclock);\
+		clock_get_time(cclock, &tock_clockData);\
+		mach_port_deallocate(mach_task_self(), cclock);\
+		std::cerr<< str << " ";\
+		if((tock_clockData.tv_sec > tick_clockData.tv_sec) && (tock_clockData.tv_nsec >= tick_clockData.tv_nsec))   std::cerr<< tock_clockData.tv_sec - tick_clockData.tv_sec << std::setfill('0') << std::setw(9);\
+		std::cerr  << (( tock_clockData.tv_nsec - tick_clockData.tv_nsec) + ((tock_clockData.tv_nsec<tick_clockData.tv_nsec)?1000000000:0)) << " " <<  size << std::endl;}}
+#else
+	
+	#define TICK()    {if (print_kernel_timing) {clock_gettime(CLOCK_MONOTONIC, &tick_clockData);}}
+
+	#define TOCK(str,size)  {if (print_kernel_timing) {clock_gettime(CLOCK_MONOTONIC, &tock_clockData); std::cerr<< str << " ";\
+		if((tock_clockData.tv_sec > tick_clockData.tv_sec) && (tock_clockData.tv_nsec >= tick_clockData.tv_nsec))   std::cerr<< tock_clockData.tv_sec - tick_clockData.tv_sec << std::setfill('0') << std::setw(9);\
+		std::cerr  << (( tock_clockData.tv_nsec - tick_clockData.tv_nsec) + ((tock_clockData.tv_nsec<tick_clockData.tv_nsec)?1000000000:0)) << " " <<  size << std::endl;}}
+
+#endif
 
 // input once
 float * gaussian;
@@ -32,9 +55,15 @@ float3 ** inputVertex;
 float3 ** inputNormal;
 
 bool print_kernel_timing = false;
-struct timespec tick_clockData;
-struct timespec tock_clockData;
-
+#ifdef __APPLE__
+	clock_serv_t cclock;
+	mach_timespec_t tick_clockData;
+	mach_timespec_t tock_clockData;
+#else
+	struct timespec tick_clockData;
+	struct timespec tock_clockData;
+#endif
+	
 void Kfusion::languageSpecificConstructor() {
 
 	if (getenv("KERNEL_TIMINGS"))
@@ -128,6 +157,7 @@ void bilateralFilterKernel(float* out, const float* in, uint2 size,
 		const float * gaussian, float e_d, int r) {
 	TICK()
 		uint y;
+		float e_d_squared_2 = e_d * e_d * 2;
 #pragma omp parallel for \
 	    shared(out),private(y)   
 		for (y = 0; y < size.y; y++) {
@@ -152,7 +182,7 @@ void bilateralFilterKernel(float* out, const float* in, uint2 size,
 							const float mod = sq(curPix - center);
 							const float factor = gaussian[i + r]
 									* gaussian[j + r]
-									* expf(-mod / (2 * e_d * e_d));
+									* expf(-mod / e_d_squared_2);
 							t += factor * curPix;
 							sum += factor;
 						}
@@ -555,9 +585,10 @@ void mm2metersKernel(float * out, uint2 outSize, const ushort * in,
 	TOCK("mm2metersKernel", outSize.x * outSize.y);
 }
 
-void halfSampleRobustImageKernel(float* out, const float* in, uint2 outSize,
+void halfSampleRobustImageKernel(float* out, const float* in, uint2 inSize,
 		const float e_d, const int r) {
 	TICK();
+	uint2 outSize = make_uint2(inSize.x / 2, inSize.y / 2);
 	unsigned int y;
 #pragma omp parallel for \
         shared(out), private(y)
@@ -569,7 +600,7 @@ void halfSampleRobustImageKernel(float* out, const float* in, uint2 outSize,
 			float sum = 0.0f;
 			float t = 0.0f;
 			const float center = in[centerPixel.x
-					+ centerPixel.y * 2 * outSize.x];
+					+ centerPixel.y * inSize.x];
 			for (int i = -r + 1; i <= r; ++i) {
 				for (int j = -r + 1; j <= r; ++j) {
 					uint2 cur = make_uint2(
@@ -578,7 +609,7 @@ void halfSampleRobustImageKernel(float* out, const float* in, uint2 outSize,
 											centerPixel.y + i), make_int2(0),
 									make_int2(2 * outSize.x - 1,
 											2 * outSize.y - 1)));
-					float current = in[cur.x + cur.y * 2 * outSize.x];
+					float current = in[cur.x + cur.y * inSize.x];
 					if (fabsf(current - center) < e_d) {
 						sum += 1.0f;
 						t += current;
@@ -777,7 +808,7 @@ void renderNormalKernel(uchar3* out, const float3* normal, uint2 normalSize) {
 	TOCK("renderNormalKernel", normalSize.x * normalSize.y);
 }
 
-void renderDepthKernel(uchar3* out, float * depth, uint2 depthSize,
+void renderDepthKernel(uchar4* out, float * depth, uint2 depthSize,
 		const float nearPlane, const float farPlane) {
 	TICK();
 
@@ -793,12 +824,11 @@ void renderDepthKernel(uchar3* out, float * depth, uint2 depthSize,
 			unsigned int pos = rowOffeset + x;
 
 			if (depth[pos] < nearPlane)
-				out[pos] = make_uchar3(255, 255, 255);
+				out[pos] = make_uchar4(255, 255, 255, 0); // The forth value is a padding in order to align memory
 			else {
 				if (depth[pos] > farPlane)
-					out[pos] = make_uchar3(0, 0, 0);
+					out[pos] = make_uchar4(0, 0, 0, 0); // The forth value is a padding in order to align memory
 				else {
-
 					const float d = (depth[pos] - nearPlane) * rangeScale;
 					out[pos] = gs2rgb(d);
 				}
@@ -808,7 +838,7 @@ void renderDepthKernel(uchar3* out, float * depth, uint2 depthSize,
 	TOCK("renderDepthKernel", depthSize.x * depthSize.y);
 }
 
-void renderTrackKernel(uchar3* out, const TrackData* data, uint2 outSize) {
+void renderTrackKernel(uchar4* out, const TrackData* data, uint2 outSize) {
 	TICK();
 
 	unsigned int y;
@@ -819,32 +849,32 @@ void renderTrackKernel(uchar3* out, const TrackData* data, uint2 outSize) {
 			uint pos = x + y * outSize.x;
 			switch (data[pos].result) {
 			case 1:
-				out[pos] = make_uchar3(128, 128, 128);  // ok	 GREY
+				out[pos] = make_uchar4(128, 128, 128, 0);  // ok	 GREY
 				break;
 			case -1:
-				out[pos] = make_uchar3(0, 0, 0);      // no input BLACK
+				out[pos] = make_uchar4(0, 0, 0, 0);      // no input BLACK
 				break;
 			case -2:
-				out[pos] = make_uchar3(255, 0, 0);        // not in image RED
+				out[pos] = make_uchar4(255, 0, 0, 0);        // not in image RED
 				break;
 			case -3:
-				out[pos] = make_uchar3(0, 255, 0);    // no correspondence GREEN
+				out[pos] = make_uchar4(0, 255, 0, 0);    // no correspondence GREEN
 				break;
 			case -4:
-				out[pos] = make_uchar3(0, 0, 255);        // to far away BLUE
+				out[pos] = make_uchar4(0, 0, 255, 0);        // to far away BLUE
 				break;
 			case -5:
-				out[pos] = make_uchar3(255, 255, 0);     // wrong normal YELLOW
+				out[pos] = make_uchar4(255, 255, 0, 0);     // wrong normal YELLOW
 				break;
 			default:
-				out[pos] = make_uchar3(255, 128, 128);
+				out[pos] = make_uchar4(255, 128, 128, 0);
 				break;
 			}
 		}
 	TOCK("renderTrackKernel", outSize.x * outSize.y);
 }
 
-void renderVolumeKernel(uchar3* out, const uint2 depthSize, const Volume volume,
+void renderVolumeKernel(uchar4* out, const uint2 depthSize, const Volume volume,
 		const Matrix4 view, const float nearPlane, const float farPlane,
 		const float step, const float largestep, const float3 light,
 		const float3 ambient) {
@@ -867,12 +897,12 @@ void renderVolumeKernel(uchar3* out, const uint2 depthSize, const Volume volume,
 							0.f);
 					const float3 col = clamp(make_float3(dir) + ambient, 0.f,
 							1.f) * 255;
-					out[pos] = make_uchar3(col.x, col.y, col.z);
+					out[pos] = make_uchar4(col.x, col.y, col.z, 0); // The forth value is a padding to align memory
 				} else {
-					out[pos] = make_uchar3(0, 0, 0);
+					out[pos] = make_uchar4(0, 0, 0, 0); // The forth value is a padding to align memory
 				}
 			} else {
-				out[pos] = make_uchar3(0, 0, 0);
+				out[pos] = make_uchar4(0, 0, 0, 0); // The forth value is a padding to align memory
 			}
 		}
 	}
@@ -897,8 +927,8 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 	// half sample the input depth maps into the pyramid levels
 	for (unsigned int i = 1; i < iterations.size(); ++i) {
 		halfSampleRobustImageKernel(ScaledDepth[i], ScaledDepth[i - 1],
-				make_uint2(computationSize.x / (int) pow(2, i),
-						computationSize.y / (int) pow(2, i)), e_delta * 3, 1);
+				make_uint2(computationSize.x / (int) pow(2, i - 1),
+						computationSize.y / (int) pow(2, i - 1)), e_delta * 3, 1);
 	}
 
 	// prepare the 3D information from the input depth maps
@@ -996,7 +1026,7 @@ void Kfusion::dumpVolume(std::string filename) {
 
 }
 
-void Kfusion::renderVolume(uchar3 * out, uint2 outputSize, int frame,
+void Kfusion::renderVolume(uchar4 * out, uint2 outputSize, int frame,
 		int raycast_rendering_rate, float4 k, float largestep) {
 	if (frame % raycast_rendering_rate == 0)
 		renderVolumeKernel(out, outputSize, volume,
@@ -1004,11 +1034,11 @@ void Kfusion::renderVolume(uchar3 * out, uint2 outputSize, int frame,
 				farPlane * 2.0f, step, largestep, light, ambient);
 }
 
-void Kfusion::renderTrack(uchar3 * out, uint2 outputSize) {
+void Kfusion::renderTrack(uchar4 * out, uint2 outputSize) {
 	renderTrackKernel(out, trackingResult, outputSize);
 }
 
-void Kfusion::renderDepth(uchar3 * out, uint2 outputSize) {
+void Kfusion::renderDepth(uchar4 * out, uint2 outputSize) {
 	renderDepthKernel(out, floatDepth, outputSize, nearPlane, farPlane);
 }
 

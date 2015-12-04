@@ -1,6 +1,6 @@
 # README #
 
-SLAMBench Release Candidat 1.0
+SLAMBench Release Candidate 1.1
 
   Copyright (c) 2014 University of Edinburgh, Imperial College, University of Manchester.
 
@@ -11,27 +11,30 @@ SLAMBench Release Candidat 1.0
 * A SLAM performance benchmark that combines a framework for quantifying quality-of-result with instrumentation of execution time and energy consumption. 
 * It contains a KinectFusion (http://research.microsoft.com/pubs/155378/ismar2011.pdf) implementation in C++, OpenMP, OpenCL and CUDA (inspired by https://github.com/GerhardR).
 * It offers a platform for a broad spectrum of future research in jointly exploring the design space of algorithmic and implementation-level optimisations. 
-* Target desktop, laptop, mobile and embedded platforms. Tested on Ubuntu and Android (only the benchmark application, see later). 
+* Target desktop, laptop, mobile and embedded platforms. Tested on Ubuntu, OS X and Android (on Android only the benchmark application has been ported, see later). 
 
 If you use SLAMBench in scientific publications, we would appreciate citations to the following paper (http://arxiv.org/abs/1410.2167):
 
-L. Nardi, B. Bodin, M. Z. Zia, J. Mawer, A. Nisbet, P. H. J. Kelly, A. J. Davison, M. Luján, M. F. P. O’Boyle, G. Riley, N. Topham, and S. Furber. Introducing SLAMBench, a performance and accuracy benchmarking methodology for SLAM. Submitted, arXiv:1410.2167, 2015.
+L. Nardi, B. Bodin, M. Z. Zia, J. Mawer, A. Nisbet, P. H. J. Kelly, A. J. Davison, M. Luján, M. F. P. O’Boyle, G. Riley, N. Topham, and S. Furber. Introducing SLAMBench, a performance and accuracy benchmarking methodology for SLAM. In IEEE Intl. Conf. on Robotics and Automation (ICRA), May 2015. arXiv:1410.2167.
 
 Bibtex entry:
 
 ```
 #!latex
 
-@UNPUBLISHED{2015_PAMELA,
+@inproceedings{Nardi2015,
     author={Nardi, Luigi and Bodin, Bruno and Zia, M. Zeeshan and Mawer, John and Nisbet, Andy and Kelly, Paul H. J. and Davison, Andrew J. and Luj\'an, Mikel and O'Boyle, Michael F. P. and Riley, Graham and Topham, Nigel and Furber, Steve},
     title = "{Introducing SLAMBench, a performance and accuracy benchmarking methodology for SLAM}",
+    booktitle = "{IEEE Intl. Conf. on Robotics and Automation (ICRA)}",
     year = {2015},
-    NOTE = {Submitted, arXiv:1410.2167}
+    month = {May},
+    NOTE = {arXiv:1410.2167}
     } 
 
 ```
 
-## How do I get set up? ##
+## How do I get set up on Ubuntu? ##
+If you want to set up for OS X go to the relevant section. 
 
 ### Dependencies ###
 
@@ -51,6 +54,8 @@ sudo make install
 sudo apt-get install cmake
 
 ```
++(with Ubuntu, you might need to install the  build-essential package using ```sudo apt-get update && sudo apt-get install build-essential```)
+ 
 
 #### Optional ####
 
@@ -98,9 +103,9 @@ CMAKE_PREFIX_PATH=~/.local/qt/ make
 
 The compilation builds 3 application modes which act like wrappers (the kernels are the same for all applications): 
 
-1. benchmark: terminal user interface mode for benchmarking purposes, 
-2. main: GLUT GUI visualisation mode, 
-3. qmain: Qt GUI visualisation mode. 
+1. benchmark: terminal user interface mode for benchmarking purposes
+2. main: GLUT GUI visualisation mode
+3. qmain: Qt GUI visualisation mode
 
 Each application mode is also declined in 4 different builds/implementations:
 
@@ -135,35 +140,35 @@ All application modes and implementations share the same set of arguments:
 
 SLAMBench supports several input streams (how to use these inputs is described later): 
 
-* ICL-NUIM dataset (http://www.doc.ic.ac.uk/~ahanda/VaFRIC/iclnuim.html), 
-* RGB-D camera like Microsoft Kinect or other PrimeSense cameras using the OpenNI interface,
-* OpenNI pre-recorded file,
-* RAW format.
+* ICL-NUIM dataset (http://www.doc.ic.ac.uk/~ahanda/VaFRIC/iclnuim.html)
+* RGB-D camera like Microsoft Kinect or other PrimeSense cameras using the OpenNI interface
+* OpenNI pre-recorded file
+* Raw format
 
 
 #### 1. benchmark mode ####
 
 Use this mode for benchmarking proposes. The output is: 
 
-* frame          : ID number of the current frame.
-* acquisition    : input data acquisition elapsed time (file reading).
-* preprocessing  : pre-processing elapsed time (includes kernels mm2meters bilateralFilter).
-* tracking       : tracking elapsed time (includes kernels halfSample, depth2vertex vertex2normal, track,  reduce and solve).
-* integration    : integration elapsed time (includes kernel integrate).
-* raycast          : raycast elapsed time (include kernel raycast).
-* rendering      : rendering elapsed time (includes kernels renderDepth renderTrack and renderVolume).
-* computation  : pre-processing + tracking + integration + raycast. This is the total elapsed time for processing a frame but not including the acquiring and the visualisation kernels. 
-* total  : computation + acquisition + rendering. This is the total elapsed time for processing one frame (including the acquiring and the visualisation kernels).
-* X,Y,Z  : estimation of the camera position (tracking result).
-* tracked : this boolean indicates if for the current frame we have not lost the tracking of the camera (1 = tracking, 0 = tracking lost).
-* integrated : this boolean indicates if the integration step occurs for the current frame (depending of the tracking result and of the integration rate).
+* frame          : ID number of the current frame
+* acquisition    : input data acquisition elapsed time (file reading)
+* preprocessing  : pre-processing elapsed time (includes kernels mm2meters bilateralFilter)
+* tracking       : tracking elapsed time (includes kernels halfSample, depth2vertex vertex2normal, track,  reduce and solve)
+* integration    : integration elapsed time (includes kernel integrate)
+* raycast          : raycast elapsed time (include kernel raycast)
+* rendering      : rendering elapsed time (includes kernels renderDepth renderTrack and renderVolume)
+* computation  : pre-processing + tracking + integration + raycast. This is the total elapsed time for processing a frame but not including the acquiring and the visualisation kernels
+* total  : computation + acquisition + rendering. This is the total elapsed time for processing one frame (including the acquiring and the visualisation kernels)
+* X,Y,Z  : estimation of the camera position (tracking result)
+* tracked : this boolean indicates if for the current frame we have not lost the tracking of the camera (1 = tracking, 0 = tracking lost)
+* integrated : this boolean indicates if the integration step occurs for the current frame (depending of the tracking result and of the integration rate)
 
 
 ##### How to use the benchmark mode with the ICL-NUIM dataset #####
 
 SLAMBench provides an interface to the ICL-NUIM dataset. 
 This enables the accuracy evaluation on a SLAM implementation via the ICL-NUIM ground truth. 
-ICL-NUIM provides 4 trajectories, we pick trajectory 2 and show how to use the dataset (we recommend 8 GB of space available on the system for the download of each trajectory):
+ICL-NUIM provides 4 trajectories, we pick trajectory 2 and show how to use the dataset (for the download of each trajectory we recommend 2 GB of space available on the system):
 
 ```
 #!plain
@@ -203,7 +208,10 @@ Get slambench data.
 slambench result        : 882 positions.
 NUIM  result        : 880 positions.
 Working position is : 880
-Shift slambench trajectory...
+Runtimes are in seconds and the absolute trajectory error (ATE) is in meters.
+The ATE measure accuracy, check this number to see how precise your computation is.
+Acceptable values are in the range of few centimeters.
+
             tracking 	Min : 0.005833 	Max : 0.046185 	Mean : 0.020473 	Total : 18.05721755
          integration 	Min : 0.003629 	Max : 0.041839 	Mean : 0.021960 	Total : 19.36882799
            rendering 	Min : 0.018242 	Max : 0.022144 	Mean : 0.018486 	Total : 16.30500085
@@ -329,9 +337,107 @@ In the Qt interface power is monitored and graphed on a frame by frame basis, th
 
 In the future we propose to add support for power estimation using on chip counters where available, this should be included in a future release.
 
+## Set up on OS X ##
+
+**Warning**: SLAMBench is widely tested and fully supported on Ubuntu. The OS X version may result instable. We reckon to use the Ubuntu version. 
+
+Install Homebrew:
+
+```
+#!bash
+
+ruby -e "$(curl -fsSLhttps://raw.githubusercontent.com/Homebrew/install/master/install)"
+
+```
+
+Install and change the default to gcc and g++ (only clang/LLVM available otherwise):
+
+```
+#!bash
+brew tap homebrew/versions
+brew install gcc48
+sudo mv /usr/bin/gcc /usr/bin/gccORIG
+sudo ln -s /usr/local/bin/gcc-4.8 /usr/bin/gcc
+sudo mv /usr/bin/g++ /usr/bin/g++ORIG
+sudo ln -s /usr/local/bin/g++-4.8 /usr/bin/g++
+sudo mv /usr/bin/c++ /usr/bin/c++ORIG
+sudo ln -s /usr/local/bin/g++-4.8 /usr/bin/c++
+
+```
+
+OpenCL is already installed out-of-the-box no need to install. 
+Install CUDA ( guide here: http://docs.nvidia.com/cuda/cuda-getting-started-guide-for-mac-os-x/#axzz3L7QjZMEC)
+
+Install Qt:
+
+```
+#!bash
+brew install qt
+
+
+```
+
+Add to your ~/.bashrc:
+
+
+```
+#!bash
+
+export PATH=/usr/local/opt/qt5/bin/:$PATH
+
+```
+
+Install OpenNI and dependencies (needs MacPorts already installed https://www.macports.org/install.php):
+Download OpenNI [here](http://structure.io/openni) and try to run the Samples/Bin/SimpleViewer program to check if the camera is working.
+
+```
+#!bash
+
+sudo port install libtool
+sudo port install libusb + universal
+
+cd OpenNI
+./install.sh
+
+```
+
+In SLAMBench, modify cmake/FindOpenNI.cmake adding to the lib path:
+
+/Users/lnardi/sw/OpenNI-MacOSX-x64-2.2/Samples/Bin
+
+And to the include path:
+
+/Users/lnardi/sw/OpenNI-MacOSX-x64-2.2/Include
+
+Add to your ~/.bashrc:
+
+
+```
+#!bash
+
+export DYLD_LIBRARY_PATH=/Users/lnardi/sw/OpenNI-MacOSX-x64-2.2/Samples/Bin:$DYLD_LIBRARY_PATH
+```
+
+
+
 ##Known Issues ##
 * ** Failure to track using OpenCL on AMD **  -Some issues have been reported on AMD platforms, we will look into this
 * **Visualisation using QT**  - may be offset on some platforms - notably ARM
 * **Build issues using QT on ARM ** - Visualisation requires opengl but Qt on ARM is often built using GLES, including packages obtained from distribution repo.  Building from source with opengl set to desktop resolves this. 
 * ** Frame rates on QT GUI appear optimistic** -  The rate shown in the status bar is by default the computation time to process the frame and render any output, it excludes the time take by the QT interface to display the rendered images and acquire frame
-* ** performance difference between CUDA/OpenCL** - This is a known issue that we are investigating. It's mainly cause by a difference of global work-group size between the both version and a major slowdown of CUDA in the rendering kernels is cause by the use of float3 instead of float4 which result by an alignment issue. this alignment issue doesn't appear in OpenCL as cl_float3 are the same as cl_float4. 
+* ** performance difference between CUDA/OpenCL** - This is a known issue that we are investigating. It's mainly cause by a difference of global work-group size between the both version and a major slowdown of CUDA in the rendering kernels is cause by the use of float3 instead of float4 which result by an alignment issue. this alignment issue doesn't appear in OpenCL as cl_float3 are the same as cl_float4.
+* ** CUDA nvprof slows down the performance on some platforms** - the nvprof instrumentation has a 2x slowdown on MAC OS for the high-level KFusion building blocks. So if we run using make 2.cuda.log we will not measure the maximum speed of the machine for the high-level building blocks. It is questionable then if we should keep measuring the CUDA high-level and low-level performance at the same time or in order to be more accurate it is better to run the two measurements in two separate runs. 
+* ** OS X version has not been widely tested ** 
+
+## Release history ##
+
+Release candidat 1.1 (17 Mar 2015)  
+  * Bugfix : Move bilateralFilterKernel from preprocessing to tracking
+  * Bugfix : Wrong interpretation of ICP Threshold parameter.
+  * Esthetic : Uniformisation of HalfSampleRobustImage kernel
+  * Performance : Change float3 to float4 for the rendering kernels (No effect on OpenCL, but high performance improvement with CUDA)
+  * Performance : Add a dedicated buffer for the OpenCL rendering
+  * Feature : Add OSX support
+ 
+Release candidat 1.0 (12 Nov 2014)
+  * First public release

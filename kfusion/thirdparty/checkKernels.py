@@ -48,7 +48,8 @@ if len(sys.argv) != 2 :
     exit (1)
 
 # open log file first
-print "Get SlamBench data." 
+print
+print "Kernel-level statistics. Times are in nanoseconds." 
 fileref = open(sys.argv[1],'r')
 data    = fileref.read()
 fileref.close()

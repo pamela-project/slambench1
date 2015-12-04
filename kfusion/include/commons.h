@@ -83,8 +83,8 @@ inline float sq(float r) {
 	return r * r;
 }
 
-inline uchar3 gs2rgb(double h) {
-	uchar3 rgb;
+inline uchar4 gs2rgb(double h) {
+	uchar4 rgb;
 	double v;
 	double r, g, b;
 	v = 0.75;
@@ -142,6 +142,7 @@ inline uchar3 gs2rgb(double h) {
 	rgb.x = r * 255;
 	rgb.y = g * 255;
 	rgb.z = b * 255;
+	rgb.w = 0; // Only for padding purposes 
 	return rgb;
 }
 

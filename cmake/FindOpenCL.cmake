@@ -75,7 +75,7 @@ FIND_PATH (OPENCL_INCLUDE_DIR
 
 FIND_LIBRARY (OPENCL_LIBRARY
   NAMES OpenCL 
-  HINTS ${OPENCL_ROOT_DIR}  /usr/local/lib/mali/fbdev/
+  HINTS ${OPENCL_ROOT_DIR}  /usr/local/lib/mali/fbdev/ 
   PATH_SUFFIXES ${_OPENCL_POSSIBLE_LIB_SUFFIXES}
   DOC "OpenCL library")
 

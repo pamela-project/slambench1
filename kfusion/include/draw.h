@@ -8,8 +8,11 @@
  This code is licensed under the MIT License.
 
  */
-
-#include <GL/glut.h>
+#ifdef __APPLE__
+    #include <GLUT/glut.h>
+#else
+    #include <GL/glut.h>
+#endif
 
 #define WIDTH 1024
 #define HEIGHT 768

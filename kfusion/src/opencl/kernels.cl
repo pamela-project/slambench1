@@ -282,7 +282,7 @@ __kernel void renderNormalKernel( const __global uchar * in,
 
 }
 
-__kernel void renderDepthKernel( __global uchar3 * out,
+__kernel void renderDepthKernel( __global uchar4 * out,
 		__global float * depth,
 		const float nearPlane,
 		const float farPlane ) {
@@ -292,10 +292,10 @@ __kernel void renderDepthKernel( __global uchar3 * out,
 	const int sizex = get_global_size(0);
 	float d= depth[posx + sizex * posy];
 	if(d < nearPlane)
-	vstore3((uchar3)(255, 255, 255) ,posx + sizex * posy ,(__global uchar*)out);
+	vstore4((uchar4)(255, 255, 255, 0), posx + sizex * posy, (__global uchar*)out); // The forth value in uchar4 is padding for memory alignement and so it is for following uchar4 
 	else {
 		if(d > farPlane)
-		vstore3((uchar3)(0, 0, 0),posx + sizex * posy ,(__global uchar*)out);
+		vstore4((uchar4)(0, 0, 0, 0), posx + sizex * posy, (__global uchar*)out);
 		else {
 			float h =(d - nearPlane) / (farPlane - nearPlane);
 			h *= 6.0f;
@@ -305,18 +305,12 @@ __kernel void renderDepthKernel( __global uchar3 * out,
 			const float mid2 = 0.75f - (0.5f*fract);
 			switch (sextant)
 			{
-				case 0:vstore3((uchar3)(191,255*mid1, 64),posx + sizex * posy ,(__global uchar*)out);
-				break;
-				case 1:vstore3((uchar3)(255*mid2,191, 64),posx + sizex * posy ,(__global uchar*)out);
-				break;
-				case 2:vstore3((uchar3)(64, 191, 255*mid1),posx + sizex * posy ,(__global uchar*)out);
-				break;
-				case 3:vstore3((uchar3)(64, 255*mid2, 191),posx + sizex * posy ,(__global uchar*)out);
-				break;
-				case 4:vstore3((uchar3)(255*mid1, 64, 191),posx + sizex * posy ,(__global uchar*)out);
-				break;
-				case 5:vstore3((uchar3)(191, 64, 255*mid2),posx + sizex * posy ,(__global uchar*)out);
-				break;
+				case 0: vstore4((uchar4)(191, 255*mid1, 64, 0), posx + sizex * posy, (__global uchar*)out); break;
+				case 1: vstore4((uchar4)(255*mid2, 191, 64, 0),posx + sizex * posy ,(__global uchar*)out); break;
+				case 2: vstore4((uchar4)(64, 191, 255*mid1, 0),posx + sizex * posy ,(__global uchar*)out); break;
+				case 3: vstore4((uchar4)(64, 255*mid2, 191, 0),posx + sizex * posy ,(__global uchar*)out); break;
+				case 4: vstore4((uchar4)(255*mid1, 64, 191, 0),posx + sizex * posy ,(__global uchar*)out); break;
+				case 5: vstore4((uchar4)(191, 64, 255*mid2, 0),posx + sizex * posy ,(__global uchar*)out); break;
 			}
 		}
 	}
@@ -330,13 +324,14 @@ __kernel void renderTrackKernel( __global uchar3 * out,
 	const int sizex = get_global_size(0);
 
 	switch(data[posx + sizex * posy].result) {
-		case 1: vstore3((uchar3)(128, 128, 128),posx + sizex * posy ,(__global uchar*)out); break; // ok	 GREY
-		case -1: vstore3((uchar3)(000, 000, 000),posx + sizex * posy ,(__global uchar*)out); break;// no input BLACK
-		case -2: vstore3((uchar3)(255, 000, 000),posx + sizex * posy ,(__global uchar*)out); break;// not in image RED
-		case -3: vstore3((uchar3)(000, 255, 000),posx + sizex * posy ,(__global uchar*)out); break;// no correspondence GREEN
-		case -4: vstore3((uchar3)(000, 000, 255),posx + sizex * posy ,(__global uchar*)out); break;// to far away BLUE
-		case -5: vstore3((uchar3)(255, 255, 000),posx + sizex * posy ,(__global uchar*)out); break;// wrong normal YELLOW
-		default: vstore3((uchar3)(255, 128, 128),posx + sizex * posy ,(__global uchar*)out); return;
+		// The forth value in uchar4 is padding for memory alignement and so it is for following uchar4
+		case  1: vstore4((uchar4)(128, 128, 128, 0), posx + sizex * posy, (__global uchar*)out); break; // ok	 GREY
+		case -1: vstore4((uchar4)(000, 000, 000, 0), posx + sizex * posy, (__global uchar*)out); break; // no input BLACK
+		case -2: vstore4((uchar4)(255, 000, 000, 0), posx + sizex * posy, (__global uchar*)out); break; // not in image RED
+		case -3: vstore4((uchar4)(000, 255, 000, 0), posx + sizex * posy, (__global uchar*)out); break; // no correspondence GREEN
+		case -4: vstore4((uchar4)(000, 000, 255, 0), posx + sizex * posy, (__global uchar*)out); break; // too far away BLUE
+		case -5: vstore4((uchar4)(255, 255, 000, 0), posx + sizex * posy, (__global uchar*)out); break; // wrong normal YELLOW
+		default: vstore4((uchar4)(255, 128, 128, 0), posx + sizex * posy, (__global uchar*)out); return;
 	}
 }
 
@@ -403,14 +398,12 @@ __kernel void renderVolumeKernel( __global uchar * render,
 			const float3 diff = normalize(light - test);
 			const float dir = fmax(dot(normalize(surfNorm), diff), 0.f);
 			const float3 col = clamp((float3)(dir) + ambient, 0.f, 1.f) * (float3) 255;
-
-			vstore3((uchar3)(col.x, col.y, col.z),pos.x + sizex * pos.y,render);
+			vstore4((uchar4)(col.x, col.y, col.z, 0), pos.x + sizex * pos.y, render); // The forth value in uchar4 is padding for memory alignement and so it is for following uchar4 
 		} else {
-			vstore3((uchar3)(0,0,0),pos.x + sizex * pos.y,render);
+			vstore4((uchar4)(0, 0, 0, 0), pos.x + sizex * pos.y, render);
 		}
 	} else {
-		vstore3((uchar3)(0,0,0),pos.x + sizex * pos.y,render);
-
+		vstore4((uchar4)(0, 0, 0, 0), pos.x + sizex * pos.y, render);
 	}
 
 }
@@ -516,26 +509,24 @@ __kernel void trackKernel (
 		const float normal_threshold
 ) {
 
-	uint2 pixel = (uint2)(get_global_id(0),get_global_id(1));
-	TrackData row = output[pixel.x + outputSize.x * pixel.y];
+	const uint2 pixel = (uint2)(get_global_id(0),get_global_id(1));
 
 	if(pixel.x >= inVertexSize.x || pixel.y >= inVertexSize.y ) {return;}
 
 	float3 inNormalPixel = vload3(pixel.x + inNormalSize.x * pixel.y,inNormal);
-	float3 inVertexPixel = vload3(pixel.x + inVertexSize.x * pixel.y,inVertex);
+
 	if(inNormalPixel.x == INVALID ) {
-		row.result = -1;
-		output[pixel.x + outputSize.x * pixel.y] = row;
+		output[pixel.x + outputSize.x * pixel.y].result = -1;
 		return;
 	}
 
+	float3 inVertexPixel = vload3(pixel.x + inVertexSize.x * pixel.y,inVertex);
 	const float3 projectedVertex = Mat4TimeFloat3 (Ttrack , inVertexPixel);
 	const float3 projectedPos = Mat4TimeFloat3 ( view , projectedVertex);
 	const float2 projPixel = (float2) ( projectedPos.x / projectedPos.z + 0.5f, projectedPos.y / projectedPos.z + 0.5f);
 
 	if(projPixel.x < 0 || projPixel.x > refVertexSize.x-1 || projPixel.y < 0 || projPixel.y > refVertexSize.y-1 ) {
-		row.result = -2;
-		output[pixel.x + outputSize.x * pixel.y] = row;
+		output[pixel.x + outputSize.x * pixel.y].result = -2;
 		return;
 	}
 
@@ -543,8 +534,7 @@ __kernel void trackKernel (
 	const float3 referenceNormal = vload3(refPixel.x + refNormalSize.x * refPixel.y,refNormal);
 
 	if(referenceNormal.x == INVALID) {
-		row.result = -3;
-		output[pixel.x + outputSize.x * pixel.y] = row;
+		output[pixel.x + outputSize.x * pixel.y].result = -3;
 		return;
 	}
 
@@ -552,20 +542,20 @@ __kernel void trackKernel (
 	const float3 projectedNormal = myrotate(Ttrack, inNormalPixel);
 
 	if(length(diff) > dist_threshold ) {
-		row.result = -4;
-		output[pixel.x + outputSize.x * pixel.y] = row;
+		output[pixel.x + outputSize.x * pixel.y].result = -4;
 		return;
 	}
 	if(dot(projectedNormal, referenceNormal) < normal_threshold) {
-		row.result = -5;
-		output[pixel.x + outputSize.x * pixel.y] = row;
+		output[pixel.x + outputSize.x * pixel.y] .result = -5;
 		return;
 	}
-	row.result = 1;
-	row.error = dot(referenceNormal, diff);
-	vstore3(referenceNormal,0,((float *)row.J));
-	vstore3(cross(projectedVertex, referenceNormal),1,((float *)row.J));
-	output[pixel.x + outputSize.x * pixel.y] = row;
+
+	output[pixel.x + outputSize.x * pixel.y].result = 1;
+	output[pixel.x + outputSize.x * pixel.y].error = dot(referenceNormal, diff);
+
+	vstore3(referenceNormal,0,(output[pixel.x + outputSize.x * pixel.y].J));
+	vstore3(cross(projectedVertex, referenceNormal),1,(output[pixel.x + outputSize.x * pixel.y].J));
+
 }
 
 __kernel void reduceKernel (
@@ -750,7 +740,7 @@ __kernel void halfSampleRobustImageKernel(__global float * out,
 		const int r) {
 
 	uint2 pixel = (uint2) (get_global_id(0),get_global_id(1));
-	uint2 outSize = (uint2) (get_global_size(0),get_global_size(1));
+	uint2 outSize = inSize / 2;
 
 	const uint2 centerPixel = 2 * pixel;
 

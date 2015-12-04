@@ -286,7 +286,7 @@ struct Configuration {
 						<< std::endl;
 				break;
 			case 'l':  //   -l (--icp-threshold)
-				this->icp_threshold = atoi(optarg);
+				this->icp_threshold = atof(optarg);
 				std::cerr << "update icp_threshold to " << this->icp_threshold
 						<< std::endl;
 				break;
