@@ -877,7 +877,7 @@ if (filename.compare("") == 0) {
 
 cout << "Dumping the volumetric representation on file: " << filename << endl;
 fDumpFile.open(filename.c_str(), ios::out | ios::binary);
-if (fDumpFile == NULL) {
+if (fDumpFile.fail()) {
 	cout << "Error opening file: " << filename << endl;
 	exit(1);
 }
