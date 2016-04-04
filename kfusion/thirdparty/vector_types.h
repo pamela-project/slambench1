@@ -198,7 +198,7 @@ struct __device_builtin__float2 {
 };
 
 struct __device_builtin__float3 {
-	float x, y, z;
+	float x, y, z, w;
 };
 
 struct __device_builtin__float4 {
