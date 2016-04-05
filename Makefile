@@ -5,10 +5,21 @@
 2 = -s 4.8 -p 0.34,0.5,0.24 -z 4 -c 2 -r 2 -k 481.2,480,320,240
 3 = -s 5.0 -p 0.2685,0.5,0.4 -z 4 -c 2 -r 2 -k 481.2,480,320,240
 
-all : 
+ROOT_DIR=$(shell pwd)
+
+all : build
+
+build : TooN
 	mkdir -p build/
-	cd build/ && cmake ..
+	cd build/ && cmake .. -DTOON_INCLUDE_PATH=${ROOT_DIR}/TooN
 	$(MAKE) -C build  $(MFLAGS) 
+
+#### Dependencies ####
+
+TooN:
+	git clone https://github.com/edrosten/TooN.git
+	cd TooN &&  ./configure && make
+
 
 #### DATA SET GENERATION ####
 
@@ -53,14 +64,14 @@ livingRoom%.gt.freiburg :
 #### GENERAL GENERATION ####
 
 clean :
-	rm -rf build
+	rm -rf build TooN
 cleanall : 
-	rm -rf build
+	rm -rf build TooN
 	rm -rf living_room_traj*_loop livingRoom*.gt.freiburg living_room_traj*_loop.raw
 	rm -f *.log 
 
 
-.PHONY : clean bench test all validate
+.PHONY : clean bench test all validate build
 
 .PRECIOUS: living_room_traj%_loop livingRoom%.gt.freiburg living_room_traj%_loop.raw
 

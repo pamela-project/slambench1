@@ -34,9 +34,11 @@ else(APPLE)
 endif(APPLE)
 
 set(main_common_compile_flags ${compile_flags})
-if (PAPI_FOUND) 
+if (PAPI_FOUND)
+        include_directories(${PAPI_INCLUDE_DIRS})
 	set(main_common_compile_flags "-DPAPI_MONITORING ${main_common_compile_flags}")
 	set(main_common_libraries   "${main_common_libraries} ${PAPI_LIBRARIES}")
+
 endif(PAPI_FOUND)
 
 if (OPENNI2_FOUND)
