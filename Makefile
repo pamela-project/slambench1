@@ -11,14 +11,15 @@ all : build
 
 build : TooN
 	mkdir -p build/
-	cd build/ && cmake .. -DTOON_INCLUDE_PATH=${ROOT_DIR}/TooN
+	cd build/ && cmake .. -DTOON_INCLUDE_PATH=${ROOT_DIR}/
 	$(MAKE) -C build  $(MFLAGS) 
 
 #### Dependencies ####
 
 TooN:
 	git clone https://github.com/edrosten/TooN.git
-	cd TooN &&  ./configure && make
+
+	cd TooN &&  git checkout 92241416d2a4874fd2334e08a5d417dfea6a1a3f && ./configure && make
 
 
 #### DATA SET GENERATION ####
