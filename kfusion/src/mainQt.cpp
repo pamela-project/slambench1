@@ -216,13 +216,16 @@ int processAll(DepthReader *reader, bool processFrame, bool renderImages,
 	if (reset) {
 		frameOffset = reader->getFrameNumber();
 	}
+	
 	bool finished = false;
 
-	if (processFrame) {
-		Stats.start();
-	}
 	timings[0] = tock();
 	if (processFrame && (reader->readNextDepthFrame(inputRGB, inputDepth))) {
+	  
+	
+		Stats.start();
+	
+	
 		frame = reader->getFrameNumber() - frameOffset;
 		if (doPower)
 			powerMonitor->start();
@@ -288,6 +291,7 @@ int processAll(DepthReader *reader, bool processFrame, bool renderImages,
         }
 		firstFrame = false;
 	}
+	
 	return (finished);
 }
 
