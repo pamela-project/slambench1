@@ -1,6 +1,6 @@
 # README #
 
-SLAMBench Release Candidate 1.1
+SLAMBench Release Candidate 1.2 [![Build Status](https://travis-ci.org/pamela-project/slambench.svg?branch=master)](https://travis-ci.org/pamela-project/slambench)
 
   Copyright (c) 2014 University of Edinburgh, Imperial College, University of Manchester.
 
