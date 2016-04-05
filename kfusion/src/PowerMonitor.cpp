@@ -27,8 +27,9 @@ struct PapiPower {
 	int papi_read() { return 0;}
 #endif
 #ifdef PAPI_MONITORING
+#include <cstring>
 #include <papi.h>
-#include <string.h>
+
 int papi_init();
 int papi_start();
 int papi_stop();
