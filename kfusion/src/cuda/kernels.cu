@@ -944,6 +944,17 @@ void Kfusion::renderDepth(__device_builtin__uchar4 * out,
 	cudaMemcpy(out, depthModel.getDeviceImage().data(), outputSize.x * outputSize.y * sizeof(uchar4), cudaMemcpyDeviceToHost);
 }
 
+
+void Kfusion::computeFrame(const ushort * inputDepth, const uint2 inputSize,
+		float4 k, uint integration_rate, uint tracking_rate,
+		float icp_threshold, float mu, const uint frame) {
+	preprocessing(inputDepth, inputSize);
+	_tracked = tracking(k, icp_threshold, tracking_rate, frame);
+	_integrated = integration(k, integration_rate, mu, frame);
+	raycasting(k, mu, frame);
+}
+
+
 void synchroniseDevices() {
 	cudaDeviceSynchronize();
 }

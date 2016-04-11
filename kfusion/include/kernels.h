@@ -155,14 +155,9 @@ public:
 		float zt = pose.data[2].w - _initPose.z;
 		return (make_float3(xt, yt, zt));
 	}
-	inline void computeFrame(const ushort * inputDepth, const uint2 inputSize,
+	void computeFrame(const ushort * inputDepth, const uint2 inputSize,
 			float4 k, uint integration_rate, uint tracking_rate,
-			float icp_threshold, float mu, const uint frame) {
-		preprocessing(inputDepth, inputSize);
-		_tracked = tracking(k, icp_threshold, tracking_rate, frame);
-		_integrated = integration(k, integration_rate, mu, frame);
-		raycasting(k, mu, frame);
-	}
+			  float icp_threshold, float mu, const uint frame) ;
 
 	bool preprocessing(const ushort * inputDepth, const uint2 inputSize);
 	bool tracking(float4 k, float icp_threshold, uint tracking_rate,

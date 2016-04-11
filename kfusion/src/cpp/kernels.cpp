@@ -1045,6 +1045,16 @@ void Kfusion::renderDepth(uchar4 * out, uint2 outputSize) {
 	renderDepthKernel(out, floatDepth, outputSize, nearPlane, farPlane);
 }
 
+void Kfusion::computeFrame(const ushort * inputDepth, const uint2 inputSize,
+			 float4 k, uint integration_rate, uint tracking_rate,
+			 float icp_threshold, float mu, const uint frame) {
+  preprocessing(inputDepth, inputSize);
+  _tracked = tracking(k, icp_threshold, tracking_rate, frame);
+  _integrated = integration(k, integration_rate, mu, frame);
+  raycasting(k, mu, frame);
+}
+
+
 void synchroniseDevices() {
 	// Nothing to do in the C++ implementation
 }
