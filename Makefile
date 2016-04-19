@@ -23,8 +23,12 @@ TooN:
 
 
 #### DATA SET GENERATION ####
+./build/kfusion/thirdparty/scene2raw :
+	mkdir -p build/
+	cd build/ && cmake .. -DTOON_INCLUDE_PATH=${ROOT_DIR}/
+	$(MAKE) -C build  $(MFLAGS) scene2raw
 
-living_room_traj%_loop.raw : living_room_traj%_loop
+living_room_traj%_loop.raw : living_room_traj%_loop ./build/kfusion/thirdparty/scene2raw 
 	if test -x ./build/kfusion/thirdparty/scene2raw ; then echo "..." ; else echo "do make before"; false ; fi
 	./build/kfusion/thirdparty/scene2raw living_room_traj$(*F)_loop living_room_traj$(*F)_loop.raw
 
