@@ -588,7 +588,7 @@ void writeVolume(std::string filename, Volume<T> v) {
 	std::ofstream fDumpFile;
 	fDumpFile.open(filename.c_str(), std::ios::out | std::ios::binary);
 
-	if (fDumpFile == NULL) {
+	if (!fDumpFile.is_open()) {
 		std::cout << "Error opening file: " << filename << std::endl;
 		exit(1);
 	}

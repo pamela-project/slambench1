@@ -374,7 +374,7 @@ static void k(nd_item<1> ix, T *out, const U *J_,
   for (int i = 0; i < 32; ++i)
     S[sline * 32 + i] = sums[i];
 
-  ix.barrier(sycl_a::fence_space::local);
+  ix.barrier(sycl_a::fence_space::local_space);
 
   // sum up columns and copy to global memory in the final 32 threads
   if (sline < 32) {
@@ -1086,7 +1086,7 @@ void Kfusion::dumpVolume(std::string filename) {
 	std::cout << "Dumping the volumetric representation on file: " << filename
 			<< std::endl;
 	fDumpFile.open(filename.c_str(), std::ios::out | std::ios::binary);
-	if (fDumpFile == NULL) {
+	if (!fDumpFile.is_open()) {
 		std::cout << "Error opening file: " << filename << std::endl;
 		exit(1);
 	}
