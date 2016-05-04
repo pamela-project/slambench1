@@ -31,6 +31,15 @@ typedef struct sMatrix4 {
 
 /************** FUNCTIONS ***************/
 
+inline Matrix4 float16toM4(float16 f) {
+       Matrix4 tmp;
+       tmp.data[0] = f.s0123;
+       tmp.data[1] = f.s4567;
+       tmp.data[2] = f.s89ab;
+       tmp.data[3] = f.scdef;
+       return tmp;
+}
+
 inline float sq(float r) {
 	return r * r;
 }
@@ -374,25 +383,34 @@ __kernel void bilateralFilterKernel( __global float * out,
 
 __kernel void renderVolumeKernel( __global uchar * render,
 		__global short2 * v_data,
-		const uint3 v_size,
-		const float3 v_dim,
-		const Matrix4 view,
+		const uint v_size,
+		const float v_dim,
+		 __global float * pos3D,  //float3	
+		const float16 view16,
 		const float nearPlane,
 		const float farPlane,
 		const float step,
-		const float largestep,
-		const float3 light,
-		const float3 ambient) {
+		const float largestep) {
 
-	const Volume v = {v_size, v_dim,v_data};
+
+		const float3 light = (float3)(1, 1, -1.0);
+		const float3 ambient = (float3)(0.1, 0.1, 0.1);
+
+		Matrix4 view =  float16toM4(view16);
+
+	Volume v; v.data = v_data;
+	v.size =   (uint3)(v_size,v_size,v_size);
+	v.dim  =  (float3)(v_dim,v_dim,v_dim);
 
 	const uint2 pos = (uint2) (get_global_id(0),get_global_id(1));
 	const int sizex = get_global_size(0);
 
-	float4 hit = raycast( v, pos, view, nearPlane, farPlane,step, largestep);
 
-	if(hit.w > 0) {
-		const float3 test = as_float3(hit);
+	float3 hit = vload3(pos.x + sizex * pos.y,pos3D);
+		
+
+	if(hit.x != 0) {
+		const float3 test = hit.xyz;
 		float3 surfNorm = grad(test,v);
 		if(length(surfNorm) > 0) {
 			const float3 diff = normalize(light - test);
@@ -413,21 +431,26 @@ __kernel void renderVolumeKernel( __global uchar * render,
 __kernel void raycastKernel( __global float * pos3D,  //float3
 		__global float * normal,//float3
 		__global short2 * v_data,
-		const uint3 v_size,
-		const float3 v_dim,
-		const Matrix4 view,
+		const uint v_size,
+		const float v_dim,
+		const float16 view16,
 		const float nearPlane,
 		const float farPlane,
 		const float step,
 		const float largestep ) {
 
-	const Volume volume = {v_size, v_dim,v_data};
+		Matrix4 view =  float16toM4(view16);
+
+
+	Volume volume; volume.data = v_data;
+	volume.size =   (uint3)(v_size,v_size,v_size);
+	volume.dim  =  (float3)(v_dim,v_dim,v_dim);
 
 	const uint2 pos = (uint2) (get_global_id(0),get_global_id(1));
 	const int sizex = get_global_size(0);
 
 	const float4 hit = raycast( volume, pos, view, nearPlane, farPlane, step, largestep );
-	const float3 test = as_float3(hit);
+	const float3 test = hit.xyz;
 
 	if(hit.w > 0.0f ) {
 		vstore3(test,pos.x + sizex * pos.y,pos3D);
@@ -447,19 +470,24 @@ __kernel void raycastKernel( __global float * pos3D,  //float3
 
 __kernel void integrateKernel (
 		__global short2 * v_data,
-		const uint3 v_size,
-		const float3 v_dim,
+		const uint v_size,
+		const float v_dim,
 		__global const float * depth,
 		const uint2 depthSize,
-		const Matrix4 invTrack,
-		const Matrix4 K,
+		const float16 invTrack16,
+		const float16 K16,
 		const float mu,
 		const float maxweight ,
-		const float3 delta ,
-		const float3 cameraDelta
+		const float4 delta ,
+		const float4 cameraDelta
 ) {
 
-	Volume vol; vol.data = v_data; vol.size = v_size; vol.dim = v_dim;
+		Matrix4 K  =  float16toM4(K16);
+		Matrix4 invTrack =  float16toM4(invTrack16);
+
+	Volume vol; vol.data = v_data;
+	vol.size =   (uint3)(v_size,v_size,v_size);
+	vol.dim  =  (float3)(v_dim,v_dim,v_dim);
 
 	uint3 pix = (uint3) (get_global_id(0),get_global_id(1),0);
 	const int sizex = get_global_size(0);
@@ -467,7 +495,7 @@ __kernel void integrateKernel (
 	float3 pos = Mat4TimeFloat3 (invTrack , posVolume(vol,pix));
 	float3 cameraX = Mat4TimeFloat3 ( K , pos);
 
-	for(pix.z = 0; pix.z < vol.size.z; ++pix.z, pos += delta, cameraX += cameraDelta) {
+	for(pix.z = 0; pix.z < vol.size.z; ++pix.z, pos += (float3)(delta.x,delta.y,delta.z), cameraX += (float3)(cameraDelta.x,cameraDelta.y,cameraDelta.z)) {
 		if(pos.z < 0.0001f) // some near plane constraint
 		continue;
 		const float2 pixel = (float2) (cameraX.x/cameraX.z + 0.5f, cameraX.y/cameraX.z + 0.5f);
@@ -503,11 +531,14 @@ __kernel void trackKernel (
 		const uint2 refVertexSize,
 		__global const float * refNormal,// float3
 		const uint2 refNormalSize,
-		const Matrix4 Ttrack,
-		const Matrix4 view,
+		const float16 Ttrack16,
+		const float16 view16,
 		const float dist_threshold,
 		const float normal_threshold
 ) {
+
+		Matrix4  Ttrack =  float16toM4(Ttrack16);
+		Matrix4  view =  float16toM4(view16);
 
 	const uint2 pixel = (uint2)(get_global_id(0),get_global_id(1));
 
@@ -584,9 +615,10 @@ __kernel void reduceKernel (
 		for(uint x = sline; x < size.x; x += blockDim ) {
 			const TrackData row = J[x + y * JSize.x];
 			if(row.result < 1) {
-				info[1] += row.result == -4 ? 1 : 0;
-				info[2] += row.result == -5 ? 1 : 0;
-				info[3] += row.result > -4 ? 1 : 0;
+				      if (row.result == -4) {info[1] += 1;}
+				      if (row.result == -5) {info[2] += 1;}
+				      if (row.result >  -4) {info[3] += 1;}
+
 				continue;
 			}
 
@@ -644,8 +676,10 @@ __kernel void depth2vertexKernel( __global float * vertex, // float3
 		const uint2 vertexSize ,
 		const __global float * depth,
 		const uint2 depthSize ,
-		const Matrix4 invK ) {
+		const float16 invK16 ) {
+		Matrix4 invK =  float16toM4(invK16);
 
+		
 	uint2 pixel = (uint2) (get_global_id(0),get_global_id(1));
 	float3 vert = (float3)(get_global_id(0),get_global_id(1),1.0f);
 

@@ -54,7 +54,11 @@ cl_kernel renderTrack_ocl_kernel;
 cl_kernel renderDepth_ocl_kernel;
 cl_kernel initVolume_ocl_kernel;
 // reduction parameters
+#ifdef __ANDROID__
+static const size_t size_of_group =   48;
+#else
 static const size_t size_of_group = 64;
+#endif
 static const size_t number_of_groups = 8;
 
 uint2 computationSizeBkp = make_uint2(0, 0);
@@ -365,33 +369,32 @@ void Kfusion::renderVolume(uchar4 * out, uint2 outputSize, int frame, int rate,
 	clError = clSetKernelArg(renderVolume_ocl_kernel, 1, sizeof(cl_mem),
 			(void*) &ocl_volume_data);
 	checkErr(clError, "clSetKernelArg1");
-	clError = clSetKernelArg(renderVolume_ocl_kernel, 2, sizeof(cl_uint3),
-			(void*) &volumeResolution);
+	clError = clSetKernelArg(renderVolume_ocl_kernel, 2, sizeof(cl_uint),
+			(void*) &volumeResolution.x);
 	checkErr(clError, "clSetKernelArg2");
-	clError = clSetKernelArg(renderVolume_ocl_kernel, 3, sizeof(cl_float3),
-			(void*) &volumeDimensions);
+	clError = clSetKernelArg(renderVolume_ocl_kernel, 3, sizeof(cl_float),
+			(void*) &volumeDimensions.x);
 	checkErr(clError, "clSetKernelArg3");
-	clError = clSetKernelArg(renderVolume_ocl_kernel, 4, sizeof(Matrix4),
+
+
+	clError = clSetKernelArg(renderVolume_ocl_kernel, 4, sizeof(cl_mem), (void*) &ocl_vertex);
+	checkErr(clError, "clSetKernelArg0");
+
+	clError = clSetKernelArg(renderVolume_ocl_kernel, 5, sizeof(Matrix4),
 			(void*) &view);
 	checkErr(clError, "clSetKernelArg4");
-	clError = clSetKernelArg(renderVolume_ocl_kernel, 5, sizeof(cl_float),
+	clError = clSetKernelArg(renderVolume_ocl_kernel, 6, sizeof(cl_float),
 			(void*) &nearPlane);
 	checkErr(clError, "clSetKernelArg5");
-	clError = clSetKernelArg(renderVolume_ocl_kernel, 6, sizeof(cl_float),
+	clError = clSetKernelArg(renderVolume_ocl_kernel, 7, sizeof(cl_float),
 			(void*) &farPlane);
 	checkErr(clError, "clSetKernelArg6");
-	clError = clSetKernelArg(renderVolume_ocl_kernel, 7, sizeof(cl_float),
+	clError = clSetKernelArg(renderVolume_ocl_kernel, 8, sizeof(cl_float),
 			(void*) &step);
 	checkErr(clError, "clSetKernelArg7");
-	clError = clSetKernelArg(renderVolume_ocl_kernel, 8, sizeof(cl_float),
+	clError = clSetKernelArg(renderVolume_ocl_kernel, 9, sizeof(cl_float),
 			(void*) &largestep);
 	checkErr(clError, "clSetKernelArg8");
-	clError = clSetKernelArg(renderVolume_ocl_kernel, 9, sizeof(cl_float3),
-			(void*) &light);
-	checkErr(clError, "clSetKernelArg9");
-	clError = clSetKernelArg(renderVolume_ocl_kernel, 10, sizeof(cl_float3),
-			(void*) &ambient);
-	checkErr(clError, "clSetKernelArg10");
 
 	size_t globalWorksize[2] = { computationSize.x, computationSize.y };
 
@@ -818,11 +821,11 @@ bool Kfusion::raycasting(float4 k, float mu, uint frame) {
 		clError = clSetKernelArg(raycast_ocl_kernel, 2, sizeof(cl_mem),
 				(void*) &ocl_volume_data);
 		checkErr(clError, "clSetKernelArg2");
-		clError = clSetKernelArg(raycast_ocl_kernel, 3, sizeof(cl_uint3),
-				(void*) &volumeResolution);
+		clError = clSetKernelArg(raycast_ocl_kernel, 3, sizeof(cl_uint),
+				(void*) &volumeResolution.x);
 		checkErr(clError, "clSetKernelArg3");
-		clError = clSetKernelArg(raycast_ocl_kernel, 4, sizeof(cl_float3),
-				(void*) &volumeDimensions);
+		clError = clSetKernelArg(raycast_ocl_kernel, 4, sizeof(cl_float),
+				(void*) &volumeDimensions.x);
 		checkErr(clError, "clSetKernelArg4");
 		clError = clSetKernelArg(raycast_ocl_kernel, 5, sizeof(Matrix4),
 				(void*) &view);
@@ -877,11 +880,11 @@ bool Kfusion::integration(float4 k, uint integration_rate, float mu,
 		clError = clSetKernelArg(integrate_ocl_kernel, arg++, sizeof(cl_mem),
 				(void*) &ocl_volume_data);
 		checkErr(clError, "clSetKernelArg1");
-		clError = clSetKernelArg(integrate_ocl_kernel, arg++, sizeof(cl_uint3),
-				(void*) &volumeResolution);
+		clError = clSetKernelArg(integrate_ocl_kernel, arg++, sizeof(cl_uint),
+				(void*) &volumeResolution.x);
 		checkErr(clError, "clSetKernelArg2");
-		clError = clSetKernelArg(integrate_ocl_kernel, arg++, sizeof(cl_float3),
-				(void*) &volumeDimensions);
+		clError = clSetKernelArg(integrate_ocl_kernel, arg++, sizeof(cl_float),
+				(void*) &volumeDimensions.x);
 		checkErr(clError, "clSetKernelArg3");
 		clError = clSetKernelArg(integrate_ocl_kernel, arg++, sizeof(cl_mem),
 				(void*) &ocl_FloatDepth);
@@ -901,12 +904,13 @@ bool Kfusion::integration(float4 k, uint integration_rate, float mu,
 		clError = clSetKernelArg(integrate_ocl_kernel, arg++, sizeof(cl_float),
 				(void*) &maxweight);
 		checkErr(clError, "clSetKernelArg9");
-
-		clError = clSetKernelArg(integrate_ocl_kernel, arg++, sizeof(cl_float3),
-				(void*) &delta);
+		cl_float4 deltacl = (cl_float4) {delta.x,delta.y,delta.z,delta.z};
+		clError = clSetKernelArg(integrate_ocl_kernel, arg++, sizeof(cl_float4),
+				(void*) &deltacl);
 		checkErr(clError, "clSetKernelArg10");
-		clError = clSetKernelArg(integrate_ocl_kernel, arg++, sizeof(cl_float3),
-				(void*) &cameraDelta);
+		cl_float4 cameraDeltacl = (cl_float4) {cameraDelta.x,cameraDelta.y,cameraDelta.z,cameraDelta.z};
+		clError = clSetKernelArg(integrate_ocl_kernel, arg++, sizeof(cl_float4),
+				(void*) &cameraDeltacl);
 		checkErr(clError, "clSetKernelArg11");
 
 		size_t globalWorksize[2] = { volumeResolution.x, volumeResolution.y };

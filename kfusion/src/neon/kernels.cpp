@@ -7,6 +7,35 @@
 
  */
 #include <kernels.h>
+#include <stdint.h>
+
+#include <arm_neon.h>
+
+#ifdef __cplusplus
+#define cast_uint32_t static_cast<uint32_t>
+#else
+#define cast_uint32_t (uint32_t)
+#endif
+
+
+static inline float
+fastpow2 (float p)
+{
+  float offset = (p < 0) ? 1.0f : 0.0f;
+  float clipp = (p < -126) ? -126.0f : p;
+  int w = clipp;
+  float z = clipp - w + offset;
+  union { uint32_t i; float f; } v = { cast_uint32_t ( (1 << 23) * (clipp + 121.2740575f + 27.7280233f / (4.84252568f - z) - 1.49012907f * z) ) };
+
+  return v.f;
+}
+
+static inline float
+fastexp (float p)
+{
+  return fastpow2 (1.442695040f * p);
+}
+
 
 #ifdef __APPLE__
 #include <mach/clock.h>
@@ -103,7 +132,7 @@ void Kfusion::languageSpecificConstructor() {
 	int x;
 	for (unsigned int i = 0; i < gaussianS; i++) {
 		x = i - 2;
-		gaussian[i] = expf(-(x * x) / (2 * delta * delta));
+		gaussian[i] = fastexp(-(x * x) / (2 * delta * delta));
 	}
 	// ********* END : Generate the gaussian *************
 
@@ -185,7 +214,7 @@ void bilateralFilterKernel(float* out, const float* in, uint2 size,
 							const float mod = sq(curPix - center);
 							const float factor = gaussian[i + r]
 									* gaussian[j + r]
-									* expf(-mod / e_d_squared_2);
+									* fastexp(-mod / e_d_squared_2);
 							t += factor * curPix;
 							sum += factor;
 						}
@@ -737,7 +766,7 @@ void raycastKernel(float3* vertex, float3* normal, uint2 inputSize,
 
 			const float4 hit = raycast(integration, pos, view, nearPlane,
 					farPlane, step, largestep);
-			if (hit.w > 0.0) {
+			if (hit.w > 0.0f) {
 				vertex[pos.x + pos.y * inputSize.x] = make_float3(hit);
 				float3 surfNorm = integration.grad(make_float3(hit));
 				if (length(surfNorm) == 0) {
@@ -966,8 +995,8 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 	// half sample the input depth maps into the pyramid levels
 	for (unsigned int i = 1; i < iterations.size(); ++i) {
 		halfSampleRobustImageKernel(ScaledDepth[i], ScaledDepth[i - 1],
-				make_uint2(computationSize.x / (int) pow(2, i - 1),
-						computationSize.y / (int) pow(2, i - 1)), e_delta * 3, 1);
+				make_uint2(computationSize.x / (int) (1 << (i - 1)),
+						computationSize.y / (int) (1 << (i - 1))), e_delta * 3, 1);
 	}
 
 	// prepare the 3D information from the input depth maps
@@ -985,8 +1014,8 @@ bool Kfusion::tracking(float4 k, float icp_threshold, uint tracking_rate,
 
 	for (int level = iterations.size() - 1; level >= 0; --level) {
 		uint2 localimagesize = make_uint2(
-				computationSize.x / (int) pow(2, level),
-				computationSize.y / (int) pow(2, level));
+				computationSize.x / (int) (1 << level),
+				computationSize.y / (int) (1 << level));
 		for (int i = 0; i < iterations[level]; ++i) {
 
 			trackKernel(trackingResult, inputVertex[level], inputNormal[level],
@@ -1081,16 +1110,6 @@ void Kfusion::renderTrack(uchar4 * out, uint2 outputSize) {
 void Kfusion::renderDepth(uchar4 * out, uint2 outputSize) {
 	renderDepthKernel(out, floatDepth, outputSize, nearPlane, farPlane);
 }
-
-void Kfusion::computeFrame(const ushort * inputDepth, const uint2 inputSize,
-			 float4 k, uint integration_rate, uint tracking_rate,
-			 float icp_threshold, float mu, const uint frame) {
-  preprocessing(inputDepth, inputSize);
-  _tracked = tracking(k, icp_threshold, tracking_rate, frame);
-  _integrated = integration(k, integration_rate, mu, frame);
-  raycasting(k, mu, frame);
-}
-
 
 void synchroniseDevices() {
 	// Nothing to do in the C++ implementation
