@@ -44,22 +44,26 @@ livingRoom%.gt.freiburg :
 #### LOG GENERATION ####
 
 %.opencl.log  : living_room_traj%_loop.raw livingRoom%.gt.freiburg
+	$(MAKE) -C build  $(MFLAGS) kfusion-benchmark-opencl oclwrapper
 	LD_PRELOAD=./build/kfusion/thirdparty/liboclwrapper.so ./build/kfusion/kfusion-benchmark-opencl $($(*F)) -i  living_room_traj$(*F)_loop.raw -o benchmark.$@ 2> oclwrapper.$@
 	cat  oclwrapper.$@ |grep -E ".+ [0-9]+ [0-9]+ [0-9]+" |cut -d" " -f1,4 >   kernels.$@
 	./kfusion/thirdparty/checkPos.py benchmark.$@  livingRoom$(*F).gt.freiburg > resume.$@
 	./kfusion/thirdparty/checkKernels.py kernels.$@   >> resume.$@
 
 %.cpp.log  :  living_room_traj%_loop.raw livingRoom%.gt.freiburg
+	$(MAKE) -C build  $(MFLAGS) kfusion-benchmark-cpp
 	KERNEL_TIMINGS=1 ./build/kfusion/kfusion-benchmark-cpp $($(*F)) -i  living_room_traj$(*F)_loop.raw -o  benchmark.$@ 2> kernels.$@
 	./kfusion/thirdparty/checkPos.py benchmark.$@  livingRoom$(*F).gt.freiburg > resume.$@
 	./kfusion/thirdparty/checkKernels.py kernels.$@   >> resume.$@
 
 %.openmp.log  :  living_room_traj%_loop.raw livingRoom%.gt.freiburg
+	$(MAKE) -C build  $(MFLAGS) kfusion-benchmark-openmp
 	KERNEL_TIMINGS=1 ./build/kfusion/kfusion-benchmark-openmp $($(*F)) -i  living_room_traj$(*F)_loop.raw -o  benchmark.$@ 2> kernels.$@
 	./kfusion/thirdparty/checkPos.py benchmark.$@  livingRoom$(*F).gt.freiburg > resume.$@
 	./kfusion/thirdparty/checkKernels.py kernels.$@   >> resume.$@
 
 %.cuda.log  : living_room_traj%_loop.raw livingRoom%.gt.freiburg
+	$(MAKE) -C build  $(MFLAGS) kfusion-benchmark-cuda
 	nvprof --print-gpu-trace ./build/kfusion/kfusion-benchmark-cuda $($(*F)) -i  living_room_traj$(*F)_loop.raw -o  benchmark.$@ 2> nvprof.$@ || true
 	cat  nvprof.$@ | kfusion/thirdparty/nvprof2log.py >   kernels.$@
 	./kfusion/thirdparty/checkPos.py benchmark.$@  livingRoom$(*F).gt.freiburg > resume.$@
