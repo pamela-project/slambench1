@@ -20,3 +20,4 @@ script:
   - gcc --version
   - make
   - make 2.cpp.log
+  - cat resume.2.cpp.log
