@@ -328,33 +328,32 @@ private:
 
 	openni::Device device;
 	openni::VideoStream depth;
-	openni::VideoStream rgb;
+	//openni::VideoStream rgb;
 	openni::VideoFrameRef depthFrame;
-	openni::VideoFrameRef colorFrame;
+	//openni::VideoFrameRef colorFrame;
 
 	openni::Status rc;
 
 public:
 	~OpenNIDepthReader() {
-		if(device.isValid()) {
-			//std::cout << "Stopping depth stream..." << std::endl;
+		if(device.isValid()) {			
 
-			depth.stop();
-			//std::cout << "Stopping rgb stream..." << std::endl;       
-			rgb.stop();
-			//std::cout << "Destroying depth stream..." << std::endl;       
-			depth.destroy();
-			// std::cout << "Destroying rgb stream..." << std::endl;
-			rgb.destroy();
-			//std::cout << "Closing device..." << std::endl;
-			device.close();
-
-			//std::cout << "Shutting down OpenNI..." << std::endl;
-			openni::OpenNI::shutdown();
-
-			//std::cout << "Done!" << std::endl;
-			cameraOpen = false;
-			cameraActive = false;
+		  printf( "Stopping depth stream...");
+		  
+		  depth.stop();
+		  printf( "Stopping rgb stream..." );
+		  
+		  printf( "Destroying depth stream..."  );
+		  depth.destroy();
+		  printf( "Closing device..." );
+		  device.close();
+		  
+		  printf( "Shutting down OpenNI..."  );
+		  openni::OpenNI::shutdown();
+		  
+		  printf( "Done!");
+		  cameraOpen = false;
+		  cameraActive = false;
 		}
 
 	};
@@ -381,20 +380,22 @@ public:
 		}
 
 		if (rc != openni::STATUS_OK) {
-			std::cout << "No kinect device found. " << cameraActive << " " << cameraOpen << "\n";
+		         printf("No sensor device found.");
 			return;
 		}
 
 		if (device.getSensorInfo(openni::SENSOR_DEPTH) != NULL) {
+		         printf("Create device.");
 			rc = depth.create(device, openni::SENSOR_DEPTH);
 
 			if (rc != openni::STATUS_OK) {
-				std::cout << "Couldn't create depth stream" << std::endl << openni::OpenNI::getExtendedError() << std::endl;
+			  printf("%s %s","Couldn't create depth stream", openni::OpenNI::getExtendedError() );
 				return;
 			} else {
+			        printf("Run device.");
 				rc = depth.start();
 				if (rc != openni::STATUS_OK) {
-					printf("Couldn't start depth stream:\n%s\n", openni::OpenNI::getExtendedError());
+				  printf("%s %s","Couldn't start depth stream", openni::OpenNI::getExtendedError() );
 					depth.destroy();
 					return;
 				}
@@ -402,12 +403,7 @@ public:
 
 			}
 
-			rc = rgb.create(device, openni::SENSOR_COLOR);
 
-			if (rc != openni::STATUS_OK) {
-				std::cout << "Couldn't create color stream" << std::endl << openni::OpenNI::getExtendedError() << std::endl;
-				return;
-			}
 
 		}
 
@@ -427,49 +423,26 @@ public:
 				return;
 			}
 
-			openni::VideoMode newRGBMode;
-			newRGBMode.setFps(fps == 0 ? 30 : fps);
-			newRGBMode.setPixelFormat(openni::PIXEL_FORMAT_RGB888);
-			newRGBMode.setResolution(640,480);
-
-			rc = rgb.setVideoMode(newRGBMode);
-			if(rc != openni::STATUS_OK)
-			{
-				std::cout << "Could not set videomode" << std::endl;
-
-				return;
-			}
 		}
 
 		openni::VideoMode depthMode = depth.getVideoMode();
-		openni::VideoMode colorMode = rgb.getVideoMode();
 
 		_size.x = depthMode.getResolutionX();
 		_size.y = depthMode.getResolutionY();
 
-		if (colorMode.getResolutionX() != _size.x || colorMode.getResolutionY() != _size.y) {
-			std::cout << "Incorrect rgb resolution: " << colorMode.getResolutionX() << " " << colorMode.getResolutionY() << std::endl;
-			//exit(3);
-			return;
-		}
+		
 
-		rgb.setMirroringEnabled(false);
-		depth.setMirroringEnabled(false);
-
-		//device.setImageRegistrationMode(openni::IMAGE_REGISTRATION_DEPTH_TO_COLOR);
-		device.setDepthColorSyncEnabled(false);
 		if(device.isFile())
 		{
 			device.getPlaybackControl()->setRepeatEnabled(false);
 			depthFrame.release();
-			colorFrame.release();
 			device.getPlaybackControl()->setSpeed(-1); // Set the playback in a manual mode i.e. read a frame whenever the application requests it
 		}
 
+
+
 		// Use allocators to have OpenNI write directly into our buffers
-	
 		depth.start();
-		rgb.start();
 
 		cameraOpen =true;
 		cameraActive =true;
@@ -480,25 +453,7 @@ public:
 	};
 	inline bool readNextDepthFrame(uchar3* raw_rgb, unsigned short int * depthMap) {
 
-		
-	
-	
-		
 
-		if (raw_rgb) {
-
-			rc = rgb.readFrame(&colorFrame);
-			if (rc != openni::STATUS_OK) {
-				std::cout << "Wait failed" << std::endl;
-				exit(1);
-			}
-
-			if (colorFrame.getVideoMode().getPixelFormat() != openni::PIXEL_FORMAT_RGB888) {
-				std::cout << "Unexpected frame format" << std::endl;
-				exit(1);
-			}
-			memcpy(raw_rgb,colorFrame.getData(),_size.x * _size.y*sizeof(uchar3));
-		}
 		if (depthMap) {
 
 			rc = depth.readFrame(&depthFrame);
@@ -553,7 +508,7 @@ public:
 class OpenNIDepthReader: public DepthReader {
 public:
 	OpenNIDepthReader(std::string, int, bool) {
-		std::cerr << "OpenNI Library Not found." << std::endl;
+	  printf("OpenNIDepthReader: OpenNI2 Library Not found.");
 		cameraOpen = false;
 		cameraActive = false;
 	}
@@ -573,7 +528,6 @@ public:
 	}
 };
 #endif /* DO_OPENNI    (OpenNI 2.0) */
-
 
 
 #ifdef DO_OPENNI15
