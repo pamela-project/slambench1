@@ -320,35 +320,6 @@ public:
 #ifdef DO_OPENNI
 #include <OpenNI.h>
 
-class MyDepthFrameAllocator: public openni::VideoStream::FrameAllocator {
-private:
-	uint16_t *depth_buffers_;
-
-public:
-	MyDepthFrameAllocator(uint16_t *depth_buffers) :
-	depth_buffers_(depth_buffers) {
-	}
-	void *allocateFrameBuffer(int ) {
-		return depth_buffers_;
-	}
-	void freeFrameBuffer(void *) {
-	}
-};
-
-class MyColorFrameAllocator: public openni::VideoStream::FrameAllocator {
-private:
-	uchar3 *rgb_buffer_;
-
-public:
-	MyColorFrameAllocator(uchar3 *rgb_buffer) {
-		rgb_buffer_ = rgb_buffer;
-	}
-	void *allocateFrameBuffer(int ) {
-		return rgb_buffer_;
-	}
-	void freeFrameBuffer(void *) {
-	}
-};
 
 class OpenNIDepthReader: public DepthReader {
 private:
@@ -360,9 +331,6 @@ private:
 	openni::VideoStream rgb;
 	openni::VideoFrameRef depthFrame;
 	openni::VideoFrameRef colorFrame;
-
-	uint16_t * depthImage;
-	uchar3 * rgbImage;
 
 	openni::Status rc;
 
@@ -485,14 +453,11 @@ public:
 			return;
 		}
 
-		depthImage = (uint16_t*) malloc(_size.x * _size.y * sizeof(uint16_t));
-		rgbImage = (uchar3*) malloc(_size.x * _size.y * sizeof(uchar3));
-
 		rgb.setMirroringEnabled(false);
 		depth.setMirroringEnabled(false);
 
-		device.setImageRegistrationMode(openni::IMAGE_REGISTRATION_DEPTH_TO_COLOR);
-
+		//device.setImageRegistrationMode(openni::IMAGE_REGISTRATION_DEPTH_TO_COLOR);
+		device.setDepthColorSyncEnabled(false);
 		if(device.isFile())
 		{
 			device.getPlaybackControl()->setRepeatEnabled(false);
@@ -501,15 +466,9 @@ public:
 			device.getPlaybackControl()->setSpeed(-1); // Set the playback in a manual mode i.e. read a frame whenever the application requests it
 		}
 
-		// The allocators must survive this initialization function.
-		MyDepthFrameAllocator *depthAlloc = new MyDepthFrameAllocator(depthImage);
-		MyColorFrameAllocator *colorAlloc = new MyColorFrameAllocator(rgbImage);
-
 		// Use allocators to have OpenNI write directly into our buffers
-		depth.setFrameBuffersAllocator(depthAlloc);
+	
 		depth.start();
-
-		rgb.setFrameBuffersAllocator(colorAlloc);
 		rgb.start();
 
 		cameraOpen =true;
@@ -521,35 +480,41 @@ public:
 	};
 	inline bool readNextDepthFrame(uchar3* raw_rgb, unsigned short int * depthMap) {
 
-		rc = depth.readFrame(&depthFrame);
-
-		if (rc != openni::STATUS_OK) {
-			std::cout << "Wait failed" << std::endl;
-			exit(1);
-		}
-
-		rc = rgb.readFrame(&colorFrame);
-		if (rc != openni::STATUS_OK) {
-			std::cout << "Wait failed" << std::endl;
-			exit(1);
-		}
-
-		if (depthFrame.getVideoMode().getPixelFormat() != openni::PIXEL_FORMAT_DEPTH_1_MM
-				&& depthFrame.getVideoMode().getPixelFormat() != openni::PIXEL_FORMAT_DEPTH_100_UM) {
-			std::cout << "Unexpected frame format" << std::endl;
-			exit(1);
-		}
-
-		if (colorFrame.getVideoMode().getPixelFormat() != openni::PIXEL_FORMAT_RGB888) {
-			std::cout << "Unexpected frame format" << std::endl;
-			exit(1);
-		}
+		
+	
+	
+		
 
 		if (raw_rgb) {
-			memcpy(raw_rgb,rgbImage,_size.x * _size.y*sizeof(uchar3));
+
+			rc = rgb.readFrame(&colorFrame);
+			if (rc != openni::STATUS_OK) {
+				std::cout << "Wait failed" << std::endl;
+				exit(1);
+			}
+
+			if (colorFrame.getVideoMode().getPixelFormat() != openni::PIXEL_FORMAT_RGB888) {
+				std::cout << "Unexpected frame format" << std::endl;
+				exit(1);
+			}
+			memcpy(raw_rgb,colorFrame.getData(),_size.x * _size.y*sizeof(uchar3));
 		}
 		if (depthMap) {
-			memcpy(depthMap,depthImage,_size.x * _size.y*sizeof(uint16_t));
+
+			rc = depth.readFrame(&depthFrame);
+
+			if (rc != openni::STATUS_OK) {
+				std::cout << "Wait failed" << std::endl;
+				exit(1);
+			}
+
+			if (depthFrame.getVideoMode().getPixelFormat() != openni::PIXEL_FORMAT_DEPTH_1_MM
+				&& depthFrame.getVideoMode().getPixelFormat() != openni::PIXEL_FORMAT_DEPTH_100_UM) {
+				std::cout << "Unexpected frame format" << std::endl;
+				exit(1);
+			}
+
+			memcpy(depthMap,depthFrame.getData(),_size.x * _size.y*sizeof(uint16_t));
 		}
 		get_next_frame ();
 
