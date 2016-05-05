@@ -45,11 +45,22 @@ public:
 };
 
 int main(int argc, char ** argv) {
-
-	if (argc != 3) {
-		std::cout << "bad arguments, two arguments are needed." << std::endl;
+  bool isfile = false;
+  std::string dest ;
+  std::string source;
+	if (argc < 2) {
+		std::cout << "bad arguments, one  argument minimum is needed." << std::endl;
 		exit(1);
 	}
+	if (argc == 2) {
+	  dest = argv[1];
+	} else {
+	  source = argv[1];
+	  dest = argv[2];
+	}
+
+	
+
 
 	uint16_t * depthImage = (uint16_t*) malloc(
 			imageSize.x * imageSize.y * sizeof(uint16_t));
@@ -68,8 +79,11 @@ int main(int argc, char ** argv) {
 		std::cout << "Bad initialize.";
 		exit(1);
 	}
-
-	rc = device.open(argv[1]);
+	if (isfile) {
+	  rc = device.open(source.c_str());
+	} else {
+	  rc = device.open(openni::ANY_DEVICE);
+	}
 	if (rc != openni::STATUS_OK) {
 		std::cout << "Bad input file.";
 		exit(1);
@@ -104,6 +118,35 @@ int main(int argc, char ** argv) {
 
 	}
 
+		if(!device.isFile())
+		{
+			openni::VideoMode newDepthMode;
+			newDepthMode.setFps(30);
+			newDepthMode.setPixelFormat(openni::PIXEL_FORMAT_DEPTH_1_MM);
+			newDepthMode.setResolution(640,480);
+
+			rc = depth.setVideoMode(newDepthMode);
+			if(rc != openni::STATUS_OK)
+			{
+				std::cout << "Could not set videomode" << std::endl;
+				exit(3);
+			}
+
+			openni::VideoMode newRGBMode;
+			newRGBMode.setFps(30);
+			newRGBMode.setPixelFormat(openni::PIXEL_FORMAT_RGB888);
+			newRGBMode.setResolution(640,480);
+
+			rc = rgb.setVideoMode(newRGBMode);
+			if(rc != openni::STATUS_OK)
+			{
+				std::cout << "Could not set videomode" << std::endl;
+
+				exit(1);
+			}
+		}
+
+
 	openni::VideoMode depthMode = depth.getVideoMode();
 	openni::VideoMode colorMode = rgb.getVideoMode();
 
@@ -126,10 +169,15 @@ int main(int argc, char ** argv) {
 
 	device.setImageRegistrationMode(openni::IMAGE_REGISTRATION_DEPTH_TO_COLOR);
 
-	device.getPlaybackControl()->setRepeatEnabled(false);
-	depthFrame.release();
 
-	device.getPlaybackControl()->setSpeed(-1); // Set the playback in a manual mode i.e. read a frame whenever the application requests it
+		if(device.isFile())
+		{
+			device.getPlaybackControl()->setRepeatEnabled(false);
+			depthFrame.release();
+			colorFrame.release();
+			device.getPlaybackControl()->setSpeed(-1); // Set the playback in a manual mode i.e. read a frame whenever the application requests it
+		}
+
 
 	// The allocators must survive this initialization function.
 	MyDepthFrameAllocator *depthAlloc = new MyDepthFrameAllocator(depthImage);
@@ -142,16 +190,16 @@ int main(int argc, char ** argv) {
 	rgb.setFrameBuffersAllocator(colorAlloc);
 	rgb.start();
 
-	FILE* pFile = fopen(argv[2], "wb");
+	FILE* pFile = fopen(dest.c_str(), "wb");
 	if (!pFile) {
-		std::cout << "File opening failed : " << argv[2] << std::endl;
+		std::cout << "File opening failed : " << dest << std::endl;
 		exit(1);
 	}
-
-	for (int frame = 0;
-			frame < device.getPlaybackControl()->getNumberOfFrames(depth);
-			frame++) {
-
+	int frame = 0;
+	while (true) {
+	  if ((isfile) and (device.getPlaybackControl()->getNumberOfFrames(depth) < frame) ) {
+	      break;
+	    }
 		std::cout << "\rCurrent frame :" << frame << "     " << std::flush;
 
 		rc = depth.readFrame(&depthFrame);
@@ -189,16 +237,18 @@ int main(int argc, char ** argv) {
 		total += fwrite(&(imageSize), sizeof(imageSize), 1, pFile);
 		total += fwrite(rgbImage, sizeof(uchar3), imageSize.x * imageSize.y,
 				pFile);
-
+		frame ++;
 	}
 	std::cout << std::endl;
 
 	fclose(pFile);
 
-	std::cout << "End of record : " << argv[2] << std::endl;
+	std::cout << "End of record : " << dest << std::endl;
 
 	free(depthImage);
 	free(rgbImage);
+
+	std::cout << "End of free "  << std::endl;
 
 	return 0;
 
