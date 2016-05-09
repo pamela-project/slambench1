@@ -74,6 +74,24 @@ void Kfusion::languageSpecificConstructor() {
 
 	init();
 
+	
+	cl_ulong maxMemAlloc;
+	clGetDeviceInfo(device_id, CL_DEVICE_MAX_MEM_ALLOC_SIZE, sizeof(maxMemAlloc), &maxMemAlloc, NULL);
+	
+	if (maxMemAlloc < sizeof(float4) * computationSize.x * computationSize.y) {
+	  std::cerr << "OpenCL maximum allocation does not support the computation size." << std::endl;
+	  exit(1);
+	}
+	if (maxMemAlloc < sizeof(TrackData) * computationSize.x * computationSize.y) {
+	  std::cerr << "OpenCL maximum allocation does not support the computation size." << std::endl;
+	  exit(1);
+	}
+	if (maxMemAlloc < sizeof(short2) * volumeResolution.x * volumeResolution.y * volumeResolution.z) {
+	  std::cerr << "OpenCL maximum allocation does not support the volume resolution." << std::endl;
+	  exit(1);
+	}
+	
+	
 	ocl_FloatDepth = clCreateBuffer(context, CL_MEM_READ_WRITE,
 			sizeof(float) * computationSize.x * computationSize.y, NULL,
 			&clError);
