@@ -23,3 +23,7 @@ script:
   - cat resume.2.cpp.log
   - make 3.cpp.log
   - cat resume.3.cpp.log
+  - make 2.openmp.log
+  - cat resume.2.openmp.log
+  - make 3.openmp.log
+  - cat resume.3.openmp.log
