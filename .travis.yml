@@ -21,3 +21,5 @@ script:
   - make
   - make 2.cpp.log
   - cat resume.2.cpp.log
+  - make 3.cpp.log
+  - cat resume.3.cpp.log
