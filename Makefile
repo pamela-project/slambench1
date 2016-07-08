@@ -11,7 +11,7 @@ all : build
 
 build : TooN
 	mkdir -p build/
-	cd build/ && cmake .. -DTOON_INCLUDE_PATH=${ROOT_DIR}/
+	cd build/ && cmake .. -DTOON_INCLUDE_PATH=${ROOT_DIR}/ $(CMAKE_ARGUMENTS)
 	$(MAKE) -C build  $(MFLAGS) $(SPECIFIC_TARGET)
 
 #### Dependencies ####
