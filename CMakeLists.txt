@@ -53,14 +53,14 @@ endif(OPENNI2_FOUND)
   add_executable(${appname}-benchmark-${version} src/benchmark.cpp src/PowerMonitor.cpp)
   target_link_libraries(${appname}-benchmark-${version} ${appname}-${version} ${main_common_libraries})
   SET_TARGET_PROPERTIES(${appname}-benchmark-${version}
-                             PROPERTIES COMPILE_FLAGS "${main_common_compile_flags}")
+                             PROPERTIES COMPILE_FLAGS " -D__KFUSION_VERSION__=\\\"${version}\\\" ${main_common_compile_flags}")
 
 
 #  ------ MAIN --------
   if (GLUT_FOUND)
     add_executable(${appname}-main-${version} src/mainQt.cpp src/PowerMonitor.cpp src/reader.cpp)
       SET_TARGET_PROPERTIES(${appname}-main-${version}
-                             PROPERTIES COMPILE_FLAGS "${main_common_compile_flags}")
+                             PROPERTIES COMPILE_FLAGS " -D__KFUSION_VERSION__=\\\"${version}\\\" ${main_common_compile_flags}")
 
 
 if(APPLE)
@@ -97,7 +97,7 @@ endif(APPLE)
     include_directories(${Qt5PrintSupport_INCLUDE_DIRS})
     include_directories(${Qt5Gui_INCLUDE_DIRS})
     
-    SET_TARGET_PROPERTIES(${appname}-qt-${version} PROPERTIES COMPILE_FLAGS "${main_common_compile_flags} -std=c++0x  -D__QT__")
+    SET_TARGET_PROPERTIES(${appname}-qt-${version} PROPERTIES COMPILE_FLAGS " -D__KFUSION_VERSION__=\\\"${version}\\\" ${main_common_compile_flags} -std=c++0x  -D__QT__")
 
 if(APPLE)
     target_link_libraries(${appname}-qt-${version} Qt5::Core Qt5::Gui Qt5::Widgets Qt5::OpenGL Qt5::PrintSupport 

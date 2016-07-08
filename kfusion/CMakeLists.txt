@@ -39,13 +39,14 @@ set(common_compile_flags "")
 
 add_library(${appname}-cpp  src/cpp/kernels.cpp)
 target_link_libraries(${appname}-cpp   ${common_libraries})	
+SET_TARGET_PROPERTIES(${appname}-cpp PROPERTIES COMPILE_FLAGS " -D__KFUSION_VERSION__=\\\"cpp\\\" ")
 add_version(${appname} cpp "" "")
 
  # ----------------- OPENMP VERSION ----------------- 
 
 add_library(${appname}-openmp  src/cpp/kernels.cpp)
 target_link_libraries(${appname}-openmp   ${common_libraries})	
-SET_TARGET_PROPERTIES(${appname}-openmp PROPERTIES COMPILE_FLAGS "-fopenmp")
+SET_TARGET_PROPERTIES(${appname}-openmp PROPERTIES COMPILE_FLAGS "-fopenmp -D__KFUSION_VERSION__=\\\"openmp\\\" ")
 add_version(${appname} openmp "-fopenmp" "-fopenmp")
 
 
@@ -55,24 +56,10 @@ if (OPENCL_FOUND)
    include_directories(${OPENCL_INCLUDE_DIRS})
     add_library(${appname}-opencl  src/opencl/kernels.cpp src/opencl/common_opencl.cpp)
     target_link_libraries(${appname}-opencl   ${common_libraries} ${OPENCL_LIBRARIES})	
-    add_version(${appname} opencl "" "")
+    SET_TARGET_PROPERTIES(${appname}-opencl PROPERTIES COMPILE_FLAGS " -D__KFUSION_VERSION__=\\\"opencl\\\" ")
+    add_version(${appname} opencl "" "" )
 endif(OPENCL_FOUND)
 
-
- #  ----------------- CUDA VERSION ----------------- 
-if (CUDA_FOUND) 
-
-
-set(kfusion_cuda_srcs
-	src/cuda/kernels.cu
-	thirdparty/kfusion.h
-	)
-   	
-    cuda_add_library(${appname}-cuda    STATIC  ${kfusion_cuda_srcs} OPTIONS -O3 )
-	target_link_libraries(${appname}-cuda   ${common_libraries})	
-    add_version(${appname} cuda    "" "")
-
-endif(CUDA_FOUND)
 
 #  ----------------- thirdparty ----------------- 
 

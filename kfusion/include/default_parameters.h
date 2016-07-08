@@ -15,12 +15,25 @@
 #include <vector>
 #include <sstream>
 #include <getopt.h>
-
+#include <ctime>
 #include <constant_parameters.h>
+#include <dirent.h>
+
+inline bool exists_test (const std::string& name) {
+    std::ifstream f(name.c_str());
+    if (f.good()) {
+        f.close();
+        return true;
+    } else {
+        f.close();
+        return false;
+    }
+}
 
 extern int optind;
 
 ////////////////////////// RUNTIME PARAMETERS //////////////////////
+
 
 #define DEFAULT_ITERATION_COUNT 3
 static const int default_iterations[DEFAULT_ITERATION_COUNT] = { 10, 5, 4 };
@@ -119,7 +132,88 @@ struct Configuration {
 		std ::cerr << "-v  (--volume-resolution)        : default is " << default_volume_resolution.x << "," << default_volume_resolution.y << "," << default_volume_resolution.z << "    " << std::endl;
 		std ::cerr << "-y  (--pyramid-levels)           : default is 10,5,4     " << std::endl;
 		std ::cerr << "-z  (--rendering-rate)   : default is " << default_rendering_rate << std::endl;
+
 	}
+
+
+
+	inline std::string print_gpu_infos() {
+		std::string res = "";
+		std::string line;
+		{
+			std::string filename = "/sys/devices/11800000.mali/dvfs" ;
+			std::ifstream myfile (filename.c_str());
+			if (myfile.is_open())
+			{
+				getline (myfile,line) ;
+				res +=  "dvfs=" + line;
+				myfile.close();
+			}
+		}
+		{
+			std::string filename = "/sys/devices/11800000.mali/clock" ;
+			std::ifstream myfile (filename.c_str());
+			if (myfile.is_open())
+			{
+				getline (myfile,line) ;
+				res +=  "clock=" + line;
+				myfile.close();
+			}
+		}
+		return res;
+	}
+	inline std::string print_cpu_infos() {
+		DIR *dir;
+		struct dirent *dirent;
+		std::string res = "";
+		std::string line;
+		dir = opendir("/sys/devices/system/cpu");
+		if (!dir)
+			return "Error";
+
+		while ((dirent = readdir(dir))) {
+
+			if (dirent->d_name[0]!='c' )
+				continue;
+			std::string filename =  "/sys/devices/system/cpu/" + std::string(dirent->d_name) +"/cpufreq/scaling_governor";
+			std::ifstream myfile (filename.c_str());
+			if (myfile.is_open())
+			{
+			  if (res != "") {
+				 res += "-";
+			  }
+			  res +=  std::string(dirent->d_name);
+			  getline (myfile,line) ;
+			  res +=  + "-" + line;
+			  myfile.close();
+
+			  filename =  "/sys/devices/system/cpu/" + std::string(dirent->d_name) +"/cpufreq/scaling_cur_freq";
+			  std::ifstream myfile2 (filename.c_str());
+			  if (myfile2.is_open())
+			  {
+				  getline (myfile2,line) ;
+				  res +=  + "-" + line;
+				  myfile2.close();
+			  }else {
+				  res +=   "-unknown";
+			  }
+			  filename =  "/sys/devices/system/cpu/" + std::string(dirent->d_name) +"/cpufreq/online";
+			  std::ifstream myfile3 (filename.c_str());
+			  if (myfile3.is_open())
+			  {
+				  getline (myfile3,line) ;
+				  res +=  + "-" + line;
+				  myfile3.close();
+			  }else {
+				  res +=   "-1";
+			  }
+			}
+
+
+		}
+		return res;
+	}
+
 	void print_values(std::ostream& out) {
 time_t rawtime;
 		struct tm *timeinfo;
@@ -134,7 +228,6 @@ time_t rawtime;
 		out << "camera: "<< camera.x<<","<< camera.y<<","<< camera.z<<","<< camera.w<<  std::endl;
 		out << "init-pose: " << initial_pos_factor.x << "," << initial_pos_factor.y << "," <<initial_pos_factor.z << std::endl;
 		
-		out << std::endl;	
 		out << "Algorithmic properties:"<<std::endl<<"======================="<<std::endl << std::endl;
 		out << "compute-size-ratio: " << compute_size_ratio << std::endl;	
 		out << "volume-resolution: " << volume_resolution.x << "," << volume_resolution.y << "," << volume_resolution.z << "    " << std::endl;
@@ -151,7 +244,58 @@ time_t rawtime;
 		out << "integration-rate: " << integration_rate << std::endl;		
 		out << "rendering-rate: " << rendering_rate << std::endl;
 		out << "fps: " << fps << std::endl;
-}
+
+		out << "Compilation properties:"<<std::endl<<"======================="<<std::endl << std::endl;
+		out << "version: " << __KFUSION_VERSION__ << std::endl;
+		char const* tmp_name = getenv("OPENCL_KERNEL");
+		if (tmp_name) {
+			out << "opencl-kernel: " << tmp_name << std::endl;
+		} else {
+			out << "opencl-kernel: " << "default" << std::endl;
+		}
+		char const* tmp_params = getenv("OPENCL_PARAMETERS");
+		if (tmp_params) {
+			out << "opencl-parameters: " << tmp_params << std::endl;
+		}else {
+			out << "opencl-parameters: " << "default" << std::endl;
+		}
+
+
+	if (getenv("OCL_MM2METERS_RATIO")) { out << "OCL_MM2METERS_RATIO: " << atof(getenv("OCL_MM2METERS_RATIO")) << std::endl;}
+	if (getenv("OCL_BILATERALFILTER_RATIO")) { out << "OCL_BILATERALFILTER_RATIO: " << atof(getenv("OCL_BILATERALFILTER_RATIO")) << std::endl;}
+	if (getenv("OCL_DEPTH2VERTEX_RATIO")){ out << "OCL_DEPTH2VERTEX_RATIO: " << atof(getenv("OCL_DEPTH2VERTEX_RATIO")) << std::endl;}
+	if (getenv("OCL_VERTEX2NORMAL_RATIO")){ out << "OCL_VERTEX2NORMAL_RATIO: " << atof(getenv("OCL_VERTEX2NORMAL_RATIO")) << std::endl;}
+	if (getenv("OCL_REDUCE_RATIO")){ out << "OCL_REDUCE_RATIO: " << atof(getenv("OCL_REDUCE_RATIO")) << std::endl;}
+	if (getenv("OCL_TRACK_RATIO")){ out << "OCL_TRACK_RATIO: " << atof(getenv("OCL_TRACK_RATIO")) << std::endl;}
+	if (getenv("OCL_HALFSAMPLEROBUSTIMAGE_RATIO")){ out << "OCL_HALFSAMPLEROBUSTIMAGE_RATIO: " << atof(getenv("OCL_HALFSAMPLEROBUSTIMAGE_RATIO")) << std::endl;}
+	if (getenv("OCL_INTEGRATE_RATIO")){ out << "OCL_INTEGRATE_RATIO: " << atof(getenv("OCL_INTEGRATE_RATIO")) << std::endl;}
+	if (getenv("OCL_RAYCAST_RATIO")){ out << "OCL_RAYCAST_RATIO: " << atof(getenv("OCL_RAYCAST_RATIO")) << std::endl;}
+	if (getenv("OCL_RENDERTRACK_RATIO")){ out << "OCL_RENDERTRACK_RATIO: " << atof(getenv("OCL_RENDERTRACK_RATIO")) << std::endl;}
+	if (getenv("OCL_RENDERDEPTH_RATIO")){ out << "OCL_RENDERDEPTH_RATIO: " << atof(getenv("OCL_RENDERDEPTH_RATIO")) << std::endl;}
+	if (getenv("OCL_RENDERVOLUME_RATIO")){ out << "OCL_RENDERVOLUME_RATIO: " << atof(getenv("OCL_RENDERVOLUME_RATIO")) << std::endl;}
+
+	if (getenv("OCL_MM2METERS_LWGS")) { out << "OCL_MM2METERS_LWGS: " << atof(getenv("OCL_MM2METERS_LWGS")) << std::endl;}
+	if (getenv("OCL_BILATERALFILTER_LWGS")) { out << "OCL_BILATERALFILTER_LWGS: " << atof(getenv("OCL_BILATERALFILTER_LWGS")) << std::endl;}
+	if (getenv("OCL_DEPTH2VERTEX_LWGS")){ out << "OCL_DEPTH2VERTEX_LWGS: " << atof(getenv("OCL_DEPTH2VERTEX_LWGS")) << std::endl;}
+	if (getenv("OCL_VERTEX2NORMAL_LWGS")){ out << "OCL_VERTEX2NORMAL_LWGS: " << atof(getenv("OCL_VERTEX2NORMAL_LWGS")) << std::endl;}
+	if (getenv("OCL_TRACK_LWGS")){ out << "OCL_TRACK_LWGS: " << atof(getenv("OCL_TRACK_LWGS")) << std::endl;}
+	if (getenv("OCL_HALFSAMPLEROBUSTIMAGE_LWGS")){ out << "OCL_HALFSAMPLEROBUSTIMAGE_LWGS: " << atof(getenv("OCL_HALFSAMPLEROBUSTIMAGE_LWGS")) << std::endl;}
+	if (getenv("OCL_INTEGRATE_LWGS")){ out << "OCL_INTEGRATE_LWGS: " << atof(getenv("OCL_INTEGRATE_LWGS")) << std::endl;}
+	if (getenv("OCL_RAYCAST_LWGS")){ out << "OCL_RAYCAST_LWGS: " << atof(getenv("OCL_RAYCAST_LWGS")) << std::endl;}
+	if (getenv("OCL_RENDERTRACK_LWGS")){ out << "OCL_RENDERTRACK_LWGS: " << atof(getenv("OCL_RENDERTRACK_LWGS")) << std::endl;}
+	if (getenv("OCL_RENDERDEPTH_LWGS")){ out << "OCL_RENDERDEPTH_LWGS: " << atof(getenv("OCL_RENDERDEPTH_LWGS")) << std::endl;}
+	if (getenv("OCL_RENDERVOLUME_LWGS")){ out << "OCL_RENDERVOLUME_LWGS: " << atof(getenv("OCL_RENDERVOLUME_LWGS")) << std::endl;}
+
+	if (getenv("REDUCE_NUMBER_OF_GROUP")){ out << "REDUCE_NUMBER_OF_GROUP: " << atof(getenv("REDUCE_NUMBER_OF_GROUP")) << std::endl;}
+	if (getenv("REDUCE_SIZE_OF_GROUP")){ out << "REDUCE_SIZE_OF_GROUP: " << atof(getenv("REDUCE_SIZE_OF_GROUP")) << std::endl;}
+
+		out << "Hardware properties:"<<std::endl<<"======================="<<std::endl << std::endl;
+		out << "cpu-infos: " << print_cpu_infos() << std::endl;
+		out << "gpu-infos: " << print_gpu_infos() << std::endl;
+
+		out << "\nStatistics:"<<std::endl<<"=========="<<std::endl ;
+	}
+
 	inline float3 atof3(char * optarg) {
 		float3 res;
 		std::istringstream dotargs(optarg);
