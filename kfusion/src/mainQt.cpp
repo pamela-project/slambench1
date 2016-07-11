@@ -172,17 +172,7 @@ int main(int argc, char ** argv) {
 		kfusion->dumpVolume(config.dump_volume_file);
 	}
 
-	if (config.log_file != "" || config.no_gui) {
-		Stats.print_all_data(*(config.log_stream));
-	
 
-		if (powerMonitor && powerMonitor->isActive()) {
-			powerMonitor->powerStats.print_all_data(*(config.log_stream));
-		}
-		if (config.log_file != "") {
-			config.log_filestream.close();
-		}
-    }
 	//  =========  FREE BASIC BUFFERS  =========
 
 	free(inputDepth);
