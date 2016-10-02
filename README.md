@@ -259,7 +259,6 @@ cd Final
 mkdir -p  ~/.local/OpenNI2/
 tar xf OpenNI-Linux-x64-2.2.tar.bz2 -C  ~/.local/OpenNI2
 cd ~/.local/OpenNI2/OpenNI-Linux-x64-2.2/
-sudo ./install.sh
 export OPENNI2_INCLUDE=/home/toky/.local/OpenNI2/OpenNI-Linux-x64-2.2/Include
 export OPENNI2_REDIST=/home/toky/.local/OpenNI2/OpenNI-Linux-x64-2.2/Redist
 ```
@@ -295,6 +294,17 @@ make: *** [ThirdParty/PSCommon/XnLib/Source] Error 2
 make: Leaving directory '/home/toky/work/pamela/slambench/OpenNI2'
 ```
 
+To use a Kinect sensor, you will need libfreenect :
+
+```
+git clone https://github.com/OpenKinect/libfreenect.git
+cd libfreenect
+mkdir build
+cd build
+cmake .. -DBUILD_OPENNI2_DRIVER=ON
+make
+cp -L lib/OpenNI2-FreenectDriver/libFreenectDriver.so ~/.local/OpenNI2/OpenNI-Linux-x64-2.2/Redist/OpenNI2/Drivers/
+```
 
 #### 3. mainQt mode ####
 
