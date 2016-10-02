@@ -1,13 +1,13 @@
 
 find_library(OPENNI2_LIBRARY
         NAMES OpenNI2
-    	PATHS ~/usr/lib ~/usr/local/lib ~/.local/lib64  ~/.local/lib  /usr/lib /usr/local/lib /data/Repositories/OpenNI2-2.2-beta2/Bin/x64-Release /scratch/cad/OpenNI/Redist /data/sw/OpenNI/OpenNI2-2.2-beta2/Bin/x64-Release 
+    	PATHS ~/usr/lib ~/usr/local/lib ~/.local/lib64  ~/.local/lib  /usr/lib /usr/local/lib /data/Repositories/OpenNI2-2.2-beta2/Bin/x64-Release /scratch/cad/OpenNI/Redist /data/sw/OpenNI/OpenNI2-2.2-beta2/Bin/x64-Releas $ENV{OPENNI2_REDIST}
         PATH_SUFFIXES openni2 ni2
 	)
 
 find_path(OPENNI2_INCLUDE_PATH
         NAMES OpenNI.h
-        PATHS ~/usr/include ~/.local/include ~/usr/local/include /usr/include /usr/local/include /scratch/cad/OpenNI/Include /data/sw/OpenNI/OpenNI2-2.2-beta2/Include 
+        PATHS ~/usr/include ~/.local/include ~/usr/local/include /usr/include /usr/local/include /scratch/cad/OpenNI/Include /data/sw/OpenNI/OpenNI2-2.2-beta2/Include $ENV{OPENNI2_INCLUDE}
         PATH_SUFFIXES openni2 ni2
 	)
 
