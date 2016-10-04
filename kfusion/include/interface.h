@@ -211,6 +211,10 @@ public:
 			DepthReader(), _pFile(fopen(filename.c_str(), "rb")) {
 
 		size_t res = fread(&(_size), sizeof(_size), 1, _pFile);
+		// Avoid seek :
+		fclose(_pFile);
+		_pFile = fopen(filename.c_str(), "rb");
+
 		cameraOpen = false;
 		cameraActive = false;
 		if (res != 1) {
@@ -222,7 +226,6 @@ public:
 			_frame = -1;
 			_fps = fps;
 			_blocking_read = blocking_read;
-			fseek(_pFile, 0, SEEK_SET);
 
 		UintdepthMap = (unsigned short int*) malloc(_size.x * _size.y * sizeof(unsigned short int));
 		}
@@ -234,7 +237,6 @@ public:
 			unsigned short int * depthMap) {
 
 		int total = 0;
-		int expected_size = 0;
 		unsigned int newImageSize[2];
 
 		get_next_frame();
@@ -245,20 +247,26 @@ public:
 				+ _size.x * _size.y * sizeof(unsigned short int)
 				+ _size.x * _size.y * sizeof(uchar3));
 #endif
-		fseek(_pFile, size_of_frame * _frame, SEEK_SET);
+		total = fread(&(newImageSize), sizeof(newImageSize), 1, _pFile);
+		if (total != 1) {
+			    std::cout << "End of file" << (total == 0 ? "" : "(garbage found)")
+					<< "." << std::endl;
+			return false;
+		}
 
+		//fseek(_pFile, size_of_frame * _frame, SEEK_SET);
 		if (depthMap) {
-			total += fread(&(newImageSize), sizeof(newImageSize), 1, _pFile);
-			total += fread(depthMap, sizeof(unsigned short int),
+			total = fread(depthMap, sizeof(unsigned short int),
 					newImageSize[0] * newImageSize[1], _pFile);
-			expected_size += 1 + newImageSize[0] * newImageSize[1];
+			if (total != newImageSize[0] * newImageSize[1]) {
+            			    std::cout << "End of file" << (total == 0 ? "" : "(garbage found)")
+            					<< "." << std::endl;
+            			return false;
+            }
 		} else {
-			total += fread(&(newImageSize), sizeof(newImageSize), 1, _pFile);
-			total += newImageSize[0] * newImageSize[1];
 			fseek(_pFile,
 					newImageSize[0] * newImageSize[1]
 							* sizeof(unsigned short int), SEEK_CUR);
-			expected_size += 1 + newImageSize[0] * newImageSize[1];
 		}
 
 #ifdef LIGHT_RAW // This LightRaw mode is used to get smaller raw files
@@ -269,27 +277,30 @@ public:
 		}
 
 #else
+		total = fread(&(newImageSize), sizeof(newImageSize), 1, _pFile);
+		if (total != 1) {
+            			    std::cout << "End of file" << (total == 0 ? "" : "(garbage found)")
+            					<< "." << std::endl;
+            			return false;
+        }
+
 		if (raw_rgb) {
-			total += fread(&(newImageSize), sizeof(newImageSize), 1, _pFile);
-			total += fread(raw_rgb, sizeof(uchar3),
+			total = fread(raw_rgb, sizeof(uchar3),
 					newImageSize[0] * newImageSize[1], _pFile);
-			expected_size += 1 + newImageSize[0] * newImageSize[1];
+			if (total != newImageSize[0] * newImageSize[1]) {
+                                			std::cout << "End of file" << (total == 0 ? "" : "(garbage found)")
+                                					<< "." << std::endl;
+                                			return false;
+            }
 		} else {
-			total += fread(&(newImageSize), sizeof(newImageSize), 1, _pFile);
-			total += newImageSize[0] * newImageSize[1];
 			fseek(_pFile, newImageSize[0] * newImageSize[1] * sizeof(uchar3),
 					SEEK_CUR);
-			expected_size += 1 + newImageSize[0] * newImageSize[1];
 		}
 #endif
 
-		if (total != expected_size) {
-			std::cout << "End of file" << (total == 0 ? "" : "(garbage found)")
-					<< "." << std::endl;
-			return false;
-		} else {
-			return true;
-		}
+
+	    return true;
+
 	}
 
 	inline void restart() {
