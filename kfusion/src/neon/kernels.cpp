@@ -93,7 +93,7 @@ bool print_kernel_timing = false;
 	struct timespec tock_clockData;
 #endif
 	
-void Kfusion::languageSpecificConstructor() {
+bool Kfusion::languageSpecificConstructor() {
 
 	if (getenv("KERNEL_TIMINGS"))
 		print_kernel_timing = true;
@@ -138,6 +138,7 @@ void Kfusion::languageSpecificConstructor() {
 
 	volume.init(volumeResolution, volumeDimensions);
 	reset();
+	return true;
 }
 
 Kfusion::~Kfusion() {
@@ -164,11 +165,13 @@ Kfusion::~Kfusion() {
 void Kfusion::reset() {
 	initVolumeKernel(volume);
 }
-void init() {
+bool init() {
+return true;
 }
 ;
 // stub
-void clean() {
+bool clean() {
+return true;
 }
 ;
 // stub

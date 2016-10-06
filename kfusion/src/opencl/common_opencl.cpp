@@ -19,22 +19,22 @@ cl_context context;
 cl_program program;
 cl_command_queue commandQueue;
 
-void opencl_clean(void) {
+bool opencl_clean(void) {
 
 	clReleaseContext(context);
 	clReleaseCommandQueue(commandQueue);
 	clReleaseProgram(program);
 
-	return;
+	return true;
 }
 
-void opencl_init(void) {
+bool opencl_init(void) {
 
 	// get the platform
 
 	cl_uint num_platforms;
 	clError = clGetPlatformIDs(0, NULL, &num_platforms);
-	checkErr(clError, "clGetPlatformIDs( 0, NULL, &num_platforms );");
+	returnFalseIfErr(clError, "clGetPlatformIDs( 0, NULL, &num_platforms );");
 
 	if (num_platforms <= 0) {
 		std::cout << "No platform..." << std::endl;
@@ -43,7 +43,7 @@ void opencl_init(void) {
 
 	cl_platform_id* platforms = new cl_platform_id[num_platforms];
 	clError = clGetPlatformIDs(num_platforms, platforms, NULL);
-	checkErr(clError, "clGetPlatformIDs( num_platforms, &platforms, NULL );");
+	returnFalseIfErr(clError, "clGetPlatformIDs( num_platforms, &platforms, NULL );");
 	if (num_platforms > 1) {
 		char platformName[256];
 		clError = clGetPlatformInfo(platforms[0], CL_PLATFORM_VENDOR,
@@ -61,7 +61,7 @@ void opencl_init(void) {
 	cl_uint device_count = 0;
 	clError = clGetDeviceIDs(platform_id, CL_DEVICE_TYPE_ALL, 0, NULL,
 			&device_count);
-	checkErr(clError, "Failed to create a device group");
+	returnFalseIfErr(clError, "Failed to create a device group");
 	cl_device_id* deviceIds = (cl_device_id*) malloc(
 			sizeof(cl_device_id) * device_count);
 	clError = clGetDeviceIDs(platform_id, CL_DEVICE_TYPE_ALL, device_count,
@@ -71,10 +71,10 @@ void opencl_init(void) {
 		int compute_units;
 		clError = clGetDeviceInfo(deviceIds[0], CL_DEVICE_NAME,
 				sizeof(device_name), device_name, NULL);
-		checkErr(clError, "clGetDeviceInfo failed");
+		returnFalseIfErr(clError, "clGetDeviceInfo failed");
 		clError = clGetDeviceInfo(deviceIds[0], CL_DEVICE_MAX_COMPUTE_UNITS,
 				sizeof(cl_uint), &compute_units, NULL);
-		checkErr(clError, "clGetDeviceInfo failed");
+		returnFalseIfErr(clError, "clGetDeviceInfo failed");
 		std::cerr << "Multiple devices found defaulting to: " << device_name;
 		std::cerr << " with " << compute_units << " compute units" << std::endl;
 	}
@@ -83,13 +83,13 @@ void opencl_init(void) {
 	// Create a compute context 
 	//
 	context = clCreateContext(0, 1, &device_id, NULL, NULL, &clError);
-	checkErr(clError, "Failed to create a compute context!");
+	returnFalseIfErr(clError, "Failed to create a compute context!");
 
 	// Create a command commands
 	//
     #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 	commandQueue = clCreateCommandQueue(context, device_id, 0, &clError);
-	checkErr(clError, "Failed to create a command commands!");
+	returnFalseIfErr(clError, "Failed to create a command commands!");
 
 	// READ KERNEL FILENAME
 	std::string filename = "NOTDEFINED.cl";
@@ -162,6 +162,6 @@ void opencl_init(void) {
 		exit(1);
 	}
 
-	return;
+	return true;
 
 }

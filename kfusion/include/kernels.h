@@ -74,14 +74,15 @@ void computeFrame(Volume & integration, float3 * vertex, float3 * normal,
 		const uint2 inputSize, const float * gaussian,
 		const std::vector<int> iterations, float4 k, const uint frame);
 
-void init();
+bool init();
 
-void clean();
+bool clean();
 
 /// OBJ ///
 
 class Kfusion {
 private:
+    bool init_worked;
 	uint2 computationSize;
 	float step;
 	Matrix4 pose;
@@ -96,6 +97,9 @@ private:
 	void raycast(uint frame, const float4& k, float mu);
 
 public:
+    inline bool is_ready() {
+        return this->init_worked;
+    }
 	Kfusion(uint2 inputSize, uint3 volumeResolution, float3 volumeDimensions,
 			float3 initPose, std::vector<int> & pyramid) :
 			computationSize(make_uint2(inputSize.x, inputSize.y)) {
@@ -115,7 +119,7 @@ public:
 
 		step = min(volumeDimensions) / max(volumeResolution);
 		viewPose = &pose;
-		this->languageSpecificConstructor();
+		this->init_worked = this->languageSpecificConstructor();
 	}
 //Allow a kfusion object to be created with a pose which include orientation as well as position
 	Kfusion(uint2 inputSize, uint3 volumeResolution, float3 volumeDimensions,
@@ -134,10 +138,10 @@ public:
 
 		step = min(volumeDimensions) / max(volumeResolution);
 		viewPose = &pose;
-		this->languageSpecificConstructor();
+		this->init_worked = this->languageSpecificConstructor();
 	}
 
-	void languageSpecificConstructor();
+	bool languageSpecificConstructor();
 	~Kfusion();
 
 	void reset();

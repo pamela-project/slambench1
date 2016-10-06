@@ -64,24 +64,24 @@ static const size_t number_of_groups = 8;
 uint2 computationSizeBkp = make_uint2(0, 0);
 uint2 outputImageSizeBkp = make_uint2(0, 0);
 
-void init() {
-	opencl_init();
+bool init() {
+	return opencl_init();
 }
 
-void clean() {
-	opencl_clean();
+bool clean() {
+	return opencl_clean();
 
 
 }
 
-void Kfusion::languageSpecificConstructor() {
+bool Kfusion::languageSpecificConstructor() {
 
 	init();
 
 	ocl_FloatDepth = clCreateBuffer(context, CL_MEM_READ_WRITE,
 			sizeof(float) * computationSize.x * computationSize.y, NULL,
 			&clError);
-	checkErr(clError, "clCreateBuffer");
+	returnFalseIfErr(clError, "clCreateBuffer");
 	ocl_ScaledDepth = (cl_mem*) malloc(sizeof(cl_mem) * iterations.size());
 	ocl_inputVertex = (cl_mem*) malloc(sizeof(cl_mem) * iterations.size());
 	ocl_inputNormal = (cl_mem*) malloc(sizeof(cl_mem) * iterations.size());
@@ -90,33 +90,33 @@ void Kfusion::languageSpecificConstructor() {
 		ocl_ScaledDepth[i] = clCreateBuffer(context, CL_MEM_READ_WRITE,
 				sizeof(float) * (computationSize.x * computationSize.y)
 						/ (int) pow(2, i), NULL, &clError);
-			checkErr(clError, "clCreateBuffer");
+			returnFalseIfErr(clError, "clCreateBuffer");
 		ocl_inputVertex[i] = clCreateBuffer(context, CL_MEM_READ_WRITE,
 				sizeof(float3) * (computationSize.x * computationSize.y)
 						/ (int) pow(2, i), NULL, &clError);
-			checkErr(clError, "clCreateBuffer");
+			returnFalseIfErr(clError, "clCreateBuffer");
 		ocl_inputNormal[i] = clCreateBuffer(context, CL_MEM_READ_WRITE,
 				sizeof(float3) * (computationSize.x * computationSize.y)
 						/ (int) pow(2, i), NULL, &clError);
-			checkErr(clError, "clCreateBuffer");
+			returnFalseIfErr(clError, "clCreateBuffer");
 	}
 
 	ocl_vertex = clCreateBuffer(context, CL_MEM_READ_WRITE,
 			sizeof(float3) * computationSize.x * computationSize.y, NULL,
 			&clError);
-		checkErr(clError, "clCreateBuffer");
+		returnFalseIfErr(clError, "clCreateBuffer");
 	ocl_normal = clCreateBuffer(context, CL_MEM_READ_WRITE,
 			sizeof(float3) * computationSize.x * computationSize.y, NULL,
 			&clError);
-		checkErr(clError, "clCreateBuffer");
+		returnFalseIfErr(clError, "clCreateBuffer");
 	ocl_trackingResult = clCreateBuffer(context, CL_MEM_READ_WRITE,
 			sizeof(TrackData) * computationSize.x * computationSize.y, NULL,
 			&clError);
-		checkErr(clError, "clCreateBuffer");
+		returnFalseIfErr(clError, "clCreateBuffer");
 
 	ocl_reduce_output_buffer = clCreateBuffer(context, CL_MEM_WRITE_ONLY,
 			32 * number_of_groups * sizeof(float), NULL, &clError);
-		checkErr(clError, "clCreateBuffer");
+		returnFalseIfErr(clError, "clCreateBuffer");
 	reduceOutputBuffer = (float*) malloc(number_of_groups * 32 * sizeof(float));
 	// ********* BEGIN : Generate the gaussian *************
 	size_t gaussianS = radius * 2 + 1;
@@ -128,67 +128,68 @@ void Kfusion::languageSpecificConstructor() {
 	}
 	ocl_gaussian = clCreateBuffer(context, CL_MEM_READ_ONLY,
 			gaussianS * sizeof(float), NULL, &clError);
-		checkErr(clError, "clCreateBuffer");
+		returnFalseIfErr(clError, "clCreateBuffer");
 	clError = clEnqueueWriteBuffer(commandQueue, ocl_gaussian, CL_TRUE, 0,
 			gaussianS * sizeof(float), gaussian, 0, NULL, NULL);
-		checkErr(clError, "clEnqueueWrite");
+		returnFalseIfErr(clError, "clEnqueueWrite");
 	free(gaussian);
 	// ********* END : Generate the gaussian *************
 
 	// Create kernel
 	initVolume_ocl_kernel = clCreateKernel(program,
 			"initVolumeKernel", &clError);
-	checkErr(clError, "clCreateKernel");
+	returnFalseIfErr(clError, "clCreateKernel");
 
 	ocl_volume_data = clCreateBuffer(context, CL_MEM_READ_WRITE,
 			sizeof(short2) * volumeResolution.x * volumeResolution.y
 					* volumeResolution.z,
 			NULL, &clError);
-	checkErr(clError, "clCreateBuffer");
+	returnFalseIfErr(clError, "clCreateBuffer");
 	clError = clSetKernelArg(initVolume_ocl_kernel, 0, sizeof(cl_mem),
 			&ocl_volume_data);
-	checkErr(clError, "clSetKernelArg");
+	returnFalseIfErr(clError, "clSetKernelArg");
 
 	size_t globalWorksize[3] = { volumeResolution.x, volumeResolution.y,
 			volumeResolution.z };
 
 	clError = clEnqueueNDRangeKernel(commandQueue, initVolume_ocl_kernel, 3,
 			NULL, globalWorksize, NULL, 0, NULL, NULL);
-	checkErr(clError, "clEnqueueNDRangeKernel");
+	returnFalseIfErr(clError, "clEnqueueNDRangeKernel");
 
 
 	//Kernels
 	mm2meters_ocl_kernel = clCreateKernel(program, "mm2metersKernel", &clError);
-	checkErr(clError, "clCreateKernel");
+	returnFalseIfErr(clError, "clCreateKernel");
 	bilateralFilter_ocl_kernel = clCreateKernel(program,
 			"bilateralFilterKernel", &clError);
-	checkErr(clError, "clCreateKernel");
+	returnFalseIfErr(clError, "clCreateKernel");
 	halfSampleRobustImage_ocl_kernel = clCreateKernel(program,
 			"halfSampleRobustImageKernel", &clError);
-	checkErr(clError, "clCreateKernel");
+	returnFalseIfErr(clError, "clCreateKernel");
 	depth2vertex_ocl_kernel = clCreateKernel(program, "depth2vertexKernel",
 			&clError);
-	checkErr(clError, "clCreateKernel");
+	returnFalseIfErr(clError, "clCreateKernel");
 	vertex2normal_ocl_kernel = clCreateKernel(program, "vertex2normalKernel",
 			&clError);
-	checkErr(clError, "clCreateKernel");
+	returnFalseIfErr(clError, "clCreateKernel");
 	track_ocl_kernel = clCreateKernel(program, "trackKernel", &clError);
-	checkErr(clError, "clCreateKernel");
+	returnFalseIfErr(clError, "clCreateKernel");
 	reduce_ocl_kernel = clCreateKernel(program, "reduceKernel", &clError);
-	checkErr(clError, "clCreateKernel");
+	returnFalseIfErr(clError, "clCreateKernel");
 	integrate_ocl_kernel = clCreateKernel(program, "integrateKernel", &clError);
-	checkErr(clError, "clCreateKernel");
+	returnFalseIfErr(clError, "clCreateKernel");
 	raycast_ocl_kernel = clCreateKernel(program, "raycastKernel", &clError);
-	checkErr(clError, "clCreateKernel");
+	returnFalseIfErr(clError, "clCreateKernel");
 	renderVolume_ocl_kernel = clCreateKernel(program, "renderVolumeKernel",
 			&clError);
-	checkErr(clError, "clCreateKernel");
+	returnFalseIfErr(clError, "clCreateKernel");
 	renderDepth_ocl_kernel = clCreateKernel(program, "renderDepthKernel",
 			&clError);
-	checkErr(clError, "clCreateKernel");
+	returnFalseIfErr(clError, "clCreateKernel");
 	renderTrack_ocl_kernel = clCreateKernel(program, "renderTrackKernel",
 			&clError);
-	checkErr(clError, "clCreateKernel");
+	returnFalseIfErr(clError, "clCreateKernel");
+	return true;
 
 }
 Kfusion::~Kfusion() {

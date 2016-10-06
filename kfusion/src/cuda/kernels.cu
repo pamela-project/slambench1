@@ -622,7 +622,7 @@ Image<uchar4, HostDevice> lightModel, trackModel, depthModel;
 
 static bool firstAcquire = true;
 
-void Kfusion::languageSpecificConstructor() {
+bool Kfusion::languageSpecificConstructor() {
 	if (getenv("KERNEL_TIMINGS"))
 		print_kernel_timing = true;
 	if (firstAcquire)
@@ -680,6 +680,7 @@ void Kfusion::languageSpecificConstructor() {
 
 	memset(depthModel.data(), 0,
 			depthModel.size.x * depthModel.size.y * sizeof(uint16_t));
+	return true;
 }
 
 Kfusion::~Kfusion() {

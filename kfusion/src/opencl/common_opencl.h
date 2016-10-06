@@ -130,6 +130,14 @@ inline std::string descriptionOfError(cl_int err) {
 	}
 }
 
+#define returnFalseIfErr(err,name) \
+  if (err != CL_SUCCESS) {\
+    std::cerr << "ERR: " << std::string(name) << "(";\
+    std::cerr << descriptionOfError(err);							\
+    std::cerr << ") " << __FILE__ << ":"<< __LINE__ << std::endl;	\
+    return  false;\
+  }
+
 #define checkErr(err,name) \
   if (err != CL_SUCCESS) {\
     std::cerr << "ERR: " << std::string(name) << "(";\
@@ -145,8 +153,8 @@ inline void checkErrX(cl_int err, const char * name) {
 	}
 }
 
-void opencl_init(void);
-void opencl_clean(void);
+bool opencl_init(void);
+bool opencl_clean(void);
 
 #define RELEASE_IN_BUFFER(name)  \
     clError = clReleaseMemObject(name##Buffer);\
