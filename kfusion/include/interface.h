@@ -471,13 +471,13 @@ public:
 
 			if (rc != openni::STATUS_OK) {
 				std::cout << "Wait failed" << std::endl;
-				exit(1);
+				return false;
 			}
 
 			if (depthFrame.getVideoMode().getPixelFormat() != openni::PIXEL_FORMAT_DEPTH_1_MM
 				&& depthFrame.getVideoMode().getPixelFormat() != openni::PIXEL_FORMAT_DEPTH_100_UM) {
 				std::cout << "Unexpected frame format" << std::endl;
-				exit(1);
+				return false;
 			}
 
 			memcpy(depthMap,depthFrame.getData(),_size.x * _size.y*sizeof(uint16_t));
@@ -524,12 +524,16 @@ public:
 		cameraActive = false;
 	}
 	bool readNextDepthFrame(float * depthMap) {
+	return false;
 	}
 	bool readNextDepthFrame(uchar3* raw_rgb, unsigned short int * depthMap) {
+	return false;
 	}
 	float4 getK() {
+	return make_float4(481.2, 480, 640/2, 480/2);
 	}
 	uint2 getinputSize() {
+	return make_uint2(0,0);
 	}
 	void restart() {
 	}
@@ -718,12 +722,16 @@ public:
 		cameraActive = false;
 	}
 	bool readNextDepthFrame(float * depthMap) {
+	return false;
 	}
 	bool readNextDepthFrame(uchar3* raw_rgb, unsigned short int * depthMap) {
+	return false;
 	}
 	float4 getK() {
+        return make_float4(481.2, 480, 640/2, 480/2);
 	}
 	uint2 getinputSize() {
+	return make_uint2(0,0);
 	}
 	void restart() {
 	}
