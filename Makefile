@@ -6,26 +6,27 @@
 3 = -s 5.0 -p 0.2685,0.5,0.4 -z 4 -c 2 -r 2 -k 481.2,480,320,240
 
 ROOT_DIR=$(shell pwd)
-
+TOON_DIR=${ROOT_DIR}/TooN/install
 all : build
 
 build : TooN
 	mkdir -p build/
-	cd build/ && cmake .. -DTOON_INCLUDE_PATH=${ROOT_DIR}/ $(CMAKE_ARGUMENTS)
+	cd build/ && cmake .. -DTOON_INCLUDE_PATH=${TOON_DIR} $(CMAKE_ARGUMENTS)
 	$(MAKE) -C build  $(MFLAGS) $(SPECIFIC_TARGET)
 
 #### Dependencies ####
 
 TooN:
 	git clone https://github.com/edrosten/TooN.git
-
-	cd TooN &&  git checkout 92241416d2a4874fd2334e08a5d417dfea6a1a3f && ./configure && make
+	cd TooN &&  git checkout 92241416d2a4874fd2334e08a5d417dfea6a1a3f
+	mkdir -p ${TOON_DIR}
+	cd TooN && ./configure --prefix=${TOON_DIR} --disable-lapack --enable-typeof=decltype && make install
 
 
 #### DATA SET GENERATION ####
 ./build/kfusion/thirdparty/scene2raw :
 	mkdir -p build/
-	cd build/ && cmake .. -DTOON_INCLUDE_PATH=${ROOT_DIR}/
+	cd build/ && cmake .. -DTOON_INCLUDE_PATH=$(TOON_DIR)
 	$(MAKE) -C build  $(MFLAGS) scene2raw
 
 living_room_traj%_loop.raw : living_room_traj%_loop ./build/kfusion/thirdparty/scene2raw 
