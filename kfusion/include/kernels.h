@@ -165,7 +165,7 @@ public:
 	bool raycasting(float4 k, float mu, uint frame);
 	bool integration(float4 k, uint integration_rate, float mu, uint frame);
 
-	void dumpVolume(std::string filename);
+	void dumpVolume(const char* filename);
 	void renderVolume(uchar4 * out, const uint2 outputSize, int frame, int rate,
 			float4 k, float mu);
 	void renderTrack(uchar4 * out, const uint2 outputSize);

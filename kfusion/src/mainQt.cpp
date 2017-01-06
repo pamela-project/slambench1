@@ -169,7 +169,7 @@ int main(int argc, char ** argv) {
 	// ==========     DUMP VOLUME      =========
 
 	if (config.dump_volume_file != "") {
-		kfusion->dumpVolume(config.dump_volume_file);
+	  kfusion->dumpVolume(config.dump_volume_file.c_str());
 	}
 
 	if (config.log_file != "" || config.no_gui) {

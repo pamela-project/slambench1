@@ -491,15 +491,15 @@ void Kfusion::renderDepth(uchar4 * out, uint2 outputSize) {
 
 }
 
-void Kfusion::dumpVolume(std::string filename) {
+void Kfusion::dumpVolume(const char* filename) {
 
 	std::ofstream fDumpFile;
 
-	if (filename == "") {
+	if (filename == NULL) {
 		return;
 	}
 
-	fDumpFile.open(filename.c_str(), std::ios::out | std::ios::binary);
+	fDumpFile.open(filename, std::ios::out | std::ios::binary);
 	if (fDumpFile.fail()) {
 		std::cout << "Error opening file: " << filename << std::endl;
 		exit(1);
