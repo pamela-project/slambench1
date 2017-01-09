@@ -7,12 +7,12 @@
 
 ROOT_DIR=$(shell pwd)
 TOON_DIR=${ROOT_DIR}/TooN/install_dir
-
+TOON_INCLUDE_DIR=${TOON_DIR}/include/
 all : build
 
 build : TooN
 	mkdir -p build/
-	cd build/ && cmake .. -DTOON_INCLUDE_PATH=${TOON_DIR} $(CMAKE_ARGUMENTS)
+	cd build/ && cmake .. -DTOON_INCLUDE_PATH=${TOON_INCLUDE_DIR} $(CMAKE_ARGUMENTS)
 	$(MAKE) -C build  $(MFLAGS) $(SPECIFIC_TARGET)
 
 #### Dependencies ####
@@ -27,7 +27,7 @@ TooN:
 #### DATA SET GENERATION ####
 ./build/kfusion/thirdparty/scene2raw : TooN
 	mkdir -p build/
-	cd build/ && cmake .. -DTOON_INCLUDE_PATH=${TOON_DIR} $(CMAKE_ARGUMENTS)
+	cd build/ && cmake .. -DTOON_INCLUDE_PATH=${TOON_INCLUDE_DIR} $(CMAKE_ARGUMENTS)
 	$(MAKE) -C build  $(MFLAGS) scene2raw
 
 living_room_traj%_loop.raw : living_room_traj%_loop ./build/kfusion/thirdparty/scene2raw 
