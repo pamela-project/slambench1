@@ -6,7 +6,8 @@
 3 = -s 5.0 -p 0.2685,0.5,0.4 -z 4 -c 2 -r 2 -k 481.2,480,320,240
 
 ROOT_DIR=$(shell pwd)
-TOON_DIR=${ROOT_DIR}/TooN/install
+TOON_DIR=${ROOT_DIR}/TooN/install_dir
+
 all : build
 
 build : TooN
@@ -24,9 +25,9 @@ TooN:
 
 
 #### DATA SET GENERATION ####
-./build/kfusion/thirdparty/scene2raw :
+./build/kfusion/thirdparty/scene2raw : TooN
 	mkdir -p build/
-	cd build/ && cmake .. -DTOON_INCLUDE_PATH=$(TOON_DIR)
+	cd build/ && cmake .. -DTOON_INCLUDE_PATH=${TOON_DIR} $(CMAKE_ARGUMENTS)
 	$(MAKE) -C build  $(MFLAGS) scene2raw
 
 living_room_traj%_loop.raw : living_room_traj%_loop ./build/kfusion/thirdparty/scene2raw 
