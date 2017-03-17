@@ -21,7 +21,7 @@ TooN:
 	git clone https://github.com/edrosten/TooN.git
 	cd TooN &&  git checkout 92241416d2a4874fd2334e08a5d417dfea6a1a3f
 	mkdir -p ${TOON_DIR}
-	cd TooN && ./configure --prefix=${TOON_DIR} --disable-lapack --enable-typeof=decltype && make install
+	cd TooN && ./configure --prefix=${TOON_DIR} --disable-lapack && make install
 
 
 #### DATA SET GENERATION ####
