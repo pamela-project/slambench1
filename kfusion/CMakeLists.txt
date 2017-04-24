@@ -61,6 +61,14 @@ if (OPENCL_FOUND)
 endif(OPENCL_FOUND)
 
 
+#  ----------------- CUDA VERSION ----------------- 
+if (CUDA_FOUND) 
+    set(kfusion_cuda_srcs src/cuda/kernels.cu thirdparty/kfusion.h)
+    cuda_add_library(${appname}-cuda    STATIC  ${kfusion_cuda_srcs} OPTIONS -O3 )
+    target_link_libraries(${appname}-cuda   ${common_libraries})	
+    add_version(${appname} cuda    "" "")
+endif(CUDA_FOUND)
+
 #  ----------------- thirdparty ----------------- 
 
 add_subdirectory( thirdparty    )
