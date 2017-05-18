@@ -44,16 +44,23 @@ void opencl_init(void) {
 	cl_platform_id* platforms = new cl_platform_id[num_platforms];
 	clError = clGetPlatformIDs(num_platforms, platforms, NULL);
 	checkErr(clError, "clGetPlatformIDs( num_platforms, &platforms, NULL );");
-	if (num_platforms > 1) {
-		char platformName[256];
-		clError = clGetPlatformInfo(platforms[0], CL_PLATFORM_VENDOR,
-				sizeof(platformName), platformName, NULL);
-		std::cerr << "Multiple platforms found defaulting to: " << platformName
-				<< std::endl;
-	}
+
 	platform_id = platforms[0];
-	if (getenv("OPENCL_PLATEFORM"))
-		platform_id = platforms[1];
+	if(getenv("OPENCL_PLATFORM")){
+		int platform_index = atoi(getenv("OPENCL_PLATFORM"));
+		if(platform_index >= 0 && platform_index < num_platforms){
+			platform_id = platforms[platform_index];
+		} else {
+			std::cerr << "Invalid OpenCL Platform Index " << platform_index 
+				<< " defaulting to: 0" << std::endl;
+		}
+	}
+	char platformName[256];
+	clError = clGetPlatformInfo(platform_id, CL_PLATFORM_VENDOR,
+			sizeof(platformName), platformName, NULL);
+	std::cerr << "Using OpenCL Platform: " << platformName
+			<< std::endl;
+
 	delete platforms;
 
 	// Connect to a compute device
@@ -66,19 +73,28 @@ void opencl_init(void) {
 			sizeof(cl_device_id) * device_count);
 	clError = clGetDeviceIDs(platform_id, CL_DEVICE_TYPE_ALL, device_count,
 			deviceIds, NULL);
-	if (device_count > 1) {
-		char device_name[256];
-		int compute_units;
-		clError = clGetDeviceInfo(deviceIds[0], CL_DEVICE_NAME,
-				sizeof(device_name), device_name, NULL);
-		checkErr(clError, "clGetDeviceInfo failed");
-		clError = clGetDeviceInfo(deviceIds[0], CL_DEVICE_MAX_COMPUTE_UNITS,
-				sizeof(cl_uint), &compute_units, NULL);
-		checkErr(clError, "clGetDeviceInfo failed");
-		std::cerr << "Multiple devices found defaulting to: " << device_name;
-		std::cerr << " with " << compute_units << " compute units" << std::endl;
+	int deviceIndex = 0;
+	if(getenv("OPENCL_DEVICE")){
+		int index = atoi(getenv("OPENCL_DEVICE"));
+		if(index >= 0 && index < device_count){
+			deviceIndex = index;
+		} else {
+			std::cerr << "Invalid OpenCL Device Index " << index 
+				<< " defaulting to: 0" << std::endl;
+		}
 	}
-	device_id = deviceIds[0];
+	char device_name[256];
+	int compute_units;
+        
+	clError = clGetDeviceInfo(deviceIds[deviceIndex], CL_DEVICE_NAME,
+			sizeof(device_name), device_name, NULL);
+	checkErr(clError, "clGetDeviceInfo failed");
+	clError = clGetDeviceInfo(deviceIds[deviceIndex], CL_DEVICE_MAX_COMPUTE_UNITS,
+			sizeof(cl_uint), &compute_units, NULL);
+	checkErr(clError, "clGetDeviceInfo failed");
+	std::cerr << "Using OpenCL device  : " << device_name;
+	std::cerr << " with " << compute_units << " compute units" << std::endl;
+	device_id = deviceIds[deviceIndex];
 	delete deviceIds;
 	// Create a compute context 
 	//
