@@ -20,7 +20,9 @@ mkdir build
 cd build
 
 export CXX=g++ && cmake -DTOON_INCLUDE_PATH=$HOME/code/ext/TooN/install/include ..
-make scene2raw  # To construct the living_room_traj2_loop.raw file from the tar.
+# scene2raw can be used to construct the living_room_traj2_loop.raw file fromxi
+# the tar.zip.
+make scene2raw
 make kfusion-benchmark-cpp
 make kfusion-qt-cpp
 ./kfusion/kfusion-benchmark-cpp -i ../../sycl-slambench_old/living_room_traj2_loop.raw -s 4.8 -p 0.34,0.5,0.24 -z 4 -c 2 -r 1 -k 481.2,480,320,240
