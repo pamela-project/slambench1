@@ -9,7 +9,7 @@ SLAMBench Release Candidate 1.2 [![Build Status](https://travis-ci.org/pamela-pr
 ## What is it for? ##
 
 * A SLAM performance benchmark that combines a framework for quantifying quality-of-result with instrumentation of execution time and energy consumption. 
-* It contains a KinectFusion (http://research.microsoft.com/pubs/155378/ismar2011.pdf) implementation in C++, OpenMP, OpenCL and CUDA (inspired by https://github.com/GerhardR).
+* It contains a KinectFusion (http://research.microsoft.com/pubs/155378/ismar2011.pdf) implementation in C++, OpenMP, OpenCL, SYCL and CUDA (inspired by https://github.com/GerhardR).
 * It offers a platform for a broad spectrum of future research in jointly exploring the design space of algorithmic and implementation-level optimisations. 
 * Target desktop, laptop, mobile and embedded platforms. Tested on Ubuntu, OS X and Android (on Android only the benchmark application has been ported, see later). 
 
@@ -62,6 +62,7 @@ sudo apt-get install cmake
 * OpenMP : for the OpenMP version
 * CUDA : for the CUDA version
 * OpenCL : for the OpenCL version (OpenCL 1.1 or greater)
+* ComputeCpp & [syclcc](https://github.com/agozillon/SYCLCC) : for the SYCL version (ComputeCpp 0.3.0 or greater) 
 
 * OpenGL / GLUT : used by the graphical interface
 * OpenNI : for the live mode, and for `oni2raw` tool (which convert an OpenNI file to the SLAMBench internal format)
@@ -99,6 +100,27 @@ To use qt, if you compile the source as explained above, you should need to spec
 CMAKE_PREFIX_PATH=~/.local/qt/ make
 ```
 
+#### Compilation of SYCL Module ####
+
+To compile sycl you require the syclcc scripts from https://github.com/agozillon/SYCLCC and the ComputeCpp SYCL compiler (version 0.3.0 or higher). 
+
+Set the CXX variable inside the SLAMBench build folder to syclcc and then invoke cmake, afterwards compilation of the sycl modules should be possible. Provided the syclcc script is found and correctly linked to your chosen release version of ComputeCpp. 
+
+```
+#!
+export CXX=syclcc && cmake
+make kfusion-benchmark-sycl
+make kfusion-qt-sycl
+```
+
+Afterwards set the CXX variable back to g++ and invoke cmake again to compile other modules without trouble. 
+
+```
+#!
+export CXX=g++ && cmake
+make kfusion-benchmark-cpp
+```
+
 ### Running SLAMBench ###
 
 The compilation builds 3 application modes which act like wrappers (the kernels are the same for all applications): 
@@ -113,6 +135,7 @@ Each application mode is also declined in 4 different builds/implementations:
 * OpenMP (*./build/kfusion/kfusion-main-openmp*)
 * OpenCL (*./build/kfusion/kfusion-main-cpp*) 
 * CUDA (*./build/kfusion/kfusion-main-cuda*) 
+* SYCL (*./build/kfusion/kfusion-main-sycl*) 
 
 The Makefile will automatically build the executable with satisfied dependencies, e.g. the OpenCL application version will be built only if the OpenCL tool kit is available on the system and so on for CUDA, OpenMP and Qt.
 
@@ -348,6 +371,12 @@ nvprof --print-gpu-trace ./build/kfusion/kfusion-benchmark-cuda -s 4.8 -p 0.34,0
 cat  tmpkernels.2.cuda.log | kfusion/thirdparty/nvprof2log.py >   kernels.2.cuda.log
 ```
 
+### SYCL ###
+```
+#!plain
+KERNEL_TIMINGS=1 ./build/kfusion/kfusion-benchmark-sycl -s 4.8 -p 0.34,0.5,0.24 -z 4 -c 2 -r 1 -k 481.2,480,320,240 -i  living_room_traj2_loop.raw -o  benchmark.2.sycl.log 2> kernels.2.sycl.log
+```
+
 ## Automatic timings ##
 
 When using the ICL-NUIM dataset, it is possible to generate the timings using only one command. 
@@ -391,10 +420,12 @@ SlamBench
    ├── cmake        :  cmake module file 
    └── kfusion      :  kfusion test case.
        ├── include  : common files (including the tested kernel prototypes) 
+       │   └── sycl : sycl specific common files 
        ├── src
        │   ├── cpp      : C++/OpenMP implementation
        │   ├── opencl   : OpenCL implementation
        │   ├── cuda    : CUDA implementation
+	   │   ├── sycl    : SYCL implementation 
        └── thridparty    : Includes several tools use by Makefile and 3rd party headers.
 ```
  
