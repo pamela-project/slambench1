@@ -190,7 +190,7 @@ static void k(item<2> ix, T *out, const T *in, const T *gaussian,
       if (curPix > 0) {
         const float mod    = sq(curPix - center);
         const float factor = gaussian[i + r] * gaussian[j + r] *
-                             exp(-mod / (2 * e_d * e_d));
+                             cl::sycl::exp(-mod / (2 * e_d * e_d));
         t   += factor * curPix;
         sum += factor;
       } else {
@@ -286,14 +286,15 @@ static void k(item<2> ix, T *normal, const T *verte_)
   /*const*/ float3 up    = vertex[vup.x()    + ix.get_range()[0] * vup.y()];
   /*const*/ float3 down  = vertex[vdown.x()  + ix.get_range()[0] * vdown.y()];
 
-  if (left.z() == 0 || right.z() == 0|| up.z() == 0 || down.z() == 0) {
-    const float3 invalid3{INVALID,INVALID,INVALID};
+  if (left.get_value(2) == 0 || right.get_value(2) == 0 || up.get_value(2) == 0 || down.get_value(2) == 0) {
+    const float3 invalid3{KFUSION_INVALID,KFUSION_INVALID,KFUSION_INVALID};
     normal[pixel.x() + ix.get_range()[0] * pixel.y()] = invalid3;
     return;
   }
 
   const float3 dxv = right - left;
   const float3 dyv = down  - up;
+
   normal[pixel.x() + ix.get_range()[0] * pixel.y()] = normalize(cross(dyv,dxv));
 }
 
@@ -399,51 +400,69 @@ static void k(item<2> ix, T *output,      /*const*/ uint2 outputSize,
   const float3 *inVertex  = inVerte_;  // ""
   const float3 *refNormal = refNorma_; // ""
   uint2 pixel{ix[0],ix[1]};
+     
   TrackData &row = output[pixel.x() + outputSize.x() * pixel.y()];
-
-  float3 inNormalPixel = inNormal[pixel.x() + ix.get_range()[0] * pixel.y()];
-  if (inNormalPixel.x() == INVALID) {
+ 
+  float3 inNormalPixel = inNormal[pixel.x() + ix.get_range()[0] * pixel.y()]; 
+  if (inNormalPixel.get_value(0) == KFUSION_INVALID) {
     row.result = -1;
     return;
-  }
-
+  }  
+  
   float3 inVertexPixel = inVertex[pixel.x() + ix.get_range()[0] * pixel.y()];
   /*const*/ float3 projectedVertex = Mat4TimeFloat3(Ttrack, inVertexPixel);
   /*const*/ float3 projectedPos    = Mat4TimeFloat3(view, projectedVertex);
   /*const*/ float2 projPixel{projectedPos.x() / projectedPos.z() + 0.5f,
                              projectedPos.y() / projectedPos.z() + 0.5f};
-  if (projPixel.x() < 0 || projPixel.x() > outputSize.x()-1 ||
-      projPixel.y() < 0 || projPixel.y() > outputSize.y()-1) {
+  if (projPixel.x() < 0.0f || projPixel.x() > static_cast<float>(outputSize.x()-1) ||
+      projPixel.y() < 0.0f || projPixel.y() > static_cast<float>(outputSize.y()-1)) {
     row.result = -2;
     return;
   }
 
-  /*const*/ uint2 refPixel{projPixel.x(), projPixel.y()};
-  /*const*/ float3 referenceNormal =
+   /*const*/ uint2 refPixel{projPixel.x(), projPixel.y()};
+   /*const*/ float3 referenceNormal =
     refNormal[refPixel.x() + outputSize.x() * refPixel.y()];
-  if (referenceNormal.x() == INVALID) {
+  if (referenceNormal.get_value(0) == KFUSION_INVALID) {
     row.result = -3;
     return;
   }
 
   const float3 diff = refVertex[refPixel.x() + outputSize.x() * refPixel.y()] -
-                      projectedVertex;
+                      projectedVertex; 
   const float3 projectedNormal = rotate(Ttrack, inNormalPixel);
 
   if (length(diff) > dist_threshold) {
     row.result = -4;
     return;
   }
+
   if (dot(projectedNormal,referenceNormal) < normal_threshold) {
     row.result = -5;
     return;
   }
-
+  
   row.result = 1;
   row.error  = dot(referenceNormal, diff);
-  *((float3 *)(row.J + 0)) = referenceNormal; // a la vstore3
-  *((float3 *)(row.J + 3)) = cross(projectedVertex, referenceNormal);
+  
+  // two different ways of doing the same thing, howver the cross product
+  // line gets a segementation fault if you try and index like this. Not
+  // too sure why in this case. Perhaps because a float3 is 16 bytes and 
+  // each element of row.J is a float of 4 bytes, however that doesn't 
+  // really explain why it segementation faults on the 3rd iteration 
+  // rather than the 1st.
+  //*((float3 *)(row.J + 0)) = referenceNormal; // a la vstore3  
+  //*((float3 *)(row.J + 3)) = cross(projectedVertex, referenceNormal); 
   // row.J + 0 -> row.J[0:2]          row.J + 3 ->  row.J[3:5]
+  
+  //((float3 *) row.J)[0] = referenceNormal;
+  //((float3 *) row.J)[1] = cross(projectedVertex, referenceNormal);
+  
+  ((float3 *) row.J)[0] = referenceNormal; 
+  float3 xprod = cross(projectedVertex, referenceNormal);
+  row.J[3] = xprod.get_value(0);
+  row.J[4] = xprod.get_value(1);
+  row.J[5] = xprod.get_value(2);  
 }
 }; // struct
 
@@ -482,7 +501,7 @@ static void k(item<2> ix, T *out, const T *in,
       const int2 maxval{inSize.x()-1, inSize.y()-1};
             int2 from{clamp(x,minval,maxval)};
       float current = in[from.x() + from.y() * inSize.x()];
-      if (fabs(current - center) < e_d) {
+      if (cl::sycl::fabs(current - center) < e_d) {
         sum += 1.0f;
         t += current;
       }
@@ -520,8 +539,8 @@ static void k(I ix, T *v_data, const uint3 v_size, const float3 v_dim,
     /*const*/ float2 pixel{cameraX.x()/cameraX.z() + 0.5f,
                            cameraX.y()/cameraX.z() + 0.5f};
 
-    if (pixel.x() < 0 || pixel.x() > depthSize.x()-1 ||
-        pixel.y() < 0 || pixel.y() > depthSize.y()-1)
+    if (pixel.x() < 0.0f || pixel.x() > static_cast<float>(depthSize.x()-1) ||
+        pixel.y() < 0.0f || pixel.y() > static_cast<float>(depthSize.y()-1))
       continue;
 
     /*const*/ uint2 px{pixel.x(), pixel.y()};
@@ -535,10 +554,10 @@ static void k(I ix, T *v_data, const uint3 v_size, const float3 v_dim,
 
     if (diff > -mu)
     {
-      const float sdf = fmin(1.f, diff/mu);
+      const float sdf = cl::sycl::fmin(1.f, diff/mu);
       float2 data = getVolume(vol,pix);
       data.x() = clamp((data.y()*data.x() + sdf)/(data.y() + 1),-1.f,1.f);
-      data.y() = fmin(data.y()+1, maxweight);
+      data.y() = cl::sycl::fmin(data.y()+1, maxweight);
       setVolume(vol,pix,data);
     }
   }
@@ -565,9 +584,9 @@ static void k(item<2> ix, T *pos3D, T *normal, U *v_data,
     raycast(volume, pos, view, nearPlane, farPlane, step, largestep);
   const float3 test{hit.x(),hit.y(),hit.z()}; // as_float3(hit);
 
-  // The C++ version just sets the normal's x value to INVALID. This is a
+  // The C++ version just sets the normal's x value to KFUSION_INVALID. This is a
   // better approach - also used by the OpenCL version.
-  const float3 invalid3{INVALID,INVALID,INVALID};
+  const float3 invalid3{KFUSION_INVALID,KFUSION_INVALID,KFUSION_INVALID};
 
   if (hit.w() > 0.0f) {
     pos3D[pos.x() + sizex * pos.y()] = test;
@@ -700,14 +719,16 @@ static void k(item<2> ix, T *render, U *v_data, const uint3 v_size,
 
   float4 hit = raycast(v, pos, view, nearPlane, farPlane, step, largestep);
 
-	if (hit.w() > 0) {
+	if (hit.w() > 0.0f) {
     const float3 test{hit.x(),hit.y(),hit.z()}; // as_float3(hit);
 		float3 surfNorm   = grad(test,v);
 
 		if (length(surfNorm) > 0) {
       const float3 diff    = normalize(light - test);
-      const float dir      = fmaxf(dot(normalize(surfNorm), diff), 0.f);
-      /*const*/ float3 col = clamp(make_float3(dir)+ambient,0.f,1.f) * 255;
+      //const float dir      = fmaxf(dot(normalize(surfNorm), diff), 0.f);
+      const float dir      = cl::sycl::fmax(dot(normalize(surfNorm), diff), 0.f);
+            
+      /*const*/ float3 col = clamp(make_float3(dir)+ambient,make_float3(0.f),make_float3(1.f)) * 255;
       render[pos.x() + sizex * pos.y()] = uchar4{col.x(),col.y(),col.z(),0};
 		} else {
       render[pos.x() + sizex * pos.y()] = uchar4{0,0,0,0};
@@ -753,7 +774,7 @@ bool Kfusion::preprocessing(const uint16_t *inputDepth, /*const*/ uint2 inSize)
 
 bool Kfusion::tracking(float4 k, float icp_threshold,
                        const uint tracking_rate, const uint frame)
-{
+{	
 	if (frame % tracking_rate != 0)
 		return false;
 
@@ -768,7 +789,7 @@ bool Kfusion::tracking(float4 k, float icp_threshold,
 		uint2 inSize{outSize.x()*2,outSize.y()*2}; // Seems redundant
     dagr::run<halfSampleRobustImageKernel,0>(q,r,out,in,inSize,e_delta*3,1);
 	}
-
+	
 	// prepare the 3D information from the input depth maps
 	uint2 localimagesize = computationSize;
 	for (unsigned int i = 0; i < iterations.size(); ++i) {
@@ -788,22 +809,25 @@ bool Kfusion::tracking(float4 k, float icp_threshold,
 	oldPose = pose;
 	const Matrix4 projectReference = getCameraMatrix(k) * inverse(raycastPose);
 
+	
   // iterations: a vector<int> set to {10,5,4} in Kfusion ctor (kernels.h)
-  for (int level = iterations.size() - 1; level >= 0; --level) {
+  for (int level = iterations.size() - 1; level >= 0; --level) {	  
     const int csize_x = computationSize.x();
     const int csize_y = computationSize.y();
     const int pow2l = pow(2, level);
 		uint2 localimagesize = make_uint2(csize_x / pow2l, csize_y / pow2l);
 
-    for (int i = 0; i < iterations[level]; ++i) {  // i<4,i<5,i<10
+    for (int i = 0; i < iterations[level]; ++i) {  // i<4,i<5,i<10 
       range<2> imageSize{localimagesize.x(),localimagesize.y()};
+	
       dagr::run<trackKernel,0>(q,imageSize,*ocl_trackingResult,computationSize,
         dagr::ro(*ocl_inputVertex[level]), dagr::ro(*ocl_inputNormal[level]),
         dagr::ro(*ocl_vertex),             dagr::ro(*ocl_normal),
         pose,projectReference,dist_threshold,normal_threshold);
-
+	   
       const    range<1> nitems{size_of_group * number_of_groups};
       const nd_range<1> ndr{nd_range<1>(nitems, range<1>{size_of_group})};
+	   
       dagr::run<reduceKernel,0>(q,ndr,
         dagr::wo(buffer<float,1>(reduceOutputBuffer,
                                  range<1>{32 * number_of_groups})),
@@ -813,7 +837,7 @@ bool Kfusion::tracking(float4 k, float icp_threshold,
       TooN::Matrix<TooN::Dynamic, TooN::Dynamic, float,
         TooN::Reference::RowMajor> values(reduceOutputBuffer,
           number_of_groups, 32);
-
+	       
 			for (int j = 1; j < number_of_groups; ++j) {
 				values[0] += values[j];
 			}
@@ -822,7 +846,7 @@ bool Kfusion::tracking(float4 k, float icp_threshold,
         break;
     }
   }
-
+	
 	return checkPoseKernel(pose, oldPose, reduceOutputBuffer, computationSize,
 			track_threshold);
 }
@@ -879,9 +903,9 @@ inline float3 grad(float3 pos, /*const*/ Volume<T> v) {
     cl::sycl::fmin(scaled_pos - cl::sycl::floor(scaled_pos), 0x1.fffffep-1f);
   //float3 basef = cl::sycl::floor(scaled_pos);
 
-  const int3 vsm1{static_cast<int>(v.size.x()) - 1,
-                  static_cast<int>(v.size.y()) - 1,
-                  static_cast<int>(v.size.z()) - 1};
+  const int3 vsm1{v.size.get_value(0) - 1,
+                  v.size.get_value(1) - 1,
+                  v.size.get_value(2) - 1};
 	/*const*/ int3 lower_lower = max(base - int3{1,1,1}, int3{0,0,0});
 	/*const*/ int3 lower_upper = max(base,               int3{0,0,0});
 	/*const*/ int3 upper_lower = min(base + int3{1,1,1}, vsm1);
@@ -991,18 +1015,18 @@ float4 raycast(/*const*/ Volume<T> v, /*const*/ uint2 pos, const Matrix4 view,
 	const float3 ttop = invR * (v.dim - origin);
 
   // re-order intersections to find smallest and largest on each axis
-  /*const*/ float3 tmin = fmin(ttop, tbot);
-  /*const*/ float3 tmax = fmax(ttop, tbot);
+  /*const*/ float3 tmin = cl::sycl::fmin(ttop, tbot);
+  /*const*/ float3 tmax = cl::sycl::fmax(ttop, tbot);
 
 	// find the largest tmin and the smallest tmax
-	const float largest_tmin  = fmax(fmax(tmin.x(), tmin.y()),
-                                   fmax(tmin.x(), tmin.z()));
-	const float smallest_tmax = fmin(fmin(tmax.x(), tmax.y()),
-                                   fmin(tmax.x(), tmax.z()));
+	const float largest_tmin  = cl::sycl::fmax(cl::sycl::fmax(tmin.x(), tmin.y()),
+                                   cl::sycl::fmax(tmin.x(), tmin.z()));
+	const float smallest_tmax = cl::sycl::fmin(cl::sycl::fmin(tmax.x(), tmax.y()),
+                                   cl::sycl::fmin(tmax.x(), tmax.z()));
 
 	// check against near and far plane
-	const float tnear = fmax(largest_tmin, nearPlane);
-	const float tfar  = fmin(smallest_tmax, farPlane);
+	const float tnear = cl::sycl::fmax(largest_tmin, nearPlane);
+	const float tfar  = cl::sycl::fmin(smallest_tmax, farPlane);
 
   if (tnear < tfar) {
     // first walk with largesteps until we found a hit
@@ -1124,7 +1148,6 @@ void Kfusion::renderTrack(uchar4 *out, uint2 outputSize)
 }
 
 void Kfusion::renderDepth(uchar4 *out, uint2 outputSize) {
-
   range<2> globalWorksize{computationSize.x(), computationSize.y()};
   dagr::run<renderDepthKernel,0>(q,globalWorksize,
     dagr::wo(buffer<uchar4,1>(out,range<1>{outputSize.x() * outputSize.y()})),

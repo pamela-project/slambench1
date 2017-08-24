@@ -261,8 +261,12 @@ public:
 
 #else
 		if (raw_rgb) {
+	// AG: Modified this to use 3 instead of sizeof(uchar3), the visual output is the same
+	// however it runs for all of the frames and no longer emits a garbage found message.
+	// The sizeof(uchar3) is 3 for all other kfusion platforms other than SYCL, so perhaps
+	// that's the issue. 		
 			total += fread(&(newImageSize), sizeof(newImageSize), 1, _pFile);
-			total += fread(raw_rgb, sizeof(uchar3),
+			total += fread(raw_rgb, 3/*sizeof(uchar3)*/,
 					newImageSize[0] * newImageSize[1], _pFile);
 			expected_size += 1 + newImageSize[0] * newImageSize[1];
 		} else {
