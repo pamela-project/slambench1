@@ -50,13 +50,13 @@ inline float4 make_float4(float s) { return make_float4(s,s,s,s); }
 inline float4 make_float4(float3 a, float w) {
   return float4{a.x(), a.y(), a.z(), w};
 }
+
 inline uint2  make_uint2(uint x, uint y)   { return uint2{x,y}; }
 inline uint3  make_uint3(uint s)   { return make_uint3(s,s,s); }
 inline int2   make_int2(int s)     { return int2{s,s}; }
 inline int3   make_int3(int s)     { return make_int3(s,s,s); }
 inline uint2  make_uint2(uint s)   { return uint2{s,s}; }
-inline uint2  make_uint2(int2 a)   { return uint2{uint(a.x()), uint(a.y())};
-}
+inline uint2  make_uint2(int2 a)   { return uint2{uint(a.x()), uint(a.y())}; }
 
 inline float3 floorf(float3 v) {
   return float3{floorf(v.x()),floorf(v.y()),floorf(v.z())};
@@ -72,7 +72,9 @@ inline float3 fmaxf(float3 a, float3 b) {
 	return float3{fmaxf(a.x(), b.x()), fmaxf(a.y(), b.y()), fmaxf(a.z(), b.z())};
 }
 inline float  min(float3 a) { return fminf(a.x(), fminf(a.y(), a.z())); }
-inline uint   max(uint3 a)  { return max(a.x(), max(a.y(), a.z())); }
+inline uint   max(uint3 a)  { 	
+	return max(a.get_value(0), max(a.get_value(1), a.get_value(2))); 
+}
 inline float3 operator*(float b, float3 a) {
 	return float3{b*a.x(), b*a.y(), b*a.z()};
 }
