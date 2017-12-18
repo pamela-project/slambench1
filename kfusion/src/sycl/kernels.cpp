@@ -269,7 +269,7 @@ static void k(item<2> ix, T *normal, const T *verte_)
 {
   using const_float3_as1_t = const __attribute__((address_space(1))) float3&;
   static_assert(std::is_same<decltype(verte_[0]), const_float3_as1_t>::value ||
-				std::is_same<decltype(verte_[0]), const float3&>::value ,"");
+		std::is_same<decltype(verte_[0]), const float3&>::value ,"");
 
   // otherwise x=vertex[0] is an error. See const_vec_ptr.cpp
   const float3 *vertex = verte_;
