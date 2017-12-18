@@ -102,9 +102,16 @@ CMAKE_PREFIX_PATH=~/.local/qt/ make
 
 #### Compilation of SYCL Module ####
 
-To compile sycl you require the syclcc scripts from https://github.com/agozillon/SYCLCC and the ComputeCpp SYCL compiler (version 0.3.0 or higher). 
+To compile the SYCL benchmarks you require the syclcc scripts from https://github.com/agozillon/syclcc as well as the DAGR DSL https://github.com/agozillon/dagr. 
 
-Set the CXX variable inside the SLAMBench build folder to syclcc and then invoke cmake, afterwards compilation of the sycl modules should be possible. Provided the syclcc script is found and correctly linked to your chosen release version of ComputeCpp. 
+You will also require the ComputeCpp SYCL compiler. The benchmarks have been tested and compile with ComputeCpp Versions 0.2.1 to 0.5.0 on Ubuntu. The benchmarks work best with versions 0.3.2 and above.
+
+Ubuntu Steps: 
+1) Add the DAGR library to your usr/include folder or your path
+2) Create an enviornment variable SYCL_CC_PATH that points to your SYCLCC folder   
+3) Create an enviornment variable COMPUTE_CPP that points to your ComputeCpp directory (Further information for steps 2 and 3 can be found in the syclcc readme).
+4) Add the ComputeCpp include/SYCL folder and lib/libComputeCpp.so to your path (or usr/include and usr/lib)
+5) Set the CXX environment variable inside the SLAMBench build folder to syclcc and then invoke cmake, afterwards compilation of the sycl modules should be possible. Provided the syclcc script is found (step 2) and correctly linked to your chosen release version of ComputeCpp (step 3). 
 
 ```
 #!
