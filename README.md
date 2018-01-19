@@ -113,9 +113,11 @@ Ubuntu Steps:
 4) Add the ComputeCpp include/SYCL folder and lib/libComputeCpp.so to your path (or usr/include and usr/lib)
 5) Set the CXX environment variable inside the SLAMBench build folder to syclcc and then invoke cmake, afterwards compilation of the sycl modules should be possible. Provided the syclcc script is found (step 2) and correctly linked to your chosen release version of ComputeCpp (step 3). 
 
+The CMAKE commands for building the module inside a build directory in the route of SLAMBench:
+
 ```
 #!
-export CXX=syclcc && cmake
+export CXX=syclcc && cmake../
 make kfusion-benchmark-sycl
 make kfusion-qt-sycl
 ```
@@ -124,7 +126,7 @@ Afterwards set the CXX variable back to g++ and invoke cmake again to compile ot
 
 ```
 #!
-export CXX=g++ && cmake
+export CXX=g++ && cmake../
 make kfusion-benchmark-cpp
 ```
 
