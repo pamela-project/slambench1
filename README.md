@@ -109,7 +109,7 @@ You will also require the ComputeCpp SYCL compiler. The benchmarks have been tes
 Ubuntu Steps: 
 1) Add the DAGR library to your usr/include folder or your path
 2) Create an enviornment variable SYCL_CC_PATH that points to your SYCLCC folder   
-3) Create an enviornment variable COMPUTE_CPP that points to your ComputeCpp directory (Further information for steps 2 and 3 can be found in the syclcc readme).
+3) Create an enviornment variable COMPUTECPP that points to your ComputeCpp directory (Further information for steps 2 and 3 can be found in the syclcc readme).
 4) Add the ComputeCpp include/SYCL folder and lib/libComputeCpp.so to your path (or usr/include and usr/lib)
 5) Set the CXX environment variable inside the SLAMBench build folder to syclcc and then invoke cmake, afterwards compilation of the sycl modules should be possible. Provided the syclcc script is found (step 2) and correctly linked to your chosen release version of ComputeCpp (step 3). 
 
