@@ -107,14 +107,14 @@ To compile the SYCL benchmarks you require the syclcc scripts from https://githu
 You will also require the ComputeCpp SYCL compiler. The benchmarks have been tested and compile with ComputeCpp Versions 0.2.1 to 0.5.1 on Ubuntu. The benchmarks work best with versions 0.3.2 and above.
 
 Ubuntu Steps: 
-1) Add the DAGR library to your usr/include folder or your path
-2) Create an environment variable COMPUTECPP that points to your ComputeCpp directory
-3) Add the root of the syclcc installation directory to your PATH
-(Further information for steps 2 and 3 can be found in the syclcc readme).
-4) Set the CXX environment variable inside the SLAMBench build folder to syclcc and then invoke CMake.
+1) Add the DAGR library to your usr/include folder or set an environment variable called DAGR_INCLUDE_PATH to its location.
+2) Create an environment variable COMPUTECPP that points to your ComputeCpp root directory.
+3) Add the root of the syclcc installation directory to your PATH.
+   (Further information for steps 2 and 3 can be found in the syclcc readme).
+4) Set the CXX environment variable to syclcc and then invoke CMake.
 5) Compile the desired sycl modules using make; for example make kfusion-qt-sycl
 
-The CMake commands for building the module inside a build subdirectory of the root SLAMBench directory:
+The CMake commands for building the module inside a subdirectory of the SLAMBench root directory:
 
 ```
 #!
@@ -123,7 +123,7 @@ make kfusion-benchmark-sycl
 make kfusion-qt-sycl
 ```
 
-Afterwards set the CXX variable back to g++ and invoke cmake again to compile other modules.
+Afterwards you can set the CXX variable back to your usual C++ compiler and invoke CMake again to compile other modules.
 
 ```
 #!
