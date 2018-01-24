@@ -1,6 +1,6 @@
 /*
 
- Copyright (c) 2015 Paul Keir, University of the West of Scotland.
+ Copyright (c) 2015-2018 Paul Keir, University of the West of Scotland.
  This code is licensed under the MIT License.
 
  */
