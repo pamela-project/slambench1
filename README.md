@@ -62,7 +62,7 @@ sudo apt-get install cmake
 * OpenMP : for the OpenMP version
 * CUDA : for the CUDA version
 * OpenCL : for the OpenCL version (OpenCL 1.1 or greater)
-* ComputeCpp & [syclcc](https://github.com/agozillon/SYCLCC) : for the SYCL version (ComputeCpp 0.3.0 or greater) 
+* ComputeCpp & [syclcc](https://github.com/agozillon/syclcc) : for the SYCL version (ComputeCpp 0.3.0 or greater) 
 
 * OpenGL / GLUT : used by the graphical interface
 * OpenNI : for the live mode, and for `oni2raw` tool (which convert an OpenNI file to the SLAMBench internal format)
@@ -102,18 +102,19 @@ CMAKE_PREFIX_PATH=~/.local/qt/ make
 
 #### Compilation of SYCL Module ####
 
-To compile the SYCL benchmarks you require the syclcc scripts from https://github.com/agozillon/syclcc as well as the DAGR DSL https://github.com/agozillon/dagr. 
+To compile the SYCL benchmarks you require the syclcc scripts from https://github.com/agozillon/syclcc as well as the DAGR DSL at https://github.com/agozillon/dagr. 
 
-You will also require the ComputeCpp SYCL compiler. The benchmarks have been tested and compile with ComputeCpp Versions 0.2.1 to 0.5.0 on Ubuntu. The benchmarks work best with versions 0.3.2 and above.
+You will also require the ComputeCpp SYCL compiler. The benchmarks have been tested and compile with ComputeCpp Versions 0.2.1 to 0.5.1 on Ubuntu. The benchmarks work best with versions 0.3.2 and above.
 
 Ubuntu Steps: 
 1) Add the DAGR library to your usr/include folder or your path
-2) Create an enviornment variable SYCL_CC_PATH that points to your SYCLCC folder   
-3) Create an enviornment variable COMPUTECPP that points to your ComputeCpp directory (Further information for steps 2 and 3 can be found in the syclcc readme).
-4) Add the ComputeCpp include/SYCL folder and lib/libComputeCpp.so to your path (or usr/include and usr/lib)
-5) Set the CXX environment variable inside the SLAMBench build folder to syclcc and then invoke cmake, afterwards compilation of the sycl modules should be possible. Provided the syclcc script is found (step 2) and correctly linked to your chosen release version of ComputeCpp (step 3). 
+2) Create an environment variable COMPUTECPP that points to your ComputeCpp directory
+3) Add the root of the syclcc installation directory to your PATH
+(Further information for steps 2 and 3 can be found in the syclcc readme).
+4) Set the CXX environment variable inside the SLAMBench build folder to syclcc and then invoke CMake.
+5) Compile the desired sycl modules using make; for example make kfusion-qt-sycl
 
-The CMAKE commands for building the module inside a build directory at the route of SLAMBench:
+The CMake commands for building the module inside a build subdirectory of the root SLAMBench directory:
 
 ```
 #!
@@ -122,7 +123,7 @@ make kfusion-benchmark-sycl
 make kfusion-qt-sycl
 ```
 
-Afterwards set the CXX variable back to g++ and invoke cmake again to compile other modules without trouble. 
+Afterwards set the CXX variable back to g++ and invoke cmake again to compile other modules.
 
 ```
 #!
