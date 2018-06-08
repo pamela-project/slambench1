@@ -165,7 +165,7 @@ struct Volume {
 
 	float2 operator[](/*const*/ uint3 & pos) /*const*/ {
 		/*const*/ short2 d = data[pos.x() + pos.y() * size.x() + pos.z() * size.x() * size.y()];
-		return make_float2(d.x() * 0.00003051944088f, d.y()); //  / 32766.0f
+		return make_float2(((short)d.x()) * 0.00003051944088f, d.y()); //  / 32766.0f
 	}
 
 	float v(/*const*/ uint3 & pos) /*const*/ {
@@ -182,23 +182,23 @@ struct Volume {
 	void setints(const unsigned x, const unsigned y, const unsigned z,
                /*const*/ float2 &d) {
     data[x + y * size.x() + z * size.x() * size.y()] =
-      make_short2(d.x() * 32766.0f, d.y());
+      make_short2((float)d.x() * 32766.0f, (float)d.y());
 	}
 
 	void set(/*const*/ uint3 & pos, /*const*/ float2 & d) {
 		data[pos.x() + pos.y() * size.x() + pos.z() * size.x() * size.y()] =
-      make_short2(d.x() * 32766.0f, d.y());
+      make_short2((float)d.x() * 32766.0f, (float)d.y());
 	}
 	float3 pos(/*const*/ uint3 & p) /*const*/ {
-		return make_float3((p.x() + 0.5f) * dim.x() / size.x(),
-				(p.y() + 0.5f) * dim.y() / size.y(), (p.z() + 0.5f) * dim.z() / size.z());
+		return make_float3(((uint)p.x() + 0.5f) * dim.x() / size.x(),
+				((uint)p.y() + 0.5f) * dim.y() / size.y(), ((uint)p.z() + 0.5f) * dim.z() / size.z());
 	}
 
 	float interp(/*const*/ float3 & pos) /*const*/ {
 
-		const float3 scaled_pos = make_float3((pos.x() * size.x() / dim.x()) - 0.5f,
-				(pos.y() * size.y() / dim.y()) - 0.5f,
-				(pos.z() * size.z() / dim.z()) - 0.5f);
+		const float3 scaled_pos = make_float3((((float)pos.x()) * ((uint)size.x()) / ((float)dim.x())) - 0.5f,
+				(((float)pos.y()) * ((uint)size.y()) / ((float)dim.y())) - 0.5f,
+				(((float)pos.z()) * ((uint)size.z()) / ((float)dim.z())) - 0.5f);
 		const int3 base = make_int3(floorf(scaled_pos));
 		/*const*/ float3 factor = fracf(scaled_pos);
 		/*const*/ int3 lower = max(base, make_int3(0));
@@ -219,9 +219,9 @@ struct Volume {
 	}
 
 	float3 grad(/*const*/ float3 & pos) /*const*/ {
-		const float3 scaled_pos = make_float3((pos.x() * size.x() / dim.x()) - 0.5f,
-				(pos.y() * size.y() / dim.y()) - 0.5f,
-				(pos.z() * size.z() / dim.z()) - 0.5f);
+		const float3 scaled_pos = make_float3(((float)pos.x()) * ((uint)size.x()) / ((float)dim.x()) - 0.5f,
+				(((float)pos.y()) * ((uint)size.y()) / ((float)dim.y())) - 0.5f,
+				(((float)pos.z()) * ((uint)size.z()) / ((float)dim.z())) - 0.5f);
 		const int3 base = make_int3(floorf(scaled_pos));
 		/*const*/ float3 factor = fracf(scaled_pos);
 		/*const*/ int3 lower_lower = max(base - make_int3(1), make_int3(0));
@@ -302,14 +302,14 @@ struct Volume {
 										* factor.x()) * factor.y()) * factor.z();
 
 		return gradient
-				* make_float3(dim.x() / size.x(), dim.y() / size.y(), dim.z() / size.z())
+				* make_float3(((float)dim.x()) / ((uint)size.x()), ((float)dim.y()) / ((uint)size.y()), ((float)dim.z()) / ((uint)size.z()))
 				* (0.5f * 0.00003051944088f);
 	}
 
 	void init(uint3 s, float3 d) {
 		size = s;
 		dim = d;
-		data = (short2 *) malloc(size.x() * size.y() * size.z() * sizeof(short2));
+		data = (short2 *) malloc(((uint)size.x()) * ((uint)size.y()) * ((uint)size.z()) * sizeof(short2));
 		assert(data != NULL);
 
 	}
@@ -517,7 +517,7 @@ inline void compareNormal(std::string str, float3* l, float3 * r, uint size) {
 			std::cout << "Error into " << str << " at " << i << std::endl;
 			std::cout << "l.x() =  " << l[i].x() << std::endl;
 			std::cout << "r.x() =  " << r[i].x() << std::endl;
-		} else if (r[i].x() != static_cast<float>(KFUSION_INVALID)) {
+		} else if (((float)r[i].x()) != static_cast<float>(KFUSION_INVALID)) {
 			if (std::abs(l[i].y() - r[i].y()) > epsilon) {
 				std::cout << "Error into " << str << " at " << i << std::endl;
 				std::cout << "l.y() =  " << l[i].y() << std::endl;

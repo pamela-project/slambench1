@@ -467,8 +467,8 @@ struct Configuration {
 				std::cerr << "update map_size to " << this->volume_size.x()
 						<< "mx" << this->volume_size.y() << "mx"
 						<< this->volume_size.z() << "m" << std::endl;
-				if ((this->volume_size.x() <= 0) || (this->volume_size.y() <= 0)
-						|| (this->volume_size.z() <= 0)) {
+				if ((((float)this->volume_size.x()) <= 0.0f) || (((float)this->volume_size.y()) <= 0.0f)
+						|| (((float)this->volume_size.z()) <= 0.0f)) {
 #else
 				std::cerr << "update map_size to " << this->volume_size.x
 						<< "mx" << this->volume_size.y << "mx"
@@ -499,9 +499,9 @@ struct Configuration {
 						<< this->volume_resolution.x() << "x"
 						<< this->volume_resolution.y() << "x"
 						<< this->volume_resolution.z() << std::endl;
-				if ((this->volume_resolution.x() <= 0)
-						|| (this->volume_resolution.y() <= 0)
-						|| (this->volume_resolution.z() <= 0)) {
+				if ((((unsigned int)this->volume_resolution.x()) <= static_cast<unsigned int>(0))
+						|| (((unsigned int)this->volume_resolution.y()) <= static_cast<unsigned int>(0))
+						|| (((unsigned int)this->volume_resolution.z()) <= static_cast<unsigned int>(0))) {
 #else
 						<< this->volume_resolution.x << "x"
 						<< this->volume_resolution.y << "x"

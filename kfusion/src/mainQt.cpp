@@ -115,8 +115,8 @@ int main(int argc, char ** argv) {
 			(reader != NULL) ? reader->getinputSize() : make_uint2(640, 480);
 #ifdef SYCL
   uint2 computationSize = make_uint2(
-			inputSize.x() / config.compute_size_ratio,
-			inputSize.y() / config.compute_size_ratio);
+			((uint)inputSize.x()) / config.compute_size_ratio,
+			((uint)inputSize.y()) / config.compute_size_ratio);
 #else
 	const uint2 computationSize = make_uint2(
 			inputSize.x / config.compute_size_ratio,

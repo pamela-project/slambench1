@@ -307,9 +307,9 @@ void qtLinkKinectQt(int argc, char *argv[], Kfusion **_kfusion,
 	reader_pp = _depthReader;
 	trans = SE3<float>(
 #ifdef SYCL
-			makeVector(config->initial_pos_factor.x() * config->volume_size.x(),
-                 config->initial_pos_factor.y() * config->volume_size.x(),
-                 config->initial_pos_factor.z() * config->volume_size.x(),
+			makeVector(((float)config->initial_pos_factor.x()) * ((float)config->volume_size.x()),
+					((float)config->initial_pos_factor.y()) * ((float)config->volume_size.x()),
+					((float)config->volume_size.x()) * ((float)config->initial_pos_factor.z()),
 #else
 			makeVector(config->initial_pos_factor.x * config->volume_size.x,
                  config->initial_pos_factor.y * config->volume_size.x,

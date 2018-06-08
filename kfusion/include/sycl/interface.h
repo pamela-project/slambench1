@@ -142,10 +142,10 @@ public:
 	inline bool readNextDepthFrame(uchar3*, unsigned short int * depthMap) {
 
 		float* FloatdepthMap = (float*) malloc(
-				_size.x() * _size.y() * sizeof(float));
+				((uint)_size.x()) * ((uint)_size.y()) * sizeof(float));
 		bool res = readNextDepthFrame(FloatdepthMap);
 
-		for (unsigned int i = 0; i < _size.x() * _size.y(); i++) {
+		for (unsigned int i = 0; i < ((uint)_size.x()) * ((uint)_size.y()); i++) {
 			depthMap[i] = FloatdepthMap[i] * 1000.0f;
 		}
 		free(FloatdepthMap);
@@ -232,8 +232,8 @@ public:
 		unsigned int size_of_frame = (sizeof(unsigned int) * 2 + _size.x() * _size.y() * sizeof(unsigned short int) );
 #else
 		unsigned int size_of_frame = (sizeof(unsigned int) * 4
-				+ _size.x() * _size.y() * sizeof(unsigned short int)
-				+ _size.x() * _size.y() * 3/*sizeof(uchar3)*/);
+				+ ((uint)_size.x()) * ((uint)_size.y()) * sizeof(unsigned short int)
+				+ ((uint)_size.x()) * ((uint)_size.y()) * 3/*sizeof(uchar3)*/);
     // PGK: sizeof an openCL/SYCL uchar3 is 4, but disk data is chunked in 3s
 #endif
 		fseek(_pFile, size_of_frame * _frame, SEEK_SET);
@@ -296,10 +296,10 @@ public:
 	inline bool readNextDepthFrame(float * depthMap) {
 
 		unsigned short int* UintdepthMap = (unsigned short int*) malloc(
-				_size.x() * _size.y() * sizeof(unsigned short int));
+				((uint)_size.x()) * ((uint)_size.y()) * sizeof(unsigned short int));
 		bool res = readNextDepthFrame(NULL, UintdepthMap);
 
-		for (unsigned int i = 0; i < _size.x() * _size.y(); i++) {
+		for (unsigned int i = 0; i < ((uint)_size.x()) * ((uint)_size.y()); i++) {
 			depthMap[i] = (float) UintdepthMap[i] / 1000.0f;
 		}
 		free(UintdepthMap);

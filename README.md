@@ -118,7 +118,7 @@ The CMake commands for building the module inside a subdirectory of the SLAMBenc
 
 ```
 #!
-export CXX=syclcc && cmake../
+export CXX=syclcc && cmake ../
 make kfusion-benchmark-sycl
 make kfusion-qt-sycl
 ```
@@ -127,7 +127,7 @@ Afterwards you can set the CXX variable back to your usual C++ compiler and invo
 
 ```
 #!
-export CXX=g++ && cmake../
+export CXX=g++ && cmake ../
 make kfusion-benchmark-cpp
 ```
 

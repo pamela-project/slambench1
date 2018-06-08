@@ -5,7 +5,7 @@
 
  */
 #include <SYCL/sycl.hpp>
-#include <dagr/dagr.hpp>
+#include <dagr/dagr/dagr.hpp>
 #include <kernels.h>
 
 // input once
@@ -40,8 +40,8 @@ const float inv_32766 = 0.00003051944088f;
 
 void Kfusion::languageSpecificConstructor() {
 
-  const auto csize = computationSize.x() * computationSize.y();
-
+  const uint csize = computationSize.x() * computationSize.y();
+  
   using f_buf  = buffer<float,1>;
   using f3_buf = buffer<float3,1>;
 	ocl_FloatDepth = new f_buf(range<1>{csize});
@@ -73,7 +73,7 @@ void Kfusion::languageSpecificConstructor() {
   ocl_gaussian = new buffer<float,1>(gaussian, range<1>{gaussianS});
 	// ********* END : Generate the gaussian *************
 
-  const auto vsize = volumeResolution.x() *
+  const uint vsize = volumeResolution.x() *
                      volumeResolution.y() * volumeResolution.z();
   ocl_volume_data = new buffer<short2>(range<1>{vsize});
 
@@ -156,7 +156,7 @@ static void k(item<3> ix, T *data)
   float2 d{1.0f,0.0f};
 
   data[x + y * size.x() + z * size.x() * size.y()] =
-    short2{d.x() * 32766.0f, d.y()};
+    short2{((float)d.x()) * 32766.0f, d.y()};
 }
 
 }; // struct
@@ -170,10 +170,10 @@ static void k(item<2> ix, T *out, const T *in, const T *gaussian,
   /*const*/ uint2 pos{ix[0],ix[1]};
   /*const*/ uint2 size{ix.get_range()[0], ix.get_range()[1]};
 
-  const float center = in[pos.x() + size.x() * pos.y()];
+  const float center = in[((uint)pos.x()) + ((uint)size.x()) * ((uint)pos.y())];
 
   if ( center == 0 ) {
-    out[pos.x() + size.x() * pos.y()] = 0;
+    out[((uint)pos.x()) + ((uint)size.x()) * ((uint)pos.y())] = 0;
     return;
   }
 
@@ -182,8 +182,8 @@ static void k(item<2> ix, T *out, const T *in, const T *gaussian,
   for (int i = -r; i <= r; ++i) {
     for (int j = -r; j <= r; ++j) {
       // n.b. unsigned + signed is unsigned! Bug in OpenCL C version?
-      const int px = pos.x()+i; const int sx = size.x()-1;
-      const int py = pos.y()+i; const int sy = size.y()-1;
+      const int px = ((uint)pos.x())+i; const int sx = ((uint)size.x())-1;
+      const int py = ((uint)pos.y())+i; const int sy = ((uint)size.y())-1;
       const int curPosx = clamp(px,0,sx);
       const int curPosy = clamp(py,0,sy);
       const float curPix = in[curPosx + curPosy * size.x()];
@@ -199,7 +199,7 @@ static void k(item<2> ix, T *out, const T *in, const T *gaussian,
       }
     }
   } 
-  out[pos.x() + size.x() * pos.y()] = t / sum;
+  out[((uint)pos.x()) + ((uint)size.x()) * ((uint)pos.y())] = t / sum;
 }
 
 };
@@ -213,24 +213,24 @@ inline float3 Mat4TimeFloat3(/*const*/ Matrix4 M, const float3 v) {
 
 template <typename T>
 inline void setVolume(Volume<T> v, uint3 pos, float2 d) {
-	v.data[pos.x() +
-         pos.y() * v.size.x() +
-         pos.z() * v.size.x() * v.size.y()] = short2{d.x() * 32766.0f, d.y()};
+	v.data[((uint)pos.x()) +
+		   ((uint)pos.y()) * ((uint)v.size.x()) +
+           ((uint)pos.z()) * ((uint)v.size.x()) * ((uint)v.size.y())] = short2{((float)d.x()) * 32766.0f, d.y()};
 }
 
 template <typename T>
 inline float3 posVolume(/*const*/ Volume<T> v, /*const*/ uint3 p) {
-	return float3{(p.x() + 0.5f) * v.dim.x() / v.size.x(),
-                (p.y() + 0.5f) * v.dim.y() / v.size.y(),
-                (p.z() + 0.5f) * v.dim.z() / v.size.z()};
+	return float3{(((uint)p.x()) + 0.5f) * v.dim.x() / v.size.x(),
+                (((uint)p.y()) + 0.5f) * v.dim.y() / v.size.y(),
+                (((uint)p.z()) + 0.5f) * v.dim.z() / v.size.z()};
 }
 
 template <typename T>
 inline float2 getVolume(/*const*/ Volume<T> v, /*const*/ uint3 pos) {
-  /*const*/ short2 d = v.data[pos.x() +   // Making d a ref fixes it.
-                              pos.y() * v.size.x() +
-                              pos.z() * v.size.x() * v.size.y()];
-	return float2{d.x() * inv_32766, d.y()};
+  /*const*/ short2 d = v.data[((uint)pos.x()) +   // Making d a ref fixes it.
+                              ((uint)pos.y()) * ((uint)v.size.x()) +
+                              ((uint)pos.z()) * ((uint)v.size.x()) * ((uint)v.size.y())];
+	return float2{((short)d.x()) * inv_32766, d.y()};
 }
 
 struct depth2vertexKernel {
@@ -243,7 +243,7 @@ static void k(item<2> ix, T *vertex, const U *depth, const Matrix4 invK)
   float3 vert{ix[0],ix[1],1.0f};
   float3 res{0,0,0};
 
-  float elem = depth[pixel.x() + ix.get_range()[0] * pixel.y()];
+  float elem = depth[((uint)pixel.x()) + ix.get_range()[0] * ((uint)pixel.y())];
   if (elem > 0) {
     float3 tmp3{pixel.x(), pixel.y(), 1.f};
 //          res = elem * rotate(invK, tmp3); // SYCL needs this (*) operator
@@ -256,7 +256,7 @@ static void k(item<2> ix, T *vertex, const U *depth, const Matrix4 invK)
   // cl::sycl::vstore3(res, pixel.x() + ix.get_range()[0] * pixel.y(),vertex); 	// vertex[pixel] = 
   // This use of 4*32 bits data is fine; but if copied back, ensure data
   // is similarly aligned
-  vertex[pixel.x() + ix.get_range()[0] * pixel.y()] = res;
+  vertex[((uint)pixel.x()) + ix.get_range()[0] * ((uint)pixel.y())] = res;
 }
 
 }; // struct
@@ -282,21 +282,21 @@ static void k(item<2> ix, T *normal, const T *verte_)
   uint2    vup{pixel.x(),                           max((int)(pixel.y())-1,0)};
   uint2  vdown{pixel.x(),   min((int)(pixel.y())+1, (int)ix.get_range()[1]-1)};
 
-  /*const*/ float3 left  = vertex[vleft.x()  + ix.get_range()[0] * vleft.y()];
-  /*const*/ float3 right = vertex[vright.x() + ix.get_range()[0] * vright.y()];
-  /*const*/ float3 up    = vertex[vup.x()    + ix.get_range()[0] * vup.y()];
-  /*const*/ float3 down  = vertex[vdown.x()  + ix.get_range()[0] * vdown.y()];
+  /*const*/ float3 left  = vertex[((uint)vleft.x())  + ix.get_range()[0] * ((uint)vleft.y())];
+  /*const*/ float3 right = vertex[((uint)vright.x()) + ix.get_range()[0] * ((uint)vright.y())];
+  /*const*/ float3 up    = vertex[((uint)vup.x())    + ix.get_range()[0] * ((uint)vup.y())];
+  /*const*/ float3 down  = vertex[((uint)vdown.x())  + ix.get_range()[0] * ((uint)vdown.y())];
 
   if (left.get_value(2) == 0 || right.get_value(2) == 0 || up.get_value(2) == 0 || down.get_value(2) == 0) {
     const float3 invalid3{KFUSION_INVALID,KFUSION_INVALID,KFUSION_INVALID};
-    normal[pixel.x() + ix.get_range()[0] * pixel.y()] = invalid3;
+    normal[((uint)pixel.x()) + ix.get_range()[0] * ((uint)pixel.y())] = invalid3;
     return;
   }
 
   const float3 dxv = right - left;
   const float3 dyv = down  - up;
 
-  normal[pixel.x() + ix.get_range()[0] * pixel.y()] = normalize(cross(dyv,dxv));
+  normal[((uint)pixel.x()) + ix.get_range()[0] * ((uint)pixel.y())] = normalize(cross(dyv,dxv));
 }
 
 }; // struct
@@ -402,34 +402,34 @@ static void k(item<2> ix, T *output,      /*const*/ uint2 outputSize,
   const float3 *refNormal = refNorma_; // ""
   uint2 pixel{ix[0],ix[1]};
      
-  TrackData &row = output[pixel.x() + outputSize.x() * pixel.y()];
+  TrackData &row = output[((uint)pixel.x()) + ((uint)outputSize.x()) * ((uint)pixel.y())];
  
-  float3 inNormalPixel = inNormal[pixel.x() + ix.get_range()[0] * pixel.y()]; 
+  float3 inNormalPixel = inNormal[((uint)pixel.x()) + ix.get_range()[0] * ((uint)pixel.y())]; 
   if (inNormalPixel.get_value(0) == KFUSION_INVALID) {
     row.result = -1;
     return;
   }  
   
-  float3 inVertexPixel = inVertex[pixel.x() + ix.get_range()[0] * pixel.y()];
+  float3 inVertexPixel = inVertex[((uint)pixel.x()) + ix.get_range()[0] * ((uint)pixel.y())];
   /*const*/ float3 projectedVertex = Mat4TimeFloat3(Ttrack, inVertexPixel);
   /*const*/ float3 projectedPos    = Mat4TimeFloat3(view, projectedVertex);
-  /*const*/ float2 projPixel{projectedPos.x() / projectedPos.z() + 0.5f,
-                             projectedPos.y() / projectedPos.z() + 0.5f};
-  if (projPixel.x() < 0.0f || projPixel.x() > static_cast<float>(outputSize.x()-1) ||
-      projPixel.y() < 0.0f || projPixel.y() > static_cast<float>(outputSize.y()-1)) {
+  /*const*/ float2 projPixel{((float)projectedPos.x()) / ((float)projectedPos.z()) + 0.5f,
+                             ((float)projectedPos.y()) / ((float)projectedPos.z()) + 0.5f};
+  if (((float)projPixel.x()) < 0.0f || ((float)projPixel.x()) > static_cast<float>(((uint)outputSize.x())-1) ||
+      ((float)projPixel.y()) < 0.0f || ((float)projPixel.y()) > static_cast<float>(((uint)outputSize.y())-1)) {
     row.result = -2;
     return;
   }
 
    /*const*/ uint2 refPixel{projPixel.x(), projPixel.y()};
    /*const*/ float3 referenceNormal =
-    refNormal[refPixel.x() + outputSize.x() * refPixel.y()];
+    refNormal[((uint)refPixel.x()) + ((uint)outputSize.x()) * ((uint)refPixel.y())];
   if (referenceNormal.get_value(0) == KFUSION_INVALID) {
     row.result = -3;
     return;
   }
 
-  const float3 diff = refVertex[refPixel.x() + outputSize.x() * refPixel.y()] -
+  const float3 diff = refVertex[((uint)refPixel.x()) + ((uint)outputSize.x()) * ((uint)refPixel.y())] -
                       projectedVertex; 
   const float3 projectedNormal = rotate(Ttrack, inNormalPixel);
 
@@ -474,8 +474,8 @@ static void k(item<2> ix, T *depth, /*const*/ uint2 depthSize,
               const U *in, /*const*/ uint2 inSize, const int ratio)
 {
   uint2 pixel{ix[0],ix[1]};
-  depth[pixel.x() + depthSize.x() * pixel.y()] =
-    in[pixel.x() * ratio + inSize.x() * pixel.y() * ratio] / 1000.0f;
+  depth[((uint)pixel.x()) + ((uint)depthSize.x()) * ((uint)pixel.y())] =
+    in[((uint)pixel.x()) * ratio + ((uint)inSize.x()) * ((uint)pixel.y()) * ratio] / 1000.0f;
 //  depth[ix] = in[ ix.get()*ratio ] / 1000.0f;
 }
 
@@ -488,27 +488,27 @@ static void k(item<2> ix, T *out, const T *in,
               /*const*/ uint2 inSize, const float e_d, const int r)
 {
   uint2 pixel{ix[0],ix[1]};
-  uint2 outSize{inSize.x() / 2, inSize.y() / 2};
+  uint2 outSize{((uint)inSize.x()) / 2, ((uint)inSize.y()) / 2};
 
   /*const*/ uint2 centerPixel{2*pixel.x(), 2*pixel.y()};
 
   float sum = 0.0f;
   float t   = 0.0f;
-  const float center = in[centerPixel.x()+centerPixel.y()*inSize.x()];
+  const float center = in[((uint)centerPixel.x())+((uint)centerPixel.y())*((uint)inSize.x())];
   for(int i = -r + 1; i <= r; ++i) {
     for(int j = -r + 1; j <= r; ++j) {
-      const int2 x{centerPixel.x()+j, centerPixel.y()+i};
+      const int2 x{((uint)centerPixel.x())+j, ((uint)centerPixel.y())+i};
       const int2 minval{0,0};
-      const int2 maxval{inSize.x()-1, inSize.y()-1};
+      const int2 maxval{((uint)inSize.x())-1, ((uint)inSize.y())-1};
             int2 from{clamp(x,minval,maxval)};
-      float current = in[from.x() + from.y() * inSize.x()];
+      float current = in[((int)from.x()) + ((int)from.y()) * ((uint)inSize.x())];
       if (cl::sycl::fabs(current - center) < e_d) {
         sum += 1.0f;
         t += current;
       }
     }
   }
-  out[pixel.x() + pixel.y() * outSize.x()] = t / sum;
+  out[((uint)pixel.x()) + ((uint)pixel.y()) * ((uint)outSize.x())] = t / sum;
 }
 
 }; // struct
@@ -531,21 +531,21 @@ static void k(I ix, T *v_data, const uint3 v_size, const float3 v_dim,
   float3 pos     = Mat4TimeFloat3(invTrack, posVolume(vol,pix));
   float3 cameraX = Mat4TimeFloat3(K, pos);
 
-  for (pix.z() = 0; pix.z() < vol.size.z();
-         pix.z() = pix.z()+1, pos += delta, cameraX += cameraDelta)
+  for (pix.z() = 0; ((uint)pix.z()) < ((uint)vol.size.z());
+         pix.z() = ((uint)pix.z())+1, pos += delta, cameraX += cameraDelta)
   {
-    if (pos.z() < 0.0001f) // some near plane constraint
+    if (((float)pos.z()) < 0.0001f) // some near plane constraint
       continue;
 
     /*const*/ float2 pixel{cameraX.x()/cameraX.z() + 0.5f,
                            cameraX.y()/cameraX.z() + 0.5f};
 
-    if (pixel.x() < 0.0f || pixel.x() > static_cast<float>(depthSize.x()-1) ||
-        pixel.y() < 0.0f || pixel.y() > static_cast<float>(depthSize.y()-1))
+    if (((float)pixel.x()) < 0.0f || ((float)pixel.x()) > static_cast<float>(((uint)depthSize.x())-1) ||
+        ((float)pixel.y()) < 0.0f || ((float)pixel.y()) > static_cast<float>(((uint)depthSize.y())-1))
       continue;
 
     /*const*/ uint2 px{pixel.x(), pixel.y()};
-    float depthpx = depth[px.x() + depthSize.x() * px.y()];
+    float depthpx = depth[((uint)px.x()) + ((uint)depthSize.x()) * ((uint)px.y())];
 
     if (depthpx == 0)
       continue;
@@ -557,8 +557,8 @@ static void k(I ix, T *v_data, const uint3 v_size, const float3 v_dim,
     {
       const float sdf = cl::sycl::fmin(1.f, diff/mu);
       float2 data = getVolume(vol,pix);
-      data.x() = clamp((data.y()*data.x() + sdf)/(data.y() + 1),-1.f,1.f);
-      data.y() = cl::sycl::fmin(data.y()+1, maxweight);
+      data.x() = clamp((data.y()*data.x() + sdf)/(((float)data.y()) + 1),-1.f,1.f);
+      data.y() = cl::sycl::fmin(((float)data.y())+1, maxweight);
       setVolume(vol,pix,data);
     }
   }
@@ -589,17 +589,17 @@ static void k(item<2> ix, T *pos3D, T *normal, U *v_data,
   // better approach - also used by the OpenCL version.
   const float3 invalid3{KFUSION_INVALID,KFUSION_INVALID,KFUSION_INVALID};
 
-  if (hit.w() > 0.0f) {
-    pos3D[pos.x() + sizex * pos.y()] = test;
+  if (((float)hit.w()) > 0.0f) {
+    pos3D[((uint)pos.x()) + sizex * ((uint)pos.y())] = test;
     float3 surfNorm = grad(test,volume);
     if (cl::sycl::length(surfNorm) == 0)
-      normal[pos.x() + sizex * pos.y()] = invalid3;
+      normal[((int)pos.x() + sizex * pos.y())] = invalid3;
     else
-      normal[pos.x() + sizex * pos.y()] = cl::sycl::normalize(surfNorm);
+      normal[((int)pos.x() + sizex * pos.y())] = cl::sycl::normalize(surfNorm);
   }
   else {
-    pos3D [pos.x() + sizex * pos.y()] = float3{0,0,0};
-    normal[pos.x() + sizex * pos.y()] = invalid3;
+    pos3D [((int)pos.x() + sizex * pos.y())] = float3{0,0,0};
+    normal[((int)pos.x() + sizex * pos.y())] = invalid3;
   }
 
 }
@@ -632,7 +632,7 @@ bool checkPoseKernel(Matrix4 & pose, Matrix4 oldPose, const float * output,
 	TooN::Matrix<8, 32, const float, TooN::Reference::RowMajor> values(output);
 
 	if ((std::sqrt(values(0, 0) / values(0, 28)) > 2e-2)
-			|| (values(0, 28) / (imageSize.x() * imageSize.y()) < track_threshold)) {
+			|| (values(0, 28) / (((uint)imageSize.x()) * ((uint)imageSize.y())) < track_threshold)) {
 		pose = oldPose;
 		return false;
 	} else {
@@ -720,7 +720,7 @@ static void k(item<2> ix, T *render, U *v_data, const uint3 v_size,
 
   float4 hit = raycast(v, pos, view, nearPlane, farPlane, step, largestep);
 
-	if (hit.w() > 0.0f) {
+	if (((float)hit.w()) > 0.0f) {
     const float3 test{hit.x(),hit.y(),hit.z()}; // as_float3(hit);
 		float3 surfNorm   = grad(test,v);
 
@@ -730,12 +730,12 @@ static void k(item<2> ix, T *render, U *v_data, const uint3 v_size,
       const float dir      = cl::sycl::fmax(dot(normalize(surfNorm), diff), 0.f);
             
       /*const*/ float3 col = clamp(make_float3(dir)+ambient,make_float3(0.f),make_float3(1.f)) * 255;
-      render[pos.x() + sizex * pos.y()] = uchar4{col.x(),col.y(),col.z(),0};
+      render[((int)pos.x() + sizex * pos.y())] = uchar4{col.x(),col.y(),col.z(),0};
 		} else {
-      render[pos.x() + sizex * pos.y()] = uchar4{0,0,0,0};
+      render[((int)pos.x() + sizex * pos.y())] = uchar4{0,0,0,0};
 		}
 	} else {
-      render[pos.x() + sizex * pos.y()] = uchar4{0,0,0,0};
+      render[((int)pos.x() + sizex * pos.y())] = uchar4{0,0,0,0};
 	}
 }
 
@@ -746,25 +746,25 @@ bool Kfusion::preprocessing(const uint16_t *inputDepth, /*const*/ uint2 inSize)
 	uint2 outSize = computationSize;
 
 	// Check for unsupported conditions
-	if ((inSize.x() < outSize.x()) || (inSize.y() < outSize.y())) {
+	if ((((uint)inSize.x()) < ((uint)outSize.x())) || (((uint)inSize.y()) < ((uint)outSize.y()))) {
 		std::cerr << "Invalid ratio." << std::endl;
 		exit(1);
 	}
-	if ((inSize.x() % outSize.x() != 0) || (inSize.y() % outSize.y() != 0)) {
+	if ((((uint)inSize.x()) % ((uint)outSize.x()) != 0) || (((uint)inSize.y()) % ((uint)outSize.y()) != 0)) {
 		std::cerr << "Invalid ratio." << std::endl;
 		exit(1);
 	}
-	if ((inSize.x() / outSize.x() != inSize.y() / outSize.y())) {
+	if ((((uint)inSize.x()) / ((uint)outSize.x()) != ((uint)inSize.y()) / ((uint)outSize.y()))) {
 		std::cerr << "Invalid ratio." << std::endl;
 		exit(1);
 	}
 
-	int ratio = inSize.x() / outSize.x();
+	int ratio = ((uint)inSize.x()) / ((uint)outSize.x());
 
   const auto r = range<2>{outSize.x(),outSize.y()};
 
   dagr::run<mm2metersKernel,0>(q, r, *ocl_FloatDepth, outSize,
-	  dagr::ro(buffer<uint16_t,1>(inputDepth, range<1>{inSize.x() * inSize.y()})),
+	  dagr::ro(buffer<uint16_t,1>(inputDepth, range<1>{((uint)inSize.x()) * ((uint)inSize.y())})),
     inSize, ratio);
 
   dagr::run<bilateralFilterKernel,0>(q, r, *ocl_ScaledDepth[0],
@@ -781,13 +781,13 @@ bool Kfusion::tracking(float4 k, float icp_threshold,
 
 	// half sample the input depth maps into the pyramid levels
 	for (unsigned int i = 1; i < iterations.size(); ++i) {
-		cl::sycl::uint2 outSize{computationSize.x() / (int) ::pow(2, i),
-                            computationSize.y() / (int) ::pow(2, i)};
+		cl::sycl::uint2 outSize{((uint)computationSize.x()) / (int) ::pow(2, i),
+                            ((uint)computationSize.y()) / (int) ::pow(2, i)};
 
     auto r   = range<2>{outSize.x(),outSize.y()};
     auto out = dagr::wo(*ocl_ScaledDepth[i  ]);
     auto in  = dagr::ro(*ocl_ScaledDepth[i-1]);
-		uint2 inSize{outSize.x()*2,outSize.y()*2}; // Seems redundant
+		uint2 inSize{((uint)outSize.x())*2,((uint)outSize.y())*2}; // Seems redundant
     dagr::run<halfSampleRobustImageKernel,0>(q,r,out,in,inSize,e_delta*3,1);
 	}
 	
@@ -804,7 +804,7 @@ bool Kfusion::tracking(float4 k, float icp_threshold,
     dagr::run<vertex2normalKernel,0>(q, imageSize2,
                *ocl_inputNormal[i], dagr::wo(*ocl_inputVertex[i]));
 
-		localimagesize = make_uint2(localimagesize.x() / 2, localimagesize.y() / 2);
+		localimagesize = make_uint2(((uint)localimagesize.x()) / 2, ((uint)localimagesize.y()) / 2);
 	}
 
 	oldPose = pose;
@@ -854,16 +854,16 @@ bool Kfusion::tracking(float4 k, float icp_threshold,
 
 template <typename T>
 inline float vs(/*const*/ uint3 pos, /*const*/ Volume<T> v) {
-	return v.data[pos.x() +
-                pos.y() * v.size.x() +
-                pos.z() * v.size.x() * v.size.y()].x();
+	return v.data[((uint)pos.x()) +
+                  ((uint)pos.y()) * ((uint)v.size.x()) +
+                  ((uint)pos.z()) * ((uint)v.size.x()) * ((uint)v.size.y())].x();
 }
 
 template <typename T>
 inline float interp(/*const*/ float3 pos, /*const*/ Volume<T> v) {
-	const float3 scaled_pos = {(pos.x() * v.size.x() / v.dim.x()) - 0.5f,
-                             (pos.y() * v.size.y() / v.dim.y()) - 0.5f,
-                             (pos.z() * v.size.z() / v.dim.z()) - 0.5f};
+	const float3 scaled_pos = {(((float)pos.x()) * ((uint)v.size.x()) / ((float)v.dim.x())) - 0.5f,
+                               (((float)pos.y()) * ((uint)v.size.y()) / ((float)v.dim.y())) - 0.5f,
+                               (((float)pos.z()) * ((uint)v.size.z()) / ((float)v.dim.z())) - 0.5f};
 //	float3 basef{0,0,0};
   float3 tmp = cl::sycl::floor(scaled_pos);
 	const int3 base{tmp.x(),tmp.y(),tmp.z()};
@@ -874,7 +874,7 @@ inline float interp(/*const*/ float3 pos, /*const*/ Volume<T> v) {
 
   /*const*/ int3 lower = max(base, int3{0,0,0});
   /*const*/ int3 upper = min(base + int3{1,1,1},
-                             int3{v.size.x()-1,v.size.y()-1,v.size.z()-1});
+                             int3{((uint)v.size.x())-1,((uint)v.size.y())-1,((uint)v.size.z())-1});
 	return (((vs(uint3{lower.x(), lower.y(), lower.z()}, v) * (1 - factor.x())
       + vs(uint3{upper.x(), lower.y(), lower.z()}, v) * factor.x())
       * (1 - factor.y())
@@ -892,9 +892,9 @@ inline float interp(/*const*/ float3 pos, /*const*/ Volume<T> v) {
 
 template <typename T>
 inline float3 grad(float3 pos, /*const*/ Volume<T> v) {
-	/*const*/ float3 scaled_pos = {(pos.x() * v.size.x() / v.dim.x()) - 0.5f,
-                                 (pos.y() * v.size.y() / v.dim.y()) - 0.5f,
-                                 (pos.z() * v.size.z() / v.dim.z()) - 0.5f};
+	/*const*/ float3 scaled_pos = {(((float)pos.x()) * ((uint)v.size.x()) / ((float)v.dim.x())) - 0.5f,
+								   ((float)(pos.y()) * ((uint)v.size.y()) / ((float)v.dim.y())) - 0.5f,
+                                   ((float)(pos.z()) * ((uint)v.size.z()) / ((float)v.dim.z())) - 0.5f};
 	const int3 base{cl::sycl::floor(scaled_pos.x()),
                   cl::sycl::floor(scaled_pos.y()),
 			            cl::sycl::floor(scaled_pos.z())};
@@ -994,9 +994,9 @@ inline float3 grad(float3 pos, /*const*/ Volume<T> v) {
 													lower_upper.z()}, v))
 									* factor.x()) * factor.y()) * factor.z();
 
-	return gradient * float3{v.dim.x() / v.size.x(),
-                           v.dim.y() / v.size.y(),
-                           v.dim.z() / v.size.z()} * (0.5f * inv_32766);
+	return gradient * float3{((float)v.dim.x()) / ((uint)v.size.x()),
+							 ((float)v.dim.y()) / ((uint)v.size.y()),
+							 ((float)v.dim.z()) / ((uint)v.size.z())} * (0.5f * inv_32766);
 }
 
 template <typename T>
@@ -1084,7 +1084,7 @@ bool Kfusion::integration(float4 k, const uint integration_rate,
 		const Matrix4 invTrack = inverse(pose);
 		const Matrix4 K = getCameraMatrix(k);
 		const float3 delta = rotate(invTrack,
-				float3{0, 0, volumeDimensions.z() / volumeResolution.z()});
+				float3{0, 0, ((float)volumeDimensions.z()) / ((float)volumeResolution.z())});
 
     // The SYCL lambda for integrateKernel demonstrates pre-DAGR verbosity
     dagr::run<integrateKernel,0>(q, globalWorksize,
@@ -1135,7 +1135,7 @@ void Kfusion::renderVolume(uchar4 *out, uint2 outputSize, int frame,
   range<2> globalWorksize{computationSize.x(), computationSize.y()};
   Matrix4 view = *(this->viewPose) * getInverseCameraMatrix(k);
   dagr::run<renderVolumeKernel,0>(q,globalWorksize,
-    dagr::wo(buffer<uchar4,1>(out,range<1>{outputSize.x() * outputSize.y()})),
+    dagr::wo(buffer<uchar4,1>(out,range<1>{((uint)outputSize.x()) * ((uint)outputSize.y())})),
     *ocl_volume_data,volumeResolution,volumeDimensions,view,nearPlane,farPlane,
     step,largestep,light,ambient);
 }
@@ -1144,14 +1144,14 @@ void Kfusion::renderTrack(uchar4 *out, uint2 outputSize)
 {
   range<2> globalWorksize{computationSize.x(), computationSize.y()};
   dagr::run<renderTrackKernel,0>(q,globalWorksize,
-    dagr::wo(buffer<uchar4,1>(out,range<1>{outputSize.x() * outputSize.y()})),
+    dagr::wo(buffer<uchar4,1>(out,range<1>{((uint)outputSize.x()) * ((uint)outputSize.y())})),
     dagr::ro(*ocl_trackingResult));
 }
 
 void Kfusion::renderDepth(uchar4 *out, uint2 outputSize) {
   range<2> globalWorksize{computationSize.x(), computationSize.y()};
   dagr::run<renderDepthKernel,0>(q,globalWorksize,
-    dagr::wo(buffer<uchar4,1>(out,range<1>{outputSize.x() * outputSize.y()})),
+    dagr::wo(buffer<uchar4,1>(out,range<1>{((uint)outputSize.x()) * ((uint)outputSize.y())})),
     dagr::ro(*ocl_FloatDepth), nearPlane, farPlane);
 }
 
