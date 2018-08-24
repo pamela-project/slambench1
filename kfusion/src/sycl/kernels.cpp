@@ -267,9 +267,18 @@ struct vertex2normalKernel {
 template <typename T>
 static void k(item<2> ix, T *normal, const T *verte_)
 {
+  // Around ComputeCpp 0.9.0 ocl_global and address_space(1) are no longer synonymous and ocl_global
+  // appears to replace it, it is of note it started to ignore these attributes during compilation
+  // in either case however.
   using const_float3_as1_t = const __attribute__((address_space(1))) float3&;
+  using const_float3_global_t = const __attribute__((ocl_global)) float3&; 
+
   static_assert(std::is_same<decltype(verte_[0]), const_float3_as1_t>::value ||
-		std::is_same<decltype(verte_[0]), const float3&>::value ,"");
+ 		std::is_same<decltype(verte_[0]), const float3&>::value ||
+                std::is_same<decltype(verte_[0]), const_float3_global_t>::value,"");
+
+// const cl::sycl::vec<float, 3>
+// const __global cl::sycl::vec<float, 3>
 
   // otherwise x=vertex[0] is an error. See const_vec_ptr.cpp
   const float3 *vertex = verte_;
@@ -311,7 +320,13 @@ static void k(nd_item<1> ix, T *out, const U *J_,
 
   uint blockIdx  = ix.get_group(0);
   uint blockDim  = ix.get_local_range(0);
-  uint threadIdx = ix.get_local(0);
+
+  #if COMPUTECPP_VERSION_MINOR<9 && COMPUTECPP_VERSION_MAJOR<1
+  uint threadIdx = ix.get_local(0); // deprecated past ComputeCPP 0.9
+  #else
+  uint threadIdx = ix.get_local_id(0);
+  #endif
+
   //uint gridDim   = ix.get_num_groups(0); // bug: always 0
   uint gridDim   = ix.get_global_range(0) / ix.get_local_range(0);
 
