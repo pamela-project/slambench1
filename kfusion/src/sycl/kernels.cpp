@@ -1,10 +1,10 @@
 /*
 
- Copyright (c) 2015-2018 Paul Keir, University of the West of Scotland.
+ Copyright (c) 2015-2019 Paul Keir, University of the West of Scotland.
  This code is licensed under the MIT License.
 
  */
-#include <SYCL/sycl.hpp>
+#include <CL/sycl.hpp>
 #include <dagr/dagr.hpp>
 #include <kernels.h>
 

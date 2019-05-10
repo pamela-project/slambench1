@@ -3,12 +3,12 @@
 
 /*
 
-  Copyright (c) 2015 Paul Keir, University of the West of Scotland
+  Copyright (c) 2015-2019 Paul Keir, University of the West of Scotland
   This code is licensed under the MIT License.
 
 */
 
-#include <SYCL/sycl.hpp>
+#include <CL/sycl.hpp>
 using cl::sycl::accessor; using cl::sycl::buffer;  using cl::sycl::handler;
 using cl::sycl::nd_range; using cl::sycl::range;
 using cl::sycl::nd_item;  using cl::sycl::item;
