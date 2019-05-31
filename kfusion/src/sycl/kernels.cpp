@@ -741,31 +741,41 @@ static void k(item<2> ix, T *render, U *v_data, const uint3 v_size,
 
 }; // struct
 
+namespace kernels {
+  class mm2metersKernel;
+} // namespace kernels
+
 bool Kfusion::preprocessing(const uint16_t *inputDepth, /*const*/ uint2 inSize)
 {
 	uint2 outSize = computationSize;
 
 	// Check for unsupported conditions
-	if ((((uint)inSize.x()) < ((uint)outSize.x())) || (((uint)inSize.y()) < ((uint)outSize.y()))) {
+	if (((uint)inSize.x() < (uint)outSize.x()) || ((uint)inSize.y() < (uint)outSize.y())) {
 		std::cerr << "Invalid ratio." << std::endl;
 		exit(1);
 	}
-	if ((((uint)inSize.x()) % ((uint)outSize.x()) != 0) || (((uint)inSize.y()) % ((uint)outSize.y()) != 0)) {
+	if (((uint)inSize.x() % (uint)outSize.x() != 0) || ((uint)inSize.y() % (uint)outSize.y() != 0)) {
 		std::cerr << "Invalid ratio." << std::endl;
 		exit(1);
 	}
-	if ((((uint)inSize.x()) / ((uint)outSize.x()) != ((uint)inSize.y()) / ((uint)outSize.y()))) {
+	if (((uint)inSize.x() / (uint)outSize.x() != (uint)inSize.y() / (uint)outSize.y())) {
 		std::cerr << "Invalid ratio." << std::endl;
 		exit(1);
 	}
 
-	int ratio = ((uint)inSize.x()) / ((uint)outSize.x());
+	int ratio = (uint)inSize.x() / (uint)outSize.x();
 
   const auto r = range<2>{outSize.x(),outSize.y()};
-
-  dagr::run<mm2metersKernel,0>(q, r, *ocl_FloatDepth, outSize,
-	  dagr::ro(buffer<uint16_t,1>(inputDepth, range<1>{((uint)inSize.x()) * ((uint)inSize.y())})),
-    inSize, ratio);
+	buffer<uint16_t,1> idb(inputDepth, range<1>{(uint)inSize.x() * (uint)inSize.y()});
+  q.submit([&](handler &cgh) {
+    using namespace cl::sycl::access;
+    const auto depth = ocl_FloatDepth->get_access<mode::read_write>(cgh);
+    const auto    in = idb.get_access<mode::read>(cgh);
+    cgh.parallel_for<kernels::mm2metersKernel>(r, [=](item<2> ix) {
+      depth[ix[0] + (uint)outSize.x() * (uint)ix[1]] =
+         in[ix[0] * ratio + (uint)inSize.x() * ix[1] * ratio] / 1000.0f;
+    });
+  });
 
   dagr::run<bilateralFilterKernel,0>(q, r, *ocl_ScaledDepth[0],
                                      dagr::ro(*ocl_FloatDepth),
