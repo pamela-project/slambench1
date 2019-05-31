@@ -460,25 +460,10 @@ static void k(item<2> ix, T *output,      /*const*/ uint2 outputSize,
   
   row.result = 1;
   row.error  = dot(referenceNormal, diff);
-  
-  // two different ways of doing the same thing, howver the cross product
-  // line gets a segementation fault if you try and index like this. Not
-  // too sure why in this case. Perhaps because a float3 is 16 bytes and 
-  // each element of row.J is a float of 4 bytes, however that doesn't 
-  // really explain why it segementation faults on the 3rd iteration 
-  // rather than the 1st.
-  //*((float3 *)(row.J + 0)) = referenceNormal; // a la vstore3  
-  //*((float3 *)(row.J + 3)) = cross(projectedVertex, referenceNormal); 
-  // row.J + 0 -> row.J[0:2]          row.J + 3 ->  row.J[3:5]
-  
-  //((float3 *) row.J)[0] = referenceNormal;
-  //((float3 *) row.J)[1] = cross(projectedVertex, referenceNormal);
-  
-  ((float3 *) row.J)[0] = referenceNormal; 
-  float3 xprod = cross(projectedVertex, referenceNormal);
-  row.J[3] = xprod.get_value(0);
-  row.J[4] = xprod.get_value(1);
-  row.J[5] = xprod.get_value(2);  
+ 
+  const cl::sycl::global_ptr<float> J_gp(row.J);
+  referenceNormal.store(0,J_gp);
+  cross(projectedVertex, referenceNormal).store(1,J_gp);
 }
 }; // struct
 
