@@ -743,6 +743,7 @@ static void k(item<2> ix, T *render, U *v_data, const uint3 v_size,
 
 namespace kernels {
   class mm2metersKernel;
+  class bilateralFilterKernel;
 } // namespace kernels
 
 bool Kfusion::preprocessing(const uint16_t *inputDepth, /*const*/ uint2 inSize)
@@ -765,21 +766,58 @@ bool Kfusion::preprocessing(const uint16_t *inputDepth, /*const*/ uint2 inSize)
 
 	int ratio = (uint)inSize.x() / (uint)outSize.x();
 
+  using namespace cl::sycl::access;
   const auto r = range<2>{outSize.x(),outSize.y()};
 	buffer<uint16_t,1> idb(inputDepth, range<1>{(uint)inSize.x() * (uint)inSize.y()});
+
   q.submit([&](handler &cgh) {
-    using namespace cl::sycl::access;
     const auto depth = ocl_FloatDepth->get_access<mode::read_write>(cgh);
     const auto    in = idb.get_access<mode::read>(cgh);
     cgh.parallel_for<kernels::mm2metersKernel>(r, [=](item<2> ix) {
-      depth[ix[0] + (uint)outSize.x() * (uint)ix[1]] =
+      depth[ix[0] + (uint)outSize.x() * ix[1]] =
          in[ix[0] * ratio + (uint)inSize.x() * ix[1] * ratio] / 1000.0f;
     });
   });
 
-  dagr::run<bilateralFilterKernel,0>(q, r, *ocl_ScaledDepth[0],
-                                     dagr::ro(*ocl_FloatDepth),
-                                     dagr::ro(*ocl_gaussian),e_delta,radius);
+  q.submit([&](handler &cgh) {
+    const auto      out = ocl_ScaledDepth[0]->get_access<mode::read_write>(cgh);
+    const auto       in = ocl_FloatDepth->get_access<mode::read>(cgh);
+    const auto gaussian = ocl_gaussian->get_access<mode::read>(cgh);
+    cgh.parallel_for<kernels::bilateralFilterKernel>(r, [=](item<2> ix) {
+
+      const float center = in[ix[0] + ix.get_range()[0] * ix[1]];
+
+      if (center == 0) {
+        out[ix[0] + ix.get_range()[0] * ix[1]] = 0;
+        return;
+      }
+
+      float sum = 0.0f;
+      float t   = 0.0f;
+      for (int i = -radius; i <= radius; ++i) {
+        for (int j = -radius; j <= radius; ++j) {
+          // n.b. unsigned + signed is unsigned! Bug in OpenCL C version?
+          const int px = ix[0] + i; const int sx = ix.get_range()[0] - 1;
+          const int py = ix[1] + i; const int sy = ix.get_range()[1] - 1;
+          const int   curPosx = clamp(px,0,sx);
+          const int   curPosy  = clamp(py,0,sy);
+          const float curPix   = in[curPosx + curPosy * ix.get_range()[0]];
+          if (curPix > 0) {
+            const float mod    = sq(curPix - center);
+            const float factor = gaussian[i + radius] * gaussian[j + radius] *
+                                 cl::sycl::exp(-mod / (2 * e_delta * e_delta));
+            t   += factor * curPix;
+            sum += factor;
+          } else {
+            // std::cerr << "ERROR BILATERAL " << ix[0]+i << " " <<
+            // ix[1]+j<< " " <<curPix<<" \n";
+          }
+        }
+      } 
+      out[ix[0] + ix.get_range()[0] * ix[1]] = t / sum;
+    });
+  });
+
 	return true;
 }
 
