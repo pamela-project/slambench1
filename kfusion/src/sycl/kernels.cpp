@@ -745,6 +745,7 @@ namespace kernels {
   class mm2metersKernel;
   class bilateralFilterKernel;
   class halfSampleRobustImageKernel;
+  class vertex2normalKernel;
 } // namespace kernels
 
 bool Kfusion::preprocessing(const uint16_t *inputDepth, /*const*/ uint2 inSize)
@@ -864,22 +865,45 @@ bool Kfusion::tracking(float4 k, float icp_threshold,
         out[ix[0] + ix[1] * (uint)outSize.x()] = t / sum;
       });
     });
-	}
-	
+  }
+
 	// prepare the 3D information from the input depth maps
 	uint2 localimagesize = computationSize;
 	for (unsigned int i = 0; i < iterations.size(); ++i) {
 		float4 tmp{k / float(1 << i)};
 		Matrix4 invK = getInverseCameraMatrix(tmp);   // Needs a non-const (tmp)
-    const range<2>  imageSize{localimagesize.x(),localimagesize.y()};
-    dagr::run<depth2vertexKernel,0>(q, imageSize,
+    const range<2> r{localimagesize.x(),localimagesize.y()};
+    dagr::run<depth2vertexKernel,0>(q, r,
                *ocl_inputVertex[i], dagr::ro(*ocl_ScaledDepth[i]), invK);
 
-    const range<2>  imageSize2{localimagesize.x(),localimagesize.y()};
-    dagr::run<vertex2normalKernel,0>(q, imageSize2,
-               *ocl_inputNormal[i], dagr::wo(*ocl_inputVertex[i]));
+    q.submit([&](handler &cgh) {
+      const auto normal = ocl_inputNormal[i]->get_access<mode::read_write>(cgh);
+      const auto vertex = ocl_inputVertex[i]->get_access<mode::read>(cgh);
+      cgh.parallel_for<kernels::vertex2normalKernel>(r,[=](item<2> ix) {
+        uint2  vleft{max((int)ix[0] - 1, 0),                          ix[1]};
+        uint2 vright{min((int)ix[0] + 1, (int)ix.get_range()[0] - 1), ix[1]};
+        uint2    vup{ix[0], max((int)ix[1] - 1, 0)};
+        uint2  vdown{ix[0], min((int)ix[1] + 1, (int)ix.get_range()[1]-1)};
 
-		localimagesize = make_uint2(((uint)localimagesize.x()) / 2, ((uint)localimagesize.y()) / 2);
+        const float3 left  = vertex[(uint)vleft.x()  + ix.get_range()[0] * (uint)vleft.y()];
+        const float3 right = vertex[(uint)vright.x() + ix.get_range()[0] * (uint)vright.y()];
+        const float3 up    = vertex[(uint)vup.x()    + ix.get_range()[0] * (uint)vup.y()];
+        const float3 down  = vertex[(uint)vdown.x()  + ix.get_range()[0] * (uint)vdown.y()];
+
+        if (left.get_value(2) == 0 || right.get_value(2) == 0 || up.get_value(2) == 0 || down.get_value(2) == 0) {
+          const float3 invalid3{KFUSION_INVALID,KFUSION_INVALID,KFUSION_INVALID};
+          normal[ix[0] + ix.get_range()[0] * ix[1]] = invalid3;
+          return;
+        }
+
+        const float3 dxv = right - left;
+        const float3 dyv = down  - up;
+
+        normal[ix[0] + ix.get_range()[0] * ix[1]] = normalize(cross(dyv,dxv));
+      });
+    });
+
+    localimagesize = localimagesize / 2;
 	}
 
 	oldPose = pose;
