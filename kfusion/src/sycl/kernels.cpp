@@ -746,6 +746,7 @@ namespace kernels {
   class bilateralFilterKernel;
   class halfSampleRobustImageKernel;
   class vertex2normalKernel;
+  class depth2vertexKernel;
 } // namespace kernels
 
 bool Kfusion::preprocessing(const uint16_t *inputDepth, /*const*/ uint2 inSize)
@@ -873,8 +874,21 @@ bool Kfusion::tracking(float4 k, float icp_threshold,
 		float4 tmp{k / float(1 << i)};
 		Matrix4 invK = getInverseCameraMatrix(tmp);   // Needs a non-const (tmp)
     const range<2> r{localimagesize.x(),localimagesize.y()};
-    dagr::run<depth2vertexKernel,0>(q, r,
-               *ocl_inputVertex[i], dagr::ro(*ocl_ScaledDepth[i]), invK);
+
+    q.submit([&](handler &cgh) {
+      const auto vertex = ocl_inputVertex[i]->get_access<mode::read_write>(cgh);
+      const auto depth  = ocl_ScaledDepth[i]->get_access<mode::read>(cgh);
+      cgh.parallel_for<kernels::depth2vertexKernel>(r,[=](item<2> ix) {
+        float3 res{0,0,0};
+
+        const float elem = depth[ix[0] + ix.get_range()[0] * ix[1]];
+        if (elem > 0) {
+          res = elem * rotate(invK, {ix[0], ix[1], 1});
+        }
+
+        vertex[ix[0] + ix.get_range()[0] * ix[1]] = res;
+      });
+    });
 
     q.submit([&](handler &cgh) {
       const auto normal = ocl_inputNormal[i]->get_access<mode::read_write>(cgh);
