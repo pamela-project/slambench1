@@ -744,6 +744,7 @@ static void k(item<2> ix, T *render, U *v_data, const uint3 v_size,
 namespace kernels {
   class mm2metersKernel;
   class bilateralFilterKernel;
+  class halfSampleRobustImageKernel;
 } // namespace kernels
 
 bool Kfusion::preprocessing(const uint16_t *inputDepth, /*const*/ uint2 inSize)
@@ -823,7 +824,8 @@ bool Kfusion::preprocessing(const uint16_t *inputDepth, /*const*/ uint2 inSize)
 
 bool Kfusion::tracking(float4 k, float icp_threshold,
                        const uint tracking_rate, const uint frame)
-{	
+{
+  using namespace cl::sycl::access;
 	if (frame % tracking_rate != 0)
 		return false;
 
@@ -833,10 +835,35 @@ bool Kfusion::tracking(float4 k, float icp_threshold,
                             ((uint)computationSize.y()) / (int) ::pow(2, i)};
 
     auto r   = range<2>{outSize.x(),outSize.y()};
-    auto out = dagr::wo(*ocl_ScaledDepth[i  ]);
-    auto in  = dagr::ro(*ocl_ScaledDepth[i-1]);
 		uint2 inSize{((uint)outSize.x())*2,((uint)outSize.y())*2}; // Seems redundant
-    dagr::run<halfSampleRobustImageKernel,0>(q,r,out,in,inSize,e_delta*3,1);
+    q.submit([&](handler &cgh) {
+      const auto  in = ocl_ScaledDepth[i  ]->get_access<mode::read>(cgh);
+      const auto out = ocl_ScaledDepth[i-1]->get_access<mode::read_write>(cgh);
+      cgh.parallel_for<kernels::halfSampleRobustImageKernel>(r,[=](item<2> ix) {
+
+        const uint2 centerPixel{2*ix[0], 2*ix[1]};
+
+        float sum          = 0.0f;
+        float t            = 0.0f;
+        const int r        = 1;
+        const float e_d    = e_delta * 3;
+        const float center = in[(uint)centerPixel.x()+(uint)centerPixel.y()*(uint)inSize.x()];
+        for(int i = -r + 1; i <= r; ++i) {
+          for(int j = -r + 1; j <= r; ++j) {
+            const int2 x{(uint)centerPixel.x()+j, (uint)centerPixel.y()+i};
+            const int2 minval{0,0};
+            const int2 maxval{(uint)inSize.x()-1, (uint)inSize.y()-1};
+                  int2 from{clamp(x,minval,maxval)};
+            float current = in[(int)from.x() + (int)from.y() * (uint)inSize.x()];
+            if (cl::sycl::fabs(current - center) < e_d) {
+              sum += 1.0f;
+              t += current;
+            }
+          }
+        }
+        out[ix[0] + ix[1] * (uint)outSize.x()] = t / sum;
+      });
+    });
 	}
 	
 	// prepare the 3D information from the input depth maps
