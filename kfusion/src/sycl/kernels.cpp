@@ -407,14 +407,11 @@ struct trackKernel {
 // inVertex, inNormal, refVertex, and refNormal are really float3 arrays.
 template <typename T, typename U>
 static void k(item<2> ix, T *output,      /*const*/ uint2 outputSize,
-              const U *inVerte_,          const U *inNorma_,
-              const U *refVertex,         const U *refNorma_,
+              const U *inVertex,          const U *inNormal,
+              const U *refVertex,         const U *refNormal,
               const Matrix4 Ttrack,       const Matrix4 view,
               const float dist_threshold, const float normal_threshold)
 {
-  const float3 *inNormal  = inNorma_;  // See const_vec_ptr.cpp
-  const float3 *inVertex  = inVerte_;  // ""
-  const float3 *refNormal = refNorma_; // ""
   uint2 pixel{ix[0],ix[1]};
      
   TrackData &row = output[((uint)pixel.x()) + ((uint)outputSize.x()) * ((uint)pixel.y())];
@@ -747,6 +744,7 @@ namespace kernels {
   class halfSampleRobustImageKernel;
   class vertex2normalKernel;
   class depth2vertexKernel;
+  class trackKernel;
 } // namespace kernels
 
 bool Kfusion::preprocessing(const uint16_t *inputDepth, /*const*/ uint2 inSize)
@@ -833,8 +831,8 @@ bool Kfusion::tracking(float4 k, float icp_threshold,
 
 	// half sample the input depth maps into the pyramid levels
 	for (unsigned int i = 1; i < iterations.size(); ++i) {
-		cl::sycl::uint2 outSize{((uint)computationSize.x()) / (int) ::pow(2, i),
-                            ((uint)computationSize.y()) / (int) ::pow(2, i)};
+		uint2 outSize{(uint)computationSize.x() / (int) ::pow(2, i),
+                  (uint)computationSize.y() / (int) ::pow(2, i)};
 
     auto r   = range<2>{outSize.x(),outSize.y()};
 		uint2 inSize{((uint)outSize.x())*2,((uint)outSize.y())*2}; // Seems redundant
@@ -921,8 +919,8 @@ bool Kfusion::tracking(float4 k, float icp_threshold,
 	}
 
 	oldPose = pose;
-	const Matrix4 projectReference = getCameraMatrix(k) * inverse(raycastPose);
-
+	const Matrix4 view = getCameraMatrix(k) * inverse(raycastPose);
+	const uint2 outputSize = computationSize;
 	
   // iterations: a vector<int> set to {10,5,4} in Kfusion ctor (kernels.h)
   for (int level = iterations.size() - 1; level >= 0; --level) {	  
@@ -932,12 +930,66 @@ bool Kfusion::tracking(float4 k, float icp_threshold,
 		uint2 localimagesize = make_uint2(csize_x / pow2l, csize_y / pow2l);
 
     for (int i = 0; i < iterations[level]; ++i) {  // i<4,i<5,i<10 
-      range<2> imageSize{localimagesize.x(),localimagesize.y()};
+      range<2> r{localimagesize.x(),localimagesize.y()};
 	
-      dagr::run<trackKernel,0>(q,imageSize,*ocl_trackingResult,computationSize,
-        dagr::ro(*ocl_inputVertex[level]), dagr::ro(*ocl_inputNormal[level]),
-        dagr::ro(*ocl_vertex),             dagr::ro(*ocl_normal),
-        pose,projectReference,dist_threshold,normal_threshold);
+      q.submit([&](handler &cgh) {
+        const Matrix4 pose = this->pose;
+        const auto output=ocl_trackingResult->get_access<mode::read_write>(cgh);
+        const auto inVertex=ocl_inputVertex[level]->get_access<mode::read>(cgh);
+        const auto inNormal=ocl_inputNormal[level]->get_access<mode::read>(cgh);
+        const auto refVertex=ocl_vertex->get_access<mode::read>(cgh);
+        const auto refNormal=ocl_normal->get_access<mode::read>(cgh);
+        cgh.parallel_for<kernels::trackKernel>(r,[=](item<2> ix) {
+          uint2 pixel{ix[0],ix[1]};
+             
+          TrackData &row = output[(uint)pixel.x() + (uint)outputSize.x() * (uint)pixel.y()];
+         
+          float3 inNormalPixel = inNormal[((uint)pixel.x()) + ix.get_range()[0] * ((uint)pixel.y())]; 
+          if (inNormalPixel.get_value(0) == KFUSION_INVALID) {
+            row.result = -1;
+            return;
+          }  
+          
+          float3 inVertexPixel = inVertex[(uint)pixel.x() + ix.get_range()[0] * (uint)pixel.y()];
+          const float3 projectedVertex = Mat4TimeFloat3(pose, inVertexPixel);
+          const float3 projectedPos    = Mat4TimeFloat3(view, projectedVertex);
+          const float2 projPixel{projectedPos.x() / projectedPos.z() + 0.5f,
+                                 projectedPos.y() / projectedPos.z() + 0.5f};
+          if ((float)projPixel.x() < 0.0f || (float)projPixel.x() > static_cast<float>((uint)outputSize.x()-1) ||
+              (float)projPixel.y() < 0.0f || (float)projPixel.y() > static_cast<float>((uint)outputSize.y()-1)) {
+            row.result = -2;
+            return;
+          }
+
+          const uint2 refPixel{projPixel.x(), projPixel.y()};
+          const float3 referenceNormal =
+          refNormal[(uint)refPixel.x() + (uint)outputSize.x() * (uint)refPixel.y()];
+          if (referenceNormal.get_value(0) == KFUSION_INVALID) {
+            row.result = -3;
+            return;
+          }
+
+          const float3 diff = refVertex[(uint)refPixel.x() + (uint)outputSize.x() * (uint)refPixel.y()] - projectedVertex; 
+          const float3 projectedNormal = rotate(pose, inNormalPixel);
+
+          if (length(diff) > dist_threshold) {
+            row.result = -4;
+            return;
+          }
+
+          if (dot(projectedNormal,referenceNormal) < normal_threshold) {
+            row.result = -5;
+            return;
+          }
+          
+          row.result = 1;
+          row.error  = dot(referenceNormal, diff);
+         
+          const cl::sycl::global_ptr<float> J_gp(row.J);
+          referenceNormal.store(0,J_gp);
+          cross(projectedVertex, referenceNormal).store(1,J_gp);
+        });
+      });
 	   
       const    range<1> nitems{size_of_group * number_of_groups};
       const nd_range<1> ndr{nd_range<1>(nitems, range<1>{size_of_group})};
