@@ -740,6 +740,7 @@ namespace kernels {
   class trackKernel;
   class reduceKernel;
   class integrateKernel;
+  class raycastKernel;
 } // namespace kernels
 
 bool Kfusion::preprocessing(const uint16_t *inputDepth, /*const*/ uint2 inSize)
@@ -1094,10 +1095,10 @@ bool Kfusion::tracking(float4 k, float icp_threshold,
 }
 
 template <typename T>
-inline float vs(/*const*/ uint3 pos, /*const*/ Volume<T> v) {
-	return v.data[((uint)pos.x()) +
-                  ((uint)pos.y()) * ((uint)v.size.x()) +
-                  ((uint)pos.z()) * ((uint)v.size.x()) * ((uint)v.size.y())].x();
+inline float vs(const uint3 pos, const Volume<T> v) {
+	return v.data[(uint)pos.x() +
+                (uint)pos.y() * (uint)v.size.x() +
+                (uint)pos.z() * (uint)v.size.x() * (uint)v.size.y()].x();
 }
 
 template <typename T>
@@ -1296,22 +1297,50 @@ float4 raycast(/*const*/ Volume<T> v, /*const*/ uint2 pos, const Matrix4 view,
   return float4{0,0,0,0};
 }
 
-bool Kfusion::raycasting(float4 k, float mu, uint frame) {
+bool Kfusion::raycasting(float4 k, const float mu, const uint frame) {
 
-	bool doRaycast = false;
-	float largestep = mu * 0.75f;
+  const float largestep = mu * 0.75f;
 
-	if (frame > 2) {
-		raycastPose = pose;
-		const Matrix4 view = raycastPose * getInverseCameraMatrix(k);
-    range<2> RaycastglobalWorksize{computationSize.x(), computationSize.y()};
+  if (frame > 2) {
+    raycastPose = pose;
+    const Matrix4 view = raycastPose * getInverseCameraMatrix(k);
+    range<2> r{computationSize.x(), computationSize.y()};
 
-    dagr::run<raycastKernel,0>(q,RaycastglobalWorksize,
-      *ocl_vertex,*ocl_normal,*ocl_volume_data,
-      volumeResolution,volumeDimensions,view,nearPlane,farPlane,step,largestep);
+    q.submit([&](handler &cgh) {
+      using namespace cl::sycl::access;
+      const auto pos3D  = ocl_vertex->get_access<mode::read_write>(cgh);
+      const auto normal = ocl_normal->get_access<mode::read_write>(cgh);
+      const auto v_data = ocl_volume_data->get_access<mode::read_write>(cgh);
+      const auto v_size = this->volumeResolution;
+      const auto v_dim  = this->volumeDimensions;
+      const auto step   = this->step;
+      cgh.parallel_for<kernels::raycastKernel>(r, [=](item<2> ix) {
+        Volume<cl::sycl::global_ptr<short2>> volume;
+        volume.data = v_data; volume.size = v_size; volume.dim = v_dim;
+        const uint2 pos{ix[0],ix[1]};
+        const int sizex = ix.get_range()[0];
+
+        const float4 hit =
+          ::raycast(volume, pos, view, nearPlane, farPlane, step, largestep);
+        const float3 test{hit.x(),hit.y(),hit.z()}; // as_float3(hit);
+        const float3 invalid3{KFUSION_INVALID,KFUSION_INVALID,KFUSION_INVALID};
+
+        if ((float)hit.w() > 0.0f) {
+          pos3D[(uint)pos.x() + sizex * (uint)pos.y()] = test;
+          const float3 surfNorm = grad(test,volume);
+          if (cl::sycl::length(surfNorm) == 0)
+            normal[(int)pos.x() + sizex * pos.y()] = invalid3;
+          else
+            normal[(int)pos.x() + sizex * pos.y()] = cl::sycl::normalize(surfNorm);
+        } else {
+          pos3D [(int)pos.x() + sizex * pos.y()] = float3{0,0,0};
+          normal[(int)pos.x() + sizex * pos.y()] = invalid3;
+        }
+      });
+    });
 	}
 
-	return doRaycast;
+	return false;
 }
 
 bool Kfusion::integration(float4 k, const uint integration_rate,
