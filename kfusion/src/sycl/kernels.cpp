@@ -212,25 +212,26 @@ inline float3 Mat4TimeFloat3(/*const*/ Matrix4 M, const float3 v) {
 }
 
 template <typename T>
-inline void setVolume(Volume<T> v, uint3 pos, float2 d) {
-	v.data[((uint)pos.x()) +
-		   ((uint)pos.y()) * ((uint)v.size.x()) +
-           ((uint)pos.z()) * ((uint)v.size.x()) * ((uint)v.size.y())] = short2{((float)d.x()) * 32766.0f, d.y()};
+inline void setVolume(Volume<T> v, const uint3 pos, const float2 d) {
+  const short2 d2((float)d.x() * 32766.0f, d.y());
+  v.data.get()[(uint)pos.x() +
+         (uint)pos.y() * (uint)v.size.x() +
+         (uint)pos.z() * (uint)v.size.x() * (uint)v.size.y()] = d2;
 }
 
 template <typename T>
-inline float3 posVolume(/*const*/ Volume<T> v, /*const*/ uint3 p) {
-	return float3{(((uint)p.x()) + 0.5f) * v.dim.x() / v.size.x(),
-                (((uint)p.y()) + 0.5f) * v.dim.y() / v.size.y(),
-                (((uint)p.z()) + 0.5f) * v.dim.z() / v.size.z()};
+inline float3 posVolume(const Volume<T> v, const uint3 p) {
+	return float3{((uint)p.x() + 0.5f) * v.dim.x() / v.size.x(),
+                ((uint)p.y() + 0.5f) * v.dim.y() / v.size.y(),
+                ((uint)p.z() + 0.5f) * v.dim.z() / v.size.z()};
 }
 
 template <typename T>
-inline float2 getVolume(/*const*/ Volume<T> v, /*const*/ uint3 pos) {
-  /*const*/ short2 d = v.data[((uint)pos.x()) +   // Making d a ref fixes it.
-                              ((uint)pos.y()) * ((uint)v.size.x()) +
-                              ((uint)pos.z()) * ((uint)v.size.x()) * ((uint)v.size.y())];
-	return float2{((short)d.x()) * inv_32766, d.y()};
+inline float2 getVolume(const Volume<T> v, const uint3 pos) {
+  const short2 d = v.data.get()[(uint)pos.x() +
+                          (uint)pos.y() * (uint)v.size.x() +
+                          (uint)pos.z() * (uint)v.size.x() * (uint)v.size.y()];
+	return float2{(short)d.x() * inv_32766, d.y()};
 }
 
 struct depth2vertexKernel {
@@ -738,6 +739,7 @@ namespace kernels {
   class depth2vertexKernel;
   class trackKernel;
   class reduceKernel;
+  class integrateKernel;
 } // namespace kernels
 
 bool Kfusion::preprocessing(const uint16_t *inputDepth, /*const*/ uint2 inSize)
@@ -1318,18 +1320,69 @@ bool Kfusion::integration(float4 k, const uint integration_rate,
 	bool doIntegrate = checkPoseKernel(pose, oldPose, reduceOutputBuffer,
 			computationSize, track_threshold);
 
-	if ((doIntegrate && ((frame % integration_rate) == 0)) || (frame <= 3)) {
-    range<2> globalWorksize{volumeResolution.x(), volumeResolution.y()};
+	if ((doIntegrate && (frame % integration_rate) == 0) || (frame <= 3)) {
 		const Matrix4 invTrack = inverse(pose);
 		const Matrix4 K = getCameraMatrix(k);
 		const float3 delta = rotate(invTrack,
-				float3{0, 0, ((float)volumeDimensions.z()) / ((float)volumeResolution.z())});
+      float3{0, 0, (float)volumeDimensions.z() / (float)volumeResolution.z()});
 
-    // The SYCL lambda for integrateKernel demonstrates pre-DAGR verbosity
-    dagr::run<integrateKernel,0>(q, globalWorksize,
-      *ocl_volume_data, volumeResolution, volumeDimensions,
-      dagr::ro(*ocl_FloatDepth),
-      computationSize, invTrack, K, mu, maxweight, delta, rotate(K, delta));
+    const range<2> r{volumeResolution.x(), volumeResolution.y()};
+    q.submit([&](handler &cgh) {
+      using namespace cl::sycl::access;
+      const auto v_data = ocl_volume_data->get_access<mode::read_write>(cgh);
+      const auto depth  = ocl_FloatDepth->get_access<mode::read>(cgh);
+      const auto v_size = volumeResolution;
+      const auto v_dim  = volumeDimensions;
+      const auto cameraDelta = rotate(K,delta);
+      const auto depthSize = computationSize;
+
+      cgh.parallel_for<kernels::integrateKernel>(r, [=](item<2> ix) {
+        Volume<cl::sycl::global_ptr<short2>> vol;
+        vol.data = v_data; // &v_data[0];
+        vol.size = v_size;
+        vol.dim  = v_dim;
+
+        uint3 pix{ix[0],ix[1],0};
+        const int sizex = ix.get_range()[0];
+
+        float3 pos     = Mat4TimeFloat3(invTrack, posVolume(vol,pix));
+        float3 cameraX = Mat4TimeFloat3(K, pos);
+
+        for (pix.z() = 0; (uint)pix.z() < (uint)vol.size.z();
+               pix.z() = (uint)pix.z()+1, pos += delta, cameraX += cameraDelta)
+        {
+          if ((float)pos.z() < 0.0001f) // some near plane constraint
+            continue;
+
+          const float2 pixel{cameraX.x()/cameraX.z() + 0.5f,
+                             cameraX.y()/cameraX.z() + 0.5f};
+
+          if ((float)pixel.x() < 0.0f ||
+              (float)pixel.x() > static_cast<float>((uint)depthSize.x()-1) ||
+              (float)pixel.y() < 0.0f ||
+              (float)pixel.y() > static_cast<float>((uint)depthSize.y()-1))
+            continue;
+
+          const uint2 px{pixel.x(), pixel.y()};
+          float depthpx = depth[(uint)px.x() + (uint)depthSize.x() * (uint)px.y()];
+
+          if (depthpx == 0)
+            continue;
+
+          const float diff = (depthpx - cameraX.z()) *
+               cl::sycl::sqrt(1+sq(pos.x()/pos.z()) + sq(pos.y()/pos.z()));
+
+          if (diff > -mu)
+          {
+            const float sdf = cl::sycl::fmin(1.f, diff/mu);
+            float2 data = getVolume(vol,pix);
+            data.x() = clamp((data.y()*data.x() + sdf)/(((float)data.y()) + 1),-1.f,1.f);
+            data.y() = cl::sycl::fmin(((float)data.y())+1, maxweight);
+            setVolume(vol,pix,data);
+          }
+        }
+      });
+    });
 
 		doIntegrate = true;
 	} else {
