@@ -741,6 +741,7 @@ namespace kernels {
   class reduceKernel;
   class integrateKernel;
   class raycastKernel;
+  class renderDepthKernel;
 } // namespace kernels
 
 bool Kfusion::preprocessing(const uint16_t *inputDepth, /*const*/ uint2 inSize)
@@ -1469,11 +1470,54 @@ void Kfusion::renderTrack(uchar4 *out, uint2 outputSize)
     dagr::ro(*ocl_trackingResult));
 }
 
-void Kfusion::renderDepth(uchar4 *out, uint2 outputSize) {
-  range<2> globalWorksize{computationSize.x(), computationSize.y()};
-  dagr::run<renderDepthKernel,0>(q,globalWorksize,
-    dagr::wo(buffer<uchar4,1>(out,range<1>{((uint)outputSize.x()) * ((uint)outputSize.y())})),
-    dagr::ro(*ocl_FloatDepth), nearPlane, farPlane);
+void Kfusion::renderDepth(uchar4 *out, const uint2 outputSize) {
+
+  const range<2> r{computationSize.x(), computationSize.y()};
+  buffer<uchar4,1> ob(out,{(uint)outputSize.x() * (uint)outputSize.y()});
+
+  q.submit([&](handler &cgh) {
+
+    using namespace cl::sycl::access;
+    const auto out   = ob.get_access<mode::read_write>(cgh);
+    const auto depth = ocl_FloatDepth->get_access<mode::read>(cgh);
+
+    cgh.parallel_for<kernels::renderDepthKernel>(r, [=](item<2> ix)
+    {
+      const int posx = ix[0];
+      const int posy = ix[1];
+      const int sizex = ix.get_range()[0];
+
+      float d = depth[posx + sizex * posy];
+      if (d < nearPlane)
+        out[posx + sizex * posy] = uchar4{255,255,255,0};
+      else {
+        if (d > farPlane)
+          out[posx + sizex * posy] = uchar4{0,0,0,0};
+        else {
+          float h = (d - nearPlane) / (farPlane - nearPlane);
+          h *= 6.0f;
+          const int   sextant    = (int)h;
+          const float fract      = h - sextant;
+          const float swift_half = 0.75f * 0.6667f; // 0.500025!! see vsf in gs2rgb
+          const float mid1       = 0.25f + (swift_half*fract);
+          const float mid2       = 0.75f - (swift_half*fract);
+          // n.b. (char)(0.25*255) = 63  (and (char)(0.75*255) = 191)
+          // This is to match the cpp version.
+          // Same result as the simpler: (f*256)-1
+          auto &elem = out[posx + sizex * posy];
+          switch (sextant)
+          {
+            case 0: elem = uchar4{191, 255*mid1, 63, 0}; break;
+            case 1: elem = uchar4{255*mid2, 191, 63, 0}; break;
+            case 2: elem = uchar4{63, 191, 255*mid1, 0}; break;
+            case 3: elem = uchar4{63, 255*mid2, 191, 0}; break;
+            case 4: elem = uchar4{255*mid1, 63, 191, 0}; break;
+            case 5: elem = uchar4{191, 63, 255*mid2, 0}; break;
+          }
+        }
+      }
+    });
+  });
 }
 
 void synchroniseDevices() { q.wait(); }
