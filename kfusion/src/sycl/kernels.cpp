@@ -171,7 +171,7 @@ void init()  { } // stub
 void clean() { } // stub
 
 // Remove once param #1 is const: operator*(Matrix4 &, const float3 &) commons.h
-inline float3 Mat4TimeFloat3(/*const*/ Matrix4 M, const float3 v) {
+inline float3 Mat4TimeFloat3(const Matrix4 M, const float3 v) {
 	return float3{dot(make_float3(M.data[0]), v) + M.data[0].w(),
                 dot(make_float3(M.data[1]), v) + M.data[1].w(),
                 dot(make_float3(M.data[2]), v) + M.data[2].w()};
@@ -235,7 +235,7 @@ bool checkPoseKernel(Matrix4 & pose, Matrix4 oldPose, const float * output,
 	}
 }
 
-bool Kfusion::preprocessing(const uint16_t *inputDepth, /*const*/ uint2 inSize)
+bool Kfusion::preprocessing(const uint16_t *inputDepth, const uint2 inSize)
 {
 	uint2 outSize = computationSize;
 
@@ -262,7 +262,7 @@ bool Kfusion::preprocessing(const uint16_t *inputDepth, /*const*/ uint2 inSize)
   q.submit([&](handler &cgh) {
     const auto depth = ocl_FloatDepth->get_access<mode::read_write>(cgh);
     const auto    in = idb.get_access<mode::read>(cgh);
-    cgh.parallel_for<kernels::mm2metersKernel>(r, [=](item<2> ix) {
+    cgh.parallel_for<kernels::mm2metersKernel>(r, [=](const item<2> ix) {
       depth[ix[0] + (uint)outSize.x() * ix[1]] =
          in[ix[0] * ratio + (uint)inSize.x() * ix[1] * ratio] / 1000.0f;
     });
@@ -272,7 +272,7 @@ bool Kfusion::preprocessing(const uint16_t *inputDepth, /*const*/ uint2 inSize)
     const auto      out = ocl_ScaledDepth[0]->get_access<mode::read_write>(cgh);
     const auto       in = ocl_FloatDepth->get_access<mode::read>(cgh);
     const auto gaussian = ocl_gaussian->get_access<mode::read>(cgh);
-    cgh.parallel_for<kernels::bilateralFilterKernel>(r, [=](item<2> ix) {
+    cgh.parallel_for<kernels::bilateralFilterKernel>(r, [=](const item<2> ix) {
 
       const float center = in[ix[0] + ix.get_range()[0] * ix[1]];
 
@@ -327,7 +327,9 @@ bool Kfusion::tracking(float4 k, float icp_threshold,
     q.submit([&](handler &cgh) {
       const auto  in = ocl_ScaledDepth[i  ]->get_access<mode::read>(cgh);
       const auto out = ocl_ScaledDepth[i-1]->get_access<mode::read_write>(cgh);
-      cgh.parallel_for<kernels::halfSampleRobustImageKernel>(r,[=](item<2> ix) {
+      cgh.parallel_for<kernels::halfSampleRobustImageKernel>(
+        r,[=](const item<2> ix
+      ) {
 
         const uint2 centerPixel{2*ix[0], 2*ix[1]};
 
@@ -364,7 +366,7 @@ bool Kfusion::tracking(float4 k, float icp_threshold,
     q.submit([&](handler &cgh) {
       const auto vertex = ocl_inputVertex[i]->get_access<mode::read_write>(cgh);
       const auto depth  = ocl_ScaledDepth[i]->get_access<mode::read>(cgh);
-      cgh.parallel_for<kernels::depth2vertexKernel>(r,[=](item<2> ix) {
+      cgh.parallel_for<kernels::depth2vertexKernel>(r,[=](const item<2> ix) {
         float3 res{0,0,0};
 
         const float elem = depth[ix[0] + ix.get_range()[0] * ix[1]];
@@ -379,7 +381,7 @@ bool Kfusion::tracking(float4 k, float icp_threshold,
     q.submit([&](handler &cgh) {
       const auto normal = ocl_inputNormal[i]->get_access<mode::read_write>(cgh);
       const auto vertex = ocl_inputVertex[i]->get_access<mode::read>(cgh);
-      cgh.parallel_for<kernels::vertex2normalKernel>(r,[=](item<2> ix) {
+      cgh.parallel_for<kernels::vertex2normalKernel>(r,[=](const item<2> ix) {
         uint2  vleft{max((int)ix[0] - 1, 0),                          ix[1]};
         uint2 vright{min((int)ix[0] + 1, (int)ix.get_range()[0] - 1), ix[1]};
         uint2    vup{ix[0], max((int)ix[1] - 1, 0)};
@@ -427,7 +429,7 @@ bool Kfusion::tracking(float4 k, float icp_threshold,
         const auto inNormal=ocl_inputNormal[level]->get_access<mode::read>(cgh);
         const auto refVertex=ocl_vertex->get_access<mode::read>(cgh);
         const auto refNormal=ocl_normal->get_access<mode::read>(cgh);
-        cgh.parallel_for<kernels::trackKernel>(r,[=](item<2> ix) {
+        cgh.parallel_for<kernels::trackKernel>(r,[=](const item<2> ix) {
           uint2 pixel{ix[0],ix[1]};
              
           TrackData &row = output[(uint)pixel.x() + (uint)outputSize.x() * (uint)pixel.y()];
@@ -594,7 +596,7 @@ inline float vs(const uint3 pos, const Volume<T> v) {
 }
 
 template <typename T>
-inline float interp(/*const*/ float3 pos, /*const*/ Volume<T> v) {
+inline float interp(const float3 pos, const Volume<T> v) {
 	const float3 scaled_pos = {(((float)pos.x()) * ((uint)v.size.x()) / ((float)v.dim.x())) - 0.5f,
                                (((float)pos.y()) * ((uint)v.size.y()) / ((float)v.dim.y())) - 0.5f,
                                (((float)pos.z()) * ((uint)v.size.z()) / ((float)v.dim.z())) - 0.5f};
@@ -602,12 +604,12 @@ inline float interp(/*const*/ float3 pos, /*const*/ Volume<T> v) {
   float3 tmp = cl::sycl::floor(scaled_pos);
 	const int3 base{tmp.x(),tmp.y(),tmp.z()};
 //	const float3 factor{cl::sycl::fract(scaled_pos, (float3 *) &basef)};
-  /*const*/ float3 factor =
+  const float3 factor =
     cl::sycl::fmin(scaled_pos - cl::sycl::floor(scaled_pos), 0x1.fffffep-1f);
   //float3 basef = cl::sycl::floor(scaled_pos);
 
-  /*const*/ int3 lower = max(base, int3{0,0,0});
-  /*const*/ int3 upper = min(base + int3{1,1,1},
+  const int3 lower = max(base, int3{0,0,0});
+  const int3 upper = min(base + int3{1,1,1},
                              int3{((uint)v.size.x())-1,((uint)v.size.y())-1,((uint)v.size.z())-1});
 	return (((vs(uint3{lower.x(), lower.y(), lower.z()}, v) * (1 - factor.x())
       + vs(uint3{upper.x(), lower.y(), lower.z()}, v) * factor.x())
@@ -625,8 +627,8 @@ inline float interp(/*const*/ float3 pos, /*const*/ Volume<T> v) {
 }
 
 template <typename T>
-inline float3 grad(float3 pos, /*const*/ Volume<T> v) {
-	/*const*/ float3 scaled_pos = {(((float)pos.x()) * ((uint)v.size.x()) / ((float)v.dim.x())) - 0.5f,
+inline float3 grad(float3 pos, const Volume<T> v) {
+	const float3 scaled_pos = {(((float)pos.x()) * ((uint)v.size.x()) / ((float)v.dim.x())) - 0.5f,
 								   ((float)(pos.y()) * ((uint)v.size.y()) / ((float)v.dim.y())) - 0.5f,
                                    ((float)(pos.z()) * ((uint)v.size.z()) / ((float)v.dim.z())) - 0.5f};
 	const int3 base{cl::sycl::floor(scaled_pos.x()),
@@ -634,19 +636,19 @@ inline float3 grad(float3 pos, /*const*/ Volume<T> v) {
 			            cl::sycl::floor(scaled_pos.z())};
 	//const float3 basef{0,0,0};
 	//const float3 factor = (float3) fract(scaled_pos, (float3 *) &basef);
-  /*const*/ float3 factor = // fract is absent; so use Khronos' definition:
+  const float3 factor = // fract is absent; so use Khronos' definition:
     cl::sycl::fmin(scaled_pos - cl::sycl::floor(scaled_pos), 0x1.fffffep-1f);
   //float3 basef = cl::sycl::floor(scaled_pos);
 
   const int3 vsm1{v.size.get_value(0) - 1,
                   v.size.get_value(1) - 1,
                   v.size.get_value(2) - 1};
-	/*const*/ int3 lower_lower = max(base - int3{1,1,1}, int3{0,0,0});
-	/*const*/ int3 lower_upper = max(base,               int3{0,0,0});
-	/*const*/ int3 upper_lower = min(base + int3{1,1,1}, vsm1);
-	/*const*/ int3 upper_upper = min(base + int3{2,2,2}, vsm1);
-	/*const*/ int3 lower       = lower_upper;
-	/*const*/ int3 upper       = upper_lower;
+	const int3 lower_lower = max(base - int3{1,1,1}, int3{0,0,0});
+	const int3 lower_upper = max(base,               int3{0,0,0});
+	const int3 upper_lower = min(base + int3{1,1,1}, vsm1);
+	const int3 upper_upper = min(base + int3{2,2,2}, vsm1);
+	const int3 lower       = lower_upper;
+	const int3 upper       = upper_lower;
 
 	float3 gradient;
 
@@ -734,12 +736,12 @@ inline float3 grad(float3 pos, /*const*/ Volume<T> v) {
 }
 
 template <typename T>
-float4 raycast(/*const*/ Volume<T> v, /*const*/ uint2 pos, const Matrix4 view,
+float4 raycast(const Volume<T> v, const uint2 pos, const Matrix4 view,
                const float nearPlane, const float farPlane, const float step,
                const float largestep)
 {
   const float3 origin = get_translation(view);
-  /*const*/ float3 direction = rotate(view, float3{pos.x(), pos.y(), 1.f});
+  const float3 direction = rotate(view, float3{pos.x(), pos.y(), 1.f});
 
 	// intersect ray with a box
 	//
@@ -750,8 +752,8 @@ float4 raycast(/*const*/ Volume<T> v, /*const*/ uint2 pos, const Matrix4 view,
 	const float3 ttop = invR * (v.dim - origin);
 
   // re-order intersections to find smallest and largest on each axis
-  /*const*/ float3 tmin = cl::sycl::fmin(ttop, tbot);
-  /*const*/ float3 tmax = cl::sycl::fmax(ttop, tbot);
+  const float3 tmin = cl::sycl::fmin(ttop, tbot);
+  const float3 tmax = cl::sycl::fmax(ttop, tbot);
 
 	// find the largest tmin and the smallest tmax
 	const float largest_tmin  = cl::sycl::fmax(cl::sycl::fmax(tmin.x(), tmin.y()),
@@ -806,7 +808,7 @@ bool Kfusion::raycasting(float4 k, const float mu, const uint frame) {
       const auto v_size = this->volumeResolution;
       const auto v_dim  = this->volumeDimensions;
       const auto step   = this->step;
-      cgh.parallel_for<kernels::raycastKernel>(r, [=](item<2> ix) {
+      cgh.parallel_for<kernels::raycastKernel>(r, [=](const item<2> ix) {
         Volume<cl::sycl::global_ptr<short2>> volume;
         volume.data = v_data; volume.size = v_size; volume.dim = v_dim;
         const uint2 pos{ix[0],ix[1]};
@@ -857,7 +859,7 @@ bool Kfusion::integration(float4 k, const uint integration_rate,
       const auto cameraDelta = rotate(K,delta);
       const auto depthSize = computationSize;
 
-      cgh.parallel_for<kernels::integrateKernel>(r, [=](item<2> ix) {
+      cgh.parallel_for<kernels::integrateKernel>(r, [=](const item<2> ix) {
         Volume<cl::sycl::global_ptr<short2>> vol;
         vol.data = v_data; // &v_data[0];
         vol.size = v_size;

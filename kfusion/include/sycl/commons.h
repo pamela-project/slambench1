@@ -163,46 +163,46 @@ struct Volume {
 		data = NULL;
 	}
 
-	float2 operator[](/*const*/ uint3 & pos) /*const*/ {
-		/*const*/ short2 d = data[pos.x() + pos.y() * size.x() + pos.z() * size.x() * size.y()];
+	float2 operator[](const uint3 & pos) const {
+		const short2 d = data[pos.x() + pos.y() * size.x() + pos.z() * size.x() * size.y()];
 		return make_float2(((short)d.x()) * 0.00003051944088f, d.y()); //  / 32766.0f
 	}
 
-	float v(/*const*/ uint3 & pos) /*const*/ {
+	float v(const uint3 & pos) const {
 		return operator[](pos).x();
 	}
 
-	float vs(/*const*/ uint3 & pos) /*const*/ {
+	float vs(const uint3 & pos) const {
 		return data[pos.x() + pos.y() * size.x() + pos.z() * size.x() * size.y()].x();
 	}
-	inline float vs2(const uint x, const uint y, const uint z) /*const*/ {
+	inline float vs2(const uint x, const uint y, const uint z) const {
 		return data[x + y * size.x() + z * size.x() * size.y()].x();
 	}
 
 	void setints(const unsigned x, const unsigned y, const unsigned z,
-               /*const*/ float2 &d) {
+               const float2 &d) {
     data[x + y * size.x() + z * size.x() * size.y()] =
       make_short2((float)d.x() * 32766.0f, (float)d.y());
 	}
 
-	void set(/*const*/ uint3 & pos, /*const*/ float2 & d) {
+	void set(const uint3 & pos, const float2 & d) {
 		data[pos.x() + pos.y() * size.x() + pos.z() * size.x() * size.y()] =
       make_short2((float)d.x() * 32766.0f, (float)d.y());
 	}
-	float3 pos(/*const*/ uint3 & p) /*const*/ {
+	float3 pos(const uint3 & p) const {
 		return make_float3(((uint)p.x() + 0.5f) * dim.x() / size.x(),
 				((uint)p.y() + 0.5f) * dim.y() / size.y(), ((uint)p.z() + 0.5f) * dim.z() / size.z());
 	}
 
-	float interp(/*const*/ float3 & pos) /*const*/ {
+	float interp(const float3 & pos) const {
 
 		const float3 scaled_pos = make_float3((((float)pos.x()) * ((uint)size.x()) / ((float)dim.x())) - 0.5f,
 				(((float)pos.y()) * ((uint)size.y()) / ((float)dim.y())) - 0.5f,
 				(((float)pos.z()) * ((uint)size.z()) / ((float)dim.z())) - 0.5f);
 		const int3 base = make_int3(floorf(scaled_pos));
-		/*const*/ float3 factor = fracf(scaled_pos);
-		/*const*/ int3 lower = max(base, make_int3(0));
-		/*const*/ int3 upper = min(base + make_int3(1),
+		const float3 factor = fracf(scaled_pos);
+		const int3 lower = max(base, make_int3(0));
+		const int3 upper = min(base + make_int3(1),
 				make_int3(size) - make_int3(1));
 		return (((vs2(lower.x(), lower.y(), lower.z()) * (1 - factor.x())
 				+ vs2(upper.x(), lower.y(), lower.z()) * factor.x()) * (1 - factor.y())
@@ -218,20 +218,20 @@ struct Volume {
 
 	}
 
-	float3 grad(/*const*/ float3 & pos) /*const*/ {
+	float3 grad(const float3 & pos) const {
 		const float3 scaled_pos = make_float3(((float)pos.x()) * ((uint)size.x()) / ((float)dim.x()) - 0.5f,
 				(((float)pos.y()) * ((uint)size.y()) / ((float)dim.y())) - 0.5f,
 				(((float)pos.z()) * ((uint)size.z()) / ((float)dim.z())) - 0.5f);
 		const int3 base = make_int3(floorf(scaled_pos));
-		/*const*/ float3 factor = fracf(scaled_pos);
-		/*const*/ int3 lower_lower = max(base - make_int3(1), make_int3(0));
-		/*const*/ int3 lower_upper = max(base, make_int3(0));
-		/*const*/ int3 upper_lower = min(base + make_int3(1),
+		const float3 factor = fracf(scaled_pos);
+		const int3 lower_lower = max(base - make_int3(1), make_int3(0));
+		const int3 lower_upper = max(base, make_int3(0));
+		const int3 upper_lower = min(base + make_int3(1),
 				make_int3(size) - make_int3(1));
-		/*const*/ int3 upper_upper = min(base + make_int3(2),
+		const int3 upper_upper = min(base + make_int3(2),
 				make_int3(size) - make_int3(1));
-		/*const*/ int3 & lower = lower_upper;
-		/*const*/ int3 & upper = upper_lower;
+		const int3 & lower = lower_upper;
+		const int3 & upper = upper_lower;
 
 		float3 gradient;
 
