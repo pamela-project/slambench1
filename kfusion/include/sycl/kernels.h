@@ -15,21 +15,6 @@
 
 ////////////////////////// COMPUTATION KERNELS PROTOTYPES //////////////////////
 
-// DAGR-style struct kernels:
-struct initVolumeKernel;
-struct bilateralFilterKernel;
-struct depth2vertexKernel;
-struct reduceKernel;
-struct trackKernel;
-struct vertex2normalKernel;
-struct mm2metersKernel;
-struct halfSampleRobustImageKernel;
-struct integrateKernel;
-struct raycastKernel;
-struct renderDepthKernel;
-struct renderTrackKernel;
-struct renderVolumeKernel;
-
 bool updatePoseKernel(Matrix4 & pose, const float * output,
 		float icp_threshold);
 

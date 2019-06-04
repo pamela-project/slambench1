@@ -5,7 +5,6 @@
 
  */
 #include <CL/sycl.hpp>
-#include <dagr/dagr.hpp>
 #include <kernels.h>
 
 // input once

@@ -18,7 +18,7 @@ find_package(Qt5Gui)
 find_package(Qt5OpenGL)
 find_package(Qt5PrintSupport)
 
-include_directories(./include ${TOON_INCLUDE_PATH} ./thirdparty)
+include_directories(./include ${TOON_INCLUDE_PATHS} ./thirdparty)
 
 if (CUDA_FOUND) 
  SET( CUDA_PROPAGATE_HOST_FLAGS OFF )
