@@ -1449,15 +1449,15 @@ void Kfusion::dumpVolume(std::string filename) {
 	fDumpFile.close();
 }
 
-void Kfusion::renderVolume(uchar4 *out, uint2 outputSize, int frame,
-                           int raycast_rendering_rate, float4 k,
-                           float largestep)
+void Kfusion::renderVolume(uchar4 *out, const uint2 outputSize, const int frame,
+                           const int raycast_rendering_rate, const float4 k,
+                           const float largestep)
 {
 	if (frame % raycast_rendering_rate != 0) return;
 
-  range<2> globalWorksize{computationSize.x(), computationSize.y()};
-  Matrix4 view = *(this->viewPose) * getInverseCameraMatrix(k);
-  dagr::run<renderVolumeKernel,0>(q,globalWorksize,
+  const range<2> r{computationSize.x(), computationSize.y()};
+  const Matrix4 view = *(this->viewPose) * getInverseCameraMatrix(k);
+  dagr::run<renderVolumeKernel,0>(q,r,
     dagr::wo(buffer<uchar4,1>(out,range<1>{((uint)outputSize.x()) * ((uint)outputSize.y())})),
     *ocl_volume_data,volumeResolution,volumeDimensions,view,nearPlane,farPlane,
     step,largestep,light,ambient);
@@ -1476,7 +1476,7 @@ void Kfusion::renderTrack(uchar4 *out, const uint2 outputSize)
 
     cgh.parallel_for<kernels::renderTrackKernel>(r, [=](const item<2> ix)
     {
-      const int sizex = ix.get_range()[0];
+      const int   sizex = ix.get_range()[0];
             auto     &o =  out[ix[0] + sizex * ix[1]];
       const auto result = data[ix[0] + sizex * ix[1]].result;
 
@@ -1507,8 +1507,8 @@ void Kfusion::renderDepth(uchar4 *out, const uint2 outputSize) {
     cgh.parallel_for<kernels::renderDepthKernel>(r, [=](const item<2> ix)
     {
       const int sizex = ix.get_range()[0];
-            auto &o =   out[ix[0] + sizex * ix[1]];
-      const auto &d = depth[ix[0] + sizex * ix[1]];
+            auto   &o =   out[ix[0] + sizex * ix[1]];
+      const auto   &d = depth[ix[0] + sizex * ix[1]];
 
       if (d < nearPlane)
         o = uchar4{255,255,255,0};

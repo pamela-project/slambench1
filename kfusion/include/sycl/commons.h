@@ -324,7 +324,7 @@ typedef struct sMatrix4 {
 	float4 data[4];
 } Matrix4;
 
-inline float3 get_translation(/*const*/ Matrix4 view) {
+inline float3 get_translation(const Matrix4 view) {
 	return make_float3(view.data[0].w(), view.data[1].w(), view.data[2].w());
 }
 
@@ -335,7 +335,7 @@ struct TrackData {
 };
 
 // SYCL's host dot implementation is missing
-inline float3 operator*(/*const*/ Matrix4 & M, const float3 & v) {
+inline float3 operator*(const Matrix4 & M, const float3 & v) {
 	return make_float3(my_dot(make_float3(M.data[0]), v) + M.data[0].w(),
                      my_dot(make_float3(M.data[1]), v) + M.data[1].w(),
                      my_dot(make_float3(M.data[2]), v) + M.data[2].w());
@@ -347,7 +347,7 @@ inline float3 rotate(const Matrix4 & M, const float3 & v) {
                      my_dot(make_float3(M.data[2]), v));
 }
 
-inline Matrix4 getCameraMatrix(/*const*/ float4 & k) {
+inline Matrix4 getCameraMatrix(const float4 & k) {
 	Matrix4 K;
 	K.data[0] = make_float4(k.x(), 0,     k.z(), 0);
 	K.data[1] = make_float4(0,     k.y(), k.w(), 0);
@@ -356,7 +356,7 @@ inline Matrix4 getCameraMatrix(/*const*/ float4 & k) {
 	return K;
 }
 
-inline Matrix4 getInverseCameraMatrix(/*const*/ float4 & k) {
+inline Matrix4 getInverseCameraMatrix(const float4 & k) {
 	Matrix4 invK;
 	invK.data[0] = make_float4(1.0f / k.x(), 0,            -k.z() / k.x(), 0);
 	invK.data[1] = make_float4(0,            1.0f / k.y(), -k.w() / k.y(), 0);
