@@ -308,10 +308,9 @@ struct Volume {
 
 	void init(uint3 s, float3 d) {
 		size = s;
-		dim = d;
-		data = (short2 *) malloc(((uint)size.x()) * ((uint)size.y()) * ((uint)size.z()) * sizeof(short2));
+		dim  = d;
+		data = (short2 *) malloc((uint)size.x() * (uint)size.y() * (uint)size.z() * sizeof(short2));
 		assert(data != NULL);
-
 	}
 
 	void release() {

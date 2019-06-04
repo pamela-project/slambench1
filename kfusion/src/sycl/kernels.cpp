@@ -38,6 +38,22 @@ static const size_t size_of_group    = 64;
 static const size_t number_of_groups = 8;
 const float inv_32766 = 0.00003051944088f;
 
+namespace kernels {
+  class initVolumeKernel;
+  class mm2metersKernel;
+  class bilateralFilterKernel;
+  class halfSampleRobustImageKernel;
+  class vertex2normalKernel;
+  class depth2vertexKernel;
+  class trackKernel;
+  class reduceKernel;
+  class integrateKernel;
+  class raycastKernel;
+  class renderDepthKernel;
+  class renderTrackKernel;
+  class renderVolumeKernel;
+}
+
 void Kfusion::languageSpecificConstructor() {
 
   const uint csize = computationSize.x() * computationSize.y();
@@ -138,9 +154,18 @@ Kfusion::~Kfusion() {
 }
 
 void Kfusion::reset() {
-  uint3 &vr = volumeResolution; // declared in kernels.h
+  const uint3 &vr = volumeResolution; // declared in kernels.h
   const auto r = range<3>{vr.x(),vr.y(),vr.x()};
-	dagr::run<initVolumeKernel,0>(q,r,*ocl_volume_data);
+
+  q.submit([&](handler &cgh) {
+
+    using namespace cl::sycl::access;
+    const auto data = ocl_volume_data->get_access<mode::write>(cgh);
+
+    cgh.parallel_for<kernels::initVolumeKernel>(r, [=](const item<3> ix) {
+      data[ix] = {32766.0f, 0.0f};
+    });
+  });
 }
 
 void init()  { } // stub
@@ -730,21 +755,6 @@ static void k(item<2> ix, T *render, U *v_data, const uint3 v_size,
 }
 
 }; // struct
-
-namespace kernels {
-  class mm2metersKernel;
-  class bilateralFilterKernel;
-  class halfSampleRobustImageKernel;
-  class vertex2normalKernel;
-  class depth2vertexKernel;
-  class trackKernel;
-  class reduceKernel;
-  class integrateKernel;
-  class raycastKernel;
-  class renderDepthKernel;
-  class renderTrackKernel;
-  class renderVolumeKernel;
-} // namespace kernels
 
 bool Kfusion::preprocessing(const uint16_t *inputDepth, /*const*/ uint2 inSize)
 {
