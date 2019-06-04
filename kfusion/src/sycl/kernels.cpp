@@ -240,8 +240,8 @@ template <typename T>
 inline void setVolume(Volume<T> v, const uint3 pos, const float2 d) {
   const short2 d2((float)d.x() * 32766.0f, d.y());
   v.data.get()[(uint)pos.x() +
-         (uint)pos.y() * (uint)v.size.x() +
-         (uint)pos.z() * (uint)v.size.x() * (uint)v.size.y()] = d2;
+               (uint)pos.y() * (uint)v.size.x() +
+               (uint)pos.z() * (uint)v.size.x() * (uint)v.size.y()] = d2;
 }
 
 template <typename T>
@@ -253,9 +253,10 @@ inline float3 posVolume(const Volume<T> v, const uint3 p) {
 
 template <typename T>
 inline float2 getVolume(const Volume<T> v, const uint3 pos) {
-  const short2 d = v.data.get()[(uint)pos.x() +
-                          (uint)pos.y() * (uint)v.size.x() +
-                          (uint)pos.z() * (uint)v.size.x() * (uint)v.size.y()];
+  const short2 d =
+    v.data.get()[(uint)pos.x() +
+                 (uint)pos.y() * (uint)v.size.x() +
+                 (uint)pos.z() * (uint)v.size.x() * (uint)v.size.y()];
 	return float2{(short)d.x() * inv_32766, d.y()};
 }
 
@@ -1109,9 +1110,9 @@ bool Kfusion::tracking(float4 k, float icp_threshold,
 
 template <typename T>
 inline float vs(const uint3 pos, const Volume<T> v) {
-	return v.data[(uint)pos.x() +
-                (uint)pos.y() * (uint)v.size.x() +
-                (uint)pos.z() * (uint)v.size.x() * (uint)v.size.y()].x();
+	return v.data.get()[(uint)pos.x() +
+                      (uint)pos.y() * (uint)v.size.x() +
+                      (uint)pos.z() * (uint)v.size.x() * (uint)v.size.y()].x();
 }
 
 template <typename T>
