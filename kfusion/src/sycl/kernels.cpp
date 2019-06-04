@@ -743,6 +743,7 @@ namespace kernels {
   class raycastKernel;
   class renderDepthKernel;
   class renderTrackKernel;
+  class renderVolumeKernel;
 } // namespace kernels
 
 bool Kfusion::preprocessing(const uint16_t *inputDepth, /*const*/ uint2 inSize)
@@ -1457,10 +1458,45 @@ void Kfusion::renderVolume(uchar4 *out, const uint2 outputSize, const int frame,
 
   const range<2> r{computationSize.x(), computationSize.y()};
   const Matrix4 view = *(this->viewPose) * getInverseCameraMatrix(k);
-  dagr::run<renderVolumeKernel,0>(q,r,
-    dagr::wo(buffer<uchar4,1>(out,range<1>{((uint)outputSize.x()) * ((uint)outputSize.y())})),
-    *ocl_volume_data,volumeResolution,volumeDimensions,view,nearPlane,farPlane,
-    step,largestep,light,ambient);
+  buffer<uchar4,1> ob(out,{(uint)outputSize.x() * (uint)outputSize.y()});
+
+  q.submit([&](handler &cgh) {
+
+    using namespace cl::sycl::access;
+    const auto render = ob.get_access<mode::write>(cgh);
+    const auto v_data = ocl_volume_data->get_access<mode::read_write>(cgh);
+    const auto v_size = this->volumeResolution;
+    const auto v_dim  = this->volumeDimensions;
+    const auto step   = this->step;
+
+    cgh.parallel_for<kernels::renderVolumeKernel>(r, [=](const item<2> ix)
+    {
+      Volume<cl::sycl::global_ptr<short2>> v;
+      v.data = v_data; v.size = v_size; v.dim = v_dim;
+
+      const uint2 pos{ix[0],ix[1]};
+      const int sizex = ix.get_range()[0];
+            auto   &r = render[ix[0] + sizex * ix[1]];
+
+      const float4 hit=::raycast(v,pos,view,nearPlane,farPlane,step,largestep);
+
+      if ((float)hit.w() > 0.0f) {
+        const float3 test{hit.x(),hit.y(),hit.z()};
+        const float3 surfNorm = grad(test,v);
+
+        if (length(surfNorm) > 0) {
+          const float3 diff = normalize(light - test);
+          const float dir = cl::sycl::fmax(dot(normalize(surfNorm), diff), 0.f);
+          const float3 col=clamp(float3(dir)+ambient,float3(0),float3(1)) * 255;
+          r = uchar4{col.x(),col.y(),col.z(),0};
+        } else {
+          r = uchar4{0,0,0,0};
+        }
+      } else {
+          r = uchar4{0,0,0,0};
+      }
+    });
+  });
 }
 
 void Kfusion::renderTrack(uchar4 *out, const uint2 outputSize)
