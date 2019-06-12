@@ -73,7 +73,7 @@ inline float3 fmaxf(float3 a, float3 b) {
 }
 inline float  min(float3 a) { return fminf(a.x(), fminf(a.y(), a.z())); }
 inline uint   max(uint3 a)  { 	
-	return max(a.get_value(0), max(a.get_value(1), a.get_value(2))); 
+  return max((uint)a.x(), max((uint)a.y(), (uint)a.z())); 
 }
 inline float3 operator*(float b, float3 a) {
 	return float3{b*a.x(), b*a.y(), b*a.z()};
