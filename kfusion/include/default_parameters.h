@@ -119,20 +119,20 @@ struct Configuration {
 		std ::cerr << "-o  (--log-file) <filename>      : default is stdout               " << std::endl;
 		std ::cerr << "-m  (--mu)                       : default is " << default_mu << "               " << std::endl;
 #ifdef SYCL
-		std ::cerr << "-p  (--init-pose)                : default is " << default_initial_pos_factor.m_data[0] << "," << default_initial_pos_factor.m_data[1] << "," << default_initial_pos_factor.m_data[2] << "     " << std::endl;
+    std ::cerr << "-p  (--init-pose)                : default is " << default_initial_pos_factor.x() << "," << default_initial_pos_factor.y() << "," << default_initial_pos_factor.z() << "     " << std::endl;
 #else
 		std ::cerr << "-p  (--init-pose)                : default is " << default_initial_pos_factor.x << "," << default_initial_pos_factor.y << "," << default_initial_pos_factor.z << "     " << std::endl;
 #endif
 		std ::cerr << "-q  (--no-gui)                   : default is to display gui"<<std::endl;
 		std ::cerr << "-r  (--integration-rate)         : default is " << default_integration_rate << "     " << std::endl;
 #ifdef SYCL
-		std ::cerr << "-s  (--volume-size)              : default is " << default_volume_size.m_data[0] << "," << default_volume_size.m_data[1] << "," << default_volume_size.m_data[2] << "      " << std::endl;
+		std ::cerr << "-s  (--volume-size)              : default is " << default_volume_size.x() << "," << default_volume_size.y() << "," << default_volume_size.z() << "      " << std::endl;
 #else
 		std ::cerr << "-s  (--volume-size)              : default is " << default_volume_size.x << "," << default_volume_size.y << "," << default_volume_size.z << "      " << std::endl;
 #endif
 		std ::cerr << "-t  (--tracking-rate)            : default is " << default_tracking_rate << "     " << std::endl;
 #ifdef SYCL
-		std ::cerr << "-v  (--volume-resolution)        : default is " << default_volume_resolution.m_data[0] << "," << default_volume_resolution.m_data[1] << "," << default_volume_resolution.m_data[2] << "    " << std::endl;
+		std ::cerr << "-v  (--volume-resolution)        : default is " << default_volume_resolution.x() << "," << default_volume_resolution.y() << "," << default_volume_resolution.z() << "    " << std::endl;
 #else
 		std ::cerr << "-v  (--volume-resolution)        : default is " << default_volume_resolution.x << "," << default_volume_resolution.y << "," << default_volume_resolution.z << "    " << std::endl;
 #endif
@@ -149,14 +149,25 @@ struct Configuration {
 		out << "SLAMBench Report run started:\t" << buffer << std::endl<< std::endl;
 		out << "Scene properties:" << std::endl<<"=================" << std::endl<< std::endl;
 		out << "input-file: " << input_file <<std::endl;
-		out << "volume-size: " << volume_size.x << "," << volume_size.y << "," << volume_size.z << std::endl;		
+#ifdef SYCL
+		out << "volume-size: " << volume_size.x() << "," << volume_size.y() << "," << volume_size.z() << std::endl;		
+		out << "camera: "<< camera.x()<<","<< camera.y()<<","<< camera.z()<<","<< camera.w()<<  std::endl;
+		out << "init-pose: " << initial_pos_factor.x() << "," << initial_pos_factor.y() << "," <<initial_pos_factor.z() << std::endl;
+#else
+		out << "volume-size: " << volume_size.x << "," << volume_size.y << "," << volume_size.z << std::endl;	
 		out << "camera: "<< camera.x<<","<< camera.y<<","<< camera.z<<","<< camera.w<<  std::endl;
 		out << "init-pose: " << initial_pos_factor.x << "," << initial_pos_factor.y << "," <<initial_pos_factor.z << std::endl;
-		
+#endif		
 		out << std::endl;	
 		out << "Algorithmic properties:"<<std::endl<<"======================="<<std::endl << std::endl;
 		out << "compute-size-ratio: " << compute_size_ratio << std::endl;	
-		out << "volume-resolution: " << volume_resolution.x << "," << volume_resolution.y << "," << volume_resolution.z << "    " << std::endl;
+
+#ifdef SYCL		
+		out << "volume-resolution: " << volume_resolution.x() << "," << volume_resolution.y() << "," << volume_resolution.z() << "    " << std::endl;
+#else
+		out << "volume-resolution: " << volume_resolution.x << "," << volume_resolution.y << "," << volume_resolution.z << "    " << std::endl;		
+#endif
+
 		out << "mu: " << mu << std::endl;
 		out << "icp-threshold: " << icp_threshold << std::endl;
 		out << "pyramid-levels: " ;
