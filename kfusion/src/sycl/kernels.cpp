@@ -325,8 +325,8 @@ bool Kfusion::tracking(float4 k, float icp_threshold,
     auto r   = range<2>{outSize.x(),outSize.y()};
 		uint2 inSize{((uint)outSize.x())*2,((uint)outSize.y())*2}; // Seems redundant
     q.submit([&](handler &cgh) {
-      const auto  in = ocl_ScaledDepth[i  ]->get_access<mode::read>(cgh);
-      const auto out = ocl_ScaledDepth[i-1]->get_access<mode::read_write>(cgh);
+      const auto  in = ocl_ScaledDepth[i-1]->get_access<mode::read>(cgh);
+      const auto out = ocl_ScaledDepth[i  ]->get_access<mode::read_write>(cgh);
       cgh.parallel_for<kernels::halfSampleRobustImageKernel>(
         r,[=](const item<2> ix
       ) {
