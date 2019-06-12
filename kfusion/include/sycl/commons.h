@@ -357,10 +357,10 @@ inline Matrix4 getCameraMatrix(const float4 & k) {
 
 inline Matrix4 getInverseCameraMatrix(const float4 & k) {
 	Matrix4 invK;
-	invK.data[0] = make_float4(1.0f / k.x(), 0,            -k.z() / k.x(), 0);
-	invK.data[1] = make_float4(0,            1.0f / k.y(), -k.w() / k.y(), 0);
-	invK.data[2] = make_float4(0,            0,            1,              0);
-	invK.data[3] = make_float4(0,            0,            0,              1);
+	invK.data[0] = make_float4(1.0f / k.x(), 0, -(float)k.z() / k.x(), 0);
+	invK.data[1] = make_float4(0, 1.0f / k.y(), -(float)k.w() / k.y(), 0);
+	invK.data[2] = make_float4(0, 0, 1, 0);
+	invK.data[3] = make_float4(0, 0, 0, 1);
 	return invK;
 }
 inline float4 operator*(const Matrix4 & M, const float4 & v) {
@@ -456,45 +456,45 @@ inline void compareFloat(std::string str, float* l, float * r, uint size) {
 }
 inline void compareFloat3(std::string str, float3* l, float3 * r, uint size) {
 	for (unsigned int i = 0; i < size; i++) {
-		if (std::abs(l[i].x() - r[i].x()) > epsilon) {
+		if (std::abs((float)l[i].x() - r[i].x()) > epsilon) {
 			std::cout << "Error into " << str << " at " << i << std::endl;
-			std::cout << "l.x() =  " << l[i].x() << std::endl;
-			std::cout << "r.x() =  " << r[i].x() << std::endl;
+			std::cout << "l.x() =  " << (float)l[i].x() << std::endl;
+			std::cout << "r.x() =  " << (float)r[i].x() << std::endl;
 		}
-		if (std::abs(l[i].y() - r[i].y()) > epsilon) {
+		if (std::abs((float)l[i].y() - r[i].y()) > epsilon) {
 			std::cout << "Error into " << str << " at " << i << std::endl;
-			std::cout << "l.y() =  " << l[i].y() << std::endl;
-			std::cout << "r.y() =  " << r[i].y() << std::endl;
+			std::cout << "l.y() =  " << (float)l[i].y() << std::endl;
+			std::cout << "r.y() =  " << (float)r[i].y() << std::endl;
 		}
-		if (std::abs(l[i].z() - r[i].z()) > epsilon) {
+		if (std::abs((float)l[i].z() - r[i].z()) > epsilon) {
 			std::cout << "Error into " << str << " at " << i << std::endl;
-			std::cout << "l.z() =  " << l[i].z() << std::endl;
-			std::cout << "r.z() =  " << r[i].z() << std::endl;
+			std::cout << "l.z() =  " << (float)l[i].z() << std::endl;
+			std::cout << "r.z() =  " << (float)r[i].z() << std::endl;
 		}
 	}
 }
 
 inline void compareFloat4(std::string str, float4* l, float4 * r, uint size) {
 	for (unsigned int i = 0; i < size; i++) {
-		if (std::abs(l[i].x() - r[i].x()) > epsilon) {
+		if (std::abs((float)l[i].x() - r[i].x()) > epsilon) {
 			std::cout << "Error into " << str << " at " << i << std::endl;
-			std::cout << "l.x() =  " << l[i].x() << std::endl;
-			std::cout << "r.x() =  " << r[i].x() << std::endl;
+			std::cout << "l.x() =  " << (float)l[i].x() << std::endl;
+			std::cout << "r.x() =  " << (float)r[i].x() << std::endl;
 		}
-		if (std::abs(l[i].y() - r[i].y()) > epsilon) {
+		if (std::abs((float)l[i].y() - r[i].y()) > epsilon) {
 			std::cout << "Error into " << str << " at " << i << std::endl;
-			std::cout << "l.y() =  " << l[i].y() << std::endl;
-			std::cout << "r.y() =  " << r[i].y() << std::endl;
+			std::cout << "l.y() =  " << (float)l[i].y() << std::endl;
+			std::cout << "r.y() =  " << (float)r[i].y() << std::endl;
 		}
-		if (std::abs(l[i].z() - r[i].z()) > epsilon) {
+		if (std::abs((float)l[i].z() - r[i].z()) > epsilon) {
 			std::cout << "Error into " << str << " at " << i << std::endl;
-			std::cout << "l.z() =  " << l[i].z() << std::endl;
-			std::cout << "r.z() =  " << r[i].z() << std::endl;
+			std::cout << "l.z() =  " << (float)l[i].z() << std::endl;
+			std::cout << "r.z() =  " << (float)r[i].z() << std::endl;
 		}
-		if (std::abs(l[i].w() - r[i].w()) > epsilon) {
+		if (std::abs((float)l[i].w() - r[i].w()) > epsilon) {
 			std::cout << "Error into " << str << " at " << i << std::endl;
-			std::cout << "l.w() =  " << l[i].w() << std::endl;
-			std::cout << "r.w() =  " << r[i].w() << std::endl;
+			std::cout << "l.w() =  " << (float)l[i].w() << std::endl;
+			std::cout << "r.w() =  " << (float)r[i].w() << std::endl;
 		}
 	}
 }
@@ -506,26 +506,27 @@ inline void compareMatrix4(std::string str, Matrix4 l, Matrix4 r) {
 inline void printMatrix4(std::string str, Matrix4 l) {
 	std::cout << "printMatrix4 : " << str << std::endl;
 	for (int i = 0; i < 4; i++) {
-		std::cout << "  [" << l.data[i].x() << "," << l.data[i].y() << ","
-				<< l.data[i].z() << "," << l.data[i].w() << "]" << std::endl;
+		std::cout << "  [" <<
+      (float)l.data[i].x() << "," << (float)l.data[i].y() << "," <<
+      (float)l.data[i].z() << "," << (float)l.data[i].w() << "]" << std::endl;
 	}
 }
 inline void compareNormal(std::string str, float3* l, float3 * r, uint size) {
 	for (unsigned int i = 0; i < size; i++) {
-		if (std::abs(l[i].x() - r[i].x()) > epsilon) {
+		if (std::abs((float)l[i].x() - r[i].x()) > epsilon) {
 			std::cout << "Error into " << str << " at " << i << std::endl;
-			std::cout << "l.x() =  " << l[i].x() << std::endl;
-			std::cout << "r.x() =  " << r[i].x() << std::endl;
+			std::cout << "l.x() =  " << (float)l[i].x() << std::endl;
+			std::cout << "r.x() =  " << (float)r[i].x() << std::endl;
 		} else if (((float)r[i].x()) != static_cast<float>(KFUSION_INVALID)) {
-			if (std::abs(l[i].y() - r[i].y()) > epsilon) {
+			if (std::abs((float)l[i].y() - r[i].y()) > epsilon) {
 				std::cout << "Error into " << str << " at " << i << std::endl;
-				std::cout << "l.y() =  " << l[i].y() << std::endl;
-				std::cout << "r.y() =  " << r[i].y() << std::endl;
+				std::cout << "l.y() =  " << (float)l[i].y() << std::endl;
+				std::cout << "r.y() =  " << (float)r[i].y() << std::endl;
 			}
-			if (std::abs(l[i].z() - r[i].z()) > epsilon) {
+			if (std::abs((float)l[i].z() - r[i].z()) > epsilon) {
 				std::cout << "Error into " << str << " at " << i << std::endl;
-				std::cout << "l.z() =  " << l[i].z() << std::endl;
-				std::cout << "r.z() =  " << r[i].z() << std::endl;
+				std::cout << "l.z() =  " << (float)l[i].z() << std::endl;
+				std::cout << "r.z() =  " << (float)r[i].z() << std::endl;
 			}
 		}
 	}
@@ -567,14 +568,14 @@ void writeposfile(std::string prefix, int idx, Matrix4 m, uint) {
 		exit(1);
 	}
 
-	pFile << m.data[0].x() << " " << m.data[0].y() << " " << m.data[0].z() << " "
-			<< m.data[0].w() << std::endl;
-	pFile << m.data[1].x() << " " << m.data[1].y() << " " << m.data[1].z() << " "
-			<< m.data[1].w() << std::endl;
-	pFile << m.data[2].x() << " " << m.data[2].y() << " " << m.data[2].z() << " "
-			<< m.data[2].w() << std::endl;
-	pFile << m.data[3].x() << " " << m.data[3].y() << " " << m.data[3].z() << " "
-			<< m.data[3].w() << std::endl;
+	pFile << (float)m.data[0].x() << " " << (float)m.data[0].y() << " " <<
+           (float)m.data[0].z() << " " << (float)m.data[0].w() << std::endl;
+	pFile << (float)m.data[1].x() << " " << (float)m.data[1].y() << " " <<
+           (float)m.data[1].z() << " " << (float)m.data[1].w() << std::endl;
+	pFile << (float)m.data[2].x() << " " << (float)m.data[2].y() << " " <<
+           (float)m.data[2].z() << " " << (float)m.data[2].w() << std::endl;
+	pFile << (float)m.data[3].x() << " " << (float)m.data[3].y() << " " <<
+           (float)m.data[3].z() << " " << (float)m.data[3].w() << std::endl;
 
 	std::cout << "Pose File " << filename << std::endl;
 

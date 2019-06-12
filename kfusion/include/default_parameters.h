@@ -126,13 +126,13 @@ struct Configuration {
 		std ::cerr << "-q  (--no-gui)                   : default is to display gui"<<std::endl;
 		std ::cerr << "-r  (--integration-rate)         : default is " << default_integration_rate << "     " << std::endl;
 #ifdef SYCL
-		std ::cerr << "-s  (--volume-size)              : default is " << default_volume_size.x() << "," << default_volume_size.y() << "," << default_volume_size.z() << "      " << std::endl;
+		std ::cerr << "-s  (--volume-size)              : default is " << (float)default_volume_size.x() << "," << (float)default_volume_size.y() << "," << (float)default_volume_size.z() << "      " << std::endl;
 #else
 		std ::cerr << "-s  (--volume-size)              : default is " << default_volume_size.x << "," << default_volume_size.y << "," << default_volume_size.z << "      " << std::endl;
 #endif
 		std ::cerr << "-t  (--tracking-rate)            : default is " << default_tracking_rate << "     " << std::endl;
 #ifdef SYCL
-		std ::cerr << "-v  (--volume-resolution)        : default is " << default_volume_resolution.x() << "," << default_volume_resolution.y() << "," << default_volume_resolution.z() << "    " << std::endl;
+		std ::cerr << "-v  (--volume-resolution)        : default is " << (uint)default_volume_resolution.x() << "," << (uint)default_volume_resolution.y() << "," << (uint)default_volume_resolution.z() << "    " << std::endl;
 #else
 		std ::cerr << "-v  (--volume-resolution)        : default is " << default_volume_resolution.x << "," << default_volume_resolution.y << "," << default_volume_resolution.z << "    " << std::endl;
 #endif
@@ -150,9 +150,9 @@ struct Configuration {
 		out << "Scene properties:" << std::endl<<"=================" << std::endl<< std::endl;
 		out << "input-file: " << input_file <<std::endl;
 #ifdef SYCL
-		out << "volume-size: " << volume_size.x() << "," << volume_size.y() << "," << volume_size.z() << std::endl;		
-		out << "camera: "<< camera.x()<<","<< camera.y()<<","<< camera.z()<<","<< camera.w()<<  std::endl;
-		out << "init-pose: " << initial_pos_factor.x() << "," << initial_pos_factor.y() << "," <<initial_pos_factor.z() << std::endl;
+		out << "volume-size: " << (float)volume_size.x() << "," << (float)volume_size.y() << "," << (float)volume_size.z() << std::endl;		
+		out << "camera: "<< (float)camera.x()<<","<< (float)camera.y()<<","<< (float)camera.z()<<","<< (float)camera.w()<<  std::endl;
+		out << "init-pose: " << (float)initial_pos_factor.x() << "," << (float)initial_pos_factor.y() << "," << (float)initial_pos_factor.z() << std::endl;
 #else
 		out << "volume-size: " << volume_size.x << "," << volume_size.y << "," << volume_size.z << std::endl;	
 		out << "camera: "<< camera.x<<","<< camera.y<<","<< camera.z<<","<< camera.w<<  std::endl;
@@ -163,7 +163,7 @@ struct Configuration {
 		out << "compute-size-ratio: " << compute_size_ratio << std::endl;	
 
 #ifdef SYCL		
-		out << "volume-resolution: " << volume_resolution.x() << "," << volume_resolution.y() << "," << volume_resolution.z() << "    " << std::endl;
+		out << "volume-resolution: " << (uint)volume_resolution.x() << "," << (uint)volume_resolution.y() << "," << (uint)volume_resolution.z() << "    " << std::endl;
 #else
 		out << "volume-resolution: " << volume_resolution.x << "," << volume_resolution.y << "," << volume_resolution.z << "    " << std::endl;		
 #endif
@@ -421,9 +421,9 @@ struct Configuration {
 				this->camera = atof4(optarg);
 				this->camera_overrided = true;
 #ifdef SYCL
-				std::cerr << "update camera to " << this->camera.x() << ","
-						<< this->camera.y() << "," << this->camera.z() << ","
-						<< this->camera.w() << std::endl;
+				std::cerr << "update camera to " << (float)this->camera.x() << ","
+						<< (float)this->camera.y() << "," << (float)this->camera.z() << ","
+						<< (float)this->camera.w() << std::endl;
 #else
 				std::cerr << "update camera to " << this->camera.x << ","
 						<< this->camera.y << "," << this->camera.z << ","
@@ -448,9 +448,9 @@ struct Configuration {
 				this->initial_pos_factor = atof3(optarg);
 #ifdef SYCL
 				std::cerr << "update init_poseFactors to "
-						<< this->initial_pos_factor.x() << ","
-						<< this->initial_pos_factor.y() << ","
-						<< this->initial_pos_factor.z() << std::endl;
+						<< (float)this->initial_pos_factor.x() << ","
+						<< (float)this->initial_pos_factor.y() << ","
+						<< (float)this->initial_pos_factor.z() << std::endl;
 #else
 				std::cerr << "update init_poseFactors to "
 						<< this->initial_pos_factor.x << ","
@@ -475,9 +475,9 @@ struct Configuration {
 			case 's':    //   -s  (--map-size)
 				this->volume_size = atof3(optarg);
 #ifdef SYCL
-				std::cerr << "update map_size to " << this->volume_size.x()
-						<< "mx" << this->volume_size.y() << "mx"
-						<< this->volume_size.z() << "m" << std::endl;
+				std::cerr << "update map_size to " << (float)this->volume_size.x()
+						<< "mx" << (float)this->volume_size.y() << "mx"
+						<< (float)this->volume_size.z() << "m" << std::endl;
 				if ((((float)this->volume_size.x()) <= 0.0f) || (((float)this->volume_size.y()) <= 0.0f)
 						|| (((float)this->volume_size.z()) <= 0.0f)) {
 #else
@@ -507,9 +507,9 @@ struct Configuration {
 				this->volume_resolution = atoi3(optarg);
 				std::cerr << "update volumetric_size to "
 #ifdef SYCL
-						<< this->volume_resolution.x() << "x"
-						<< this->volume_resolution.y() << "x"
-						<< this->volume_resolution.z() << std::endl;
+						<< (uint)this->volume_resolution.x() << "x"
+						<< (uint)this->volume_resolution.y() << "x"
+						<< (uint)this->volume_resolution.z() << std::endl;
 				if ((((unsigned int)this->volume_resolution.x()) <= static_cast<unsigned int>(0))
 						|| (((unsigned int)this->volume_resolution.y()) <= static_cast<unsigned int>(0))
 						|| (((unsigned int)this->volume_resolution.z()) <= static_cast<unsigned int>(0))) {
