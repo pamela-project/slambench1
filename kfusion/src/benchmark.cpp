@@ -55,8 +55,8 @@ int main(int argc, char ** argv) {
 	assert(config.compute_size_ratio > 0);
 	assert(config.integration_rate > 0);
 #ifdef SYCL
-	assert(config.volume_size.x() > 0);
-	assert(config.volume_resolution.x() > 0);
+	assert(config.volume_size.s[0] > 0);
+	assert(config.volume_resolution.s[0] > 0);
 #else
 	assert(config.volume_size.x > 0);
 	assert(config.volume_resolution.x > 0);
@@ -88,7 +88,7 @@ int main(int argc, char ** argv) {
 	std::cout.precision(10);
 	std::cerr.precision(10);
 
-	float3 init_pose = config.initial_pos_factor * config.volume_size;
+	float3 init_pose = config.initial_pos_factor * to_float3(config.volume_size);
 #ifdef SYCL
 	      uint2 inputSize = reader->getinputSize();
 	std::cerr << "input Size is = " << inputSize.x() << "," << inputSize.y()
@@ -138,8 +138,8 @@ int main(int argc, char ** argv) {
 
 	uint frame = 0;
 
-	Kfusion kfusion(computationSize, config.volume_resolution,
-			config.volume_size, init_pose, config.pyramid);
+	Kfusion kfusion(computationSize, to_uint3(config.volume_resolution),
+			to_float3(config.volume_size), init_pose, config.pyramid);
 
 	double timings[7];
 	timings[0] = tock();
