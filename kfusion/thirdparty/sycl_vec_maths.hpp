@@ -24,6 +24,14 @@ using cl::sycl::clamp;     using cl::sycl::min;    using cl::sycl::max;
 using cl::sycl::normalize; using cl::sycl::cross;  using cl::sycl::length;
 using cl::sycl::dot;
 
+// Helps with this->volume_size = atof3(optarg) in default_parameters.h
+// and float3 init_pose = config.initial_pos_factor * config.volume_size;
+// ...in mainQt.cpp
+inline cl_uint3    to_cl_uint3(const uint3 &v) { return {v.x(),v.y(),v.z()}; }
+inline cl_float3 to_cl_float3(const float3 &v) { return {v.x(),v.y(),v.z()}; }
+inline uint3    to_uint3(const cl_uint3 &v) { return {v.s[0],v.s[1],v.s[2]}; }
+inline float3 to_float3(const cl_float3 &v) { return {v.s[0],v.s[1],v.s[2]}; }
+
 inline float2 make_float2(float x, float y         )  { return float2{x,y}; }
 inline float3 make_float3(float x, float y, float z)  { return float3{x,y,z}; }
 inline float3 make_float3(float4 a) { return float3{a.x(), a.y(), a.z()}; }

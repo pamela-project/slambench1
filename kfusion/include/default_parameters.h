@@ -37,11 +37,8 @@ const int default_compute_size_ratio = 1;
 const int default_integration_rate = 2;
 const int default_rendering_rate = 4;
 const int default_tracking_rate = 1;
-// These 3 did use .x() etc. which are all non-const, but...only const global
-// variables have internal linkage; so avoiding multiple definition errors.
-// So, m_data[N] is used instead; and thankfully only in this file.
-const uint3 default_volume_resolution = make_uint3(256, 256, 256);
-const float3 default_volume_size = make_float3(2.f, 2.f, 2.f);
+const cl_uint3  default_volume_resolution{256, 256, 256};
+const cl_float3 default_volume_size{2.f, 2.f, 2.f};
 const float3 default_initial_pos_factor = make_float3(0.5f, 0.5f, 0.0f);
 const bool default_no_gui = false;
 const bool default_render_volume_fullsize = false;
@@ -89,8 +86,8 @@ struct Configuration {
 	int integration_rate;
 	int rendering_rate;
 	int tracking_rate;
-	uint3 volume_resolution;
-	float3 volume_size;
+	cl_uint3 volume_resolution; // cl_uint3  can access element addresses for GUI
+	cl_float3 volume_size;      // cl_float3        ""
 	float3 initial_pos_factor;
 	std::vector<int> pyramid;
 	std::string dump_volume_file;
@@ -126,13 +123,13 @@ struct Configuration {
 		std ::cerr << "-q  (--no-gui)                   : default is to display gui"<<std::endl;
 		std ::cerr << "-r  (--integration-rate)         : default is " << default_integration_rate << "     " << std::endl;
 #ifdef SYCL
-		std ::cerr << "-s  (--volume-size)              : default is " << (float)default_volume_size.x() << "," << (float)default_volume_size.y() << "," << (float)default_volume_size.z() << "      " << std::endl;
+		std ::cerr << "-s  (--volume-size)              : default is " << default_volume_size.s[0] << "," << default_volume_size.s[1] << "," << default_volume_size.s[2] << "      " << std::endl;
 #else
 		std ::cerr << "-s  (--volume-size)              : default is " << default_volume_size.x << "," << default_volume_size.y << "," << default_volume_size.z << "      " << std::endl;
 #endif
 		std ::cerr << "-t  (--tracking-rate)            : default is " << default_tracking_rate << "     " << std::endl;
 #ifdef SYCL
-		std ::cerr << "-v  (--volume-resolution)        : default is " << (uint)default_volume_resolution.x() << "," << (uint)default_volume_resolution.y() << "," << (uint)default_volume_resolution.z() << "    " << std::endl;
+		std ::cerr << "-v  (--volume-resolution)        : default is " << default_volume_resolution.s[0] << "," << default_volume_resolution.s[1] << "," << default_volume_resolution.s[2] << "    " << std::endl;
 #else
 		std ::cerr << "-v  (--volume-resolution)        : default is " << default_volume_resolution.x << "," << default_volume_resolution.y << "," << default_volume_resolution.z << "    " << std::endl;
 #endif
@@ -150,7 +147,7 @@ struct Configuration {
 		out << "Scene properties:" << std::endl<<"=================" << std::endl<< std::endl;
 		out << "input-file: " << input_file <<std::endl;
 #ifdef SYCL
-		out << "volume-size: " << (float)volume_size.x() << "," << (float)volume_size.y() << "," << (float)volume_size.z() << std::endl;		
+		out << "volume-size: " << volume_size.s[0] << "," << volume_size.s[1] << "," << volume_size.s[2] << std::endl;		
 		out << "camera: "<< (float)camera.x()<<","<< (float)camera.y()<<","<< (float)camera.z()<<","<< (float)camera.w()<<  std::endl;
 		out << "init-pose: " << (float)initial_pos_factor.x() << "," << (float)initial_pos_factor.y() << "," << (float)initial_pos_factor.z() << std::endl;
 #else
@@ -163,7 +160,7 @@ struct Configuration {
 		out << "compute-size-ratio: " << compute_size_ratio << std::endl;	
 
 #ifdef SYCL		
-		out << "volume-resolution: " << (uint)volume_resolution.x() << "," << (uint)volume_resolution.y() << "," << (uint)volume_resolution.z() << "    " << std::endl;
+		out << "volume-resolution: " << volume_resolution.s[0] << "," << volume_resolution.s[1] << "," << volume_resolution.s[2] << "    " << std::endl;
 #else
 		out << "volume-resolution: " << volume_resolution.x << "," << volume_resolution.y << "," << volume_resolution.z << "    " << std::endl;		
 #endif
@@ -473,14 +470,15 @@ struct Configuration {
 				}
 				break;
 			case 's':    //   -s  (--map-size)
-				this->volume_size = atof3(optarg);
 #ifdef SYCL
-				std::cerr << "update map_size to " << (float)this->volume_size.x()
-						<< "mx" << (float)this->volume_size.y() << "mx"
-						<< (float)this->volume_size.z() << "m" << std::endl;
-				if ((((float)this->volume_size.x()) <= 0.0f) || (((float)this->volume_size.y()) <= 0.0f)
-						|| (((float)this->volume_size.z()) <= 0.0f)) {
+				this->volume_size = to_cl_float3(atof3(optarg));
+				std::cerr << "update map_size to " << this->volume_size.s[0]
+						<< "mx" << this->volume_size.s[1] << "mx"
+						<< this->volume_size.s[2] << "m" << std::endl;
+				if ((this->volume_size.s[0] <= 0.0f) || (this->volume_size.s[1] <= 0.0f)
+						|| (this->volume_size.s[2] <= 0.0f)) {
 #else
+				this->volume_size = atof3(optarg);
 				std::cerr << "update map_size to " << this->volume_size.x
 						<< "mx" << this->volume_size.y << "mx"
 						<< this->volume_size.z << "m" << std::endl;
@@ -504,16 +502,18 @@ struct Configuration {
 						<< std::endl;
 				break;
 			case 'v':    //   -v  (--volumetric-size)
+#ifdef SYCL
+				this->volume_resolution = to_cl_uint3(atoi3(optarg));
+				std::cerr << "update volumetric_size to "
+						<< this->volume_resolution.s[0] << "x"
+						<< this->volume_resolution.s[1] << "x"
+						<< this->volume_resolution.s[2] << std::endl;
+				if ((this->volume_resolution.s[0] <= 0)
+						|| (this->volume_resolution.s[1] <= 0)
+						|| (this->volume_resolution.s[2] <= 0)) {
+#else
 				this->volume_resolution = atoi3(optarg);
 				std::cerr << "update volumetric_size to "
-#ifdef SYCL
-						<< (uint)this->volume_resolution.x() << "x"
-						<< (uint)this->volume_resolution.y() << "x"
-						<< (uint)this->volume_resolution.z() << std::endl;
-				if ((((unsigned int)this->volume_resolution.x()) <= static_cast<unsigned int>(0))
-						|| (((unsigned int)this->volume_resolution.y()) <= static_cast<unsigned int>(0))
-						|| (((unsigned int)this->volume_resolution.z()) <= static_cast<unsigned int>(0))) {
-#else
 						<< this->volume_resolution.x << "x"
 						<< this->volume_resolution.y << "x"
 						<< this->volume_resolution.z << std::endl;
