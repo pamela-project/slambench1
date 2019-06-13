@@ -160,7 +160,7 @@ struct Volume {
 	Volume() {
 		size = make_uint3(0);
 		dim = make_float3(1);
-		data = NULL;
+		data = nullptr;
 	}
 
 	float2 operator[](const uint3 & pos) const {

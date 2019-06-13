@@ -17,7 +17,7 @@ Volume<short2 *> volume;
 Matrix4 oldPose, raycastPose;
 
 // sycl specific
-cl::sycl::queue q(cl::sycl::intel_selector{});
+cl::sycl::queue q;
 
 buffer<float,1>      *ocl_gaussian             = NULL;
 
@@ -154,7 +154,7 @@ Kfusion::~Kfusion() {
 
 void Kfusion::reset() {
   const uint3 &vr = volumeResolution; // declared in kernels.h
-  const auto r = range<3>{vr.x(),vr.y(),vr.x()};
+  const auto r = range<3>{vr.x(),vr.y(),vr.z()};
 
   q.submit([&](handler &cgh) {
 
@@ -162,7 +162,9 @@ void Kfusion::reset() {
     const auto data = ocl_volume_data->get_access<mode::write>(cgh);
 
     cgh.parallel_for<kernels::initVolumeKernel>(r, [=](const item<3> ix) {
-      data[ix] = {32766.0f, 0.0f};
+      uint3 size{ix.get_range()[0], ix.get_range()[1], ix.get_range()[2]};
+      auto &d = data[ix[0] + ix[1] * size.x() + ix[2] * size.x() * size.y()];
+      d = {32766.0f, 0.0f};
     });
   });
 }
@@ -392,7 +394,8 @@ bool Kfusion::tracking(float4 k, float icp_threshold,
         const float3 up    = vertex[(uint)vup.x()    + ix.get_range()[0] * (uint)vup.y()];
         const float3 down  = vertex[(uint)vdown.x()  + ix.get_range()[0] * (uint)vdown.y()];
 
-        if (left.get_value(2) == 0 || right.get_value(2) == 0 || up.get_value(2) == 0 || down.get_value(2) == 0) {
+        if ((float)left.z() == 0.0f || (float)right.z() == 0.0f ||
+            (float)  up.z() == 0.0f || (float) down.z() == 0.0f) {
           const float3 invalid3{KFUSION_INVALID,KFUSION_INVALID,KFUSION_INVALID};
           normal[ix[0] + ix.get_range()[0] * ix[1]] = invalid3;
           return;
@@ -435,7 +438,7 @@ bool Kfusion::tracking(float4 k, float icp_threshold,
           TrackData &row = output[(uint)pixel.x() + (uint)outputSize.x() * (uint)pixel.y()];
          
           float3 inNormalPixel = inNormal[((uint)pixel.x()) + ix.get_range()[0] * ((uint)pixel.y())]; 
-          if (inNormalPixel.get_value(0) == KFUSION_INVALID) {
+          if ((float)inNormalPixel.x() == KFUSION_INVALID) {
             row.result = -1;
             return;
           }  
@@ -454,7 +457,7 @@ bool Kfusion::tracking(float4 k, float icp_threshold,
           const uint2 refPixel{projPixel.x(), projPixel.y()};
           const float3 referenceNormal =
           refNormal[(uint)refPixel.x() + (uint)outputSize.x() * (uint)refPixel.y()];
-          if (referenceNormal.get_value(0) == KFUSION_INVALID) {
+          if ((float)referenceNormal.x() == KFUSION_INVALID) {
             row.result = -3;
             return;
           }
@@ -507,8 +510,8 @@ bool Kfusion::tracking(float4 k, float icp_threshold,
           for (uint i = 0; i < 32; ++i)
             sums[i] = 0.0f;
 
-          for (uint y = blockIdx; y < localimagesize.y(); y += gridDim) {
-            for (uint x = sline; x < localimagesize.x(); x += blockDim) {
+          for (uint y = blockIdx; y < (uint)localimagesize.y(); y += gridDim) {
+            for (uint x = sline; x < (uint)localimagesize.x(); x += blockDim) {
               const TrackData row = J[x + y * outputSize.x()];
               if (row.result < 1) {
                 info[1] += row.result == -4 ? 1 : 0;
@@ -631,18 +634,16 @@ inline float3 grad(float3 pos, const Volume<T> v) {
 	const float3 scaled_pos = {(((float)pos.x()) * ((uint)v.size.x()) / ((float)v.dim.x())) - 0.5f,
 								   ((float)(pos.y()) * ((uint)v.size.y()) / ((float)v.dim.y())) - 0.5f,
                                    ((float)(pos.z()) * ((uint)v.size.z()) / ((float)v.dim.z())) - 0.5f};
-	const int3 base{cl::sycl::floor(scaled_pos.x()),
-                  cl::sycl::floor(scaled_pos.y()),
-			            cl::sycl::floor(scaled_pos.z())};
+	const int3 base{cl::sycl::floor((float)scaled_pos.x()),
+                  cl::sycl::floor((float)scaled_pos.y()),
+			            cl::sycl::floor((float)scaled_pos.z())};
 	//const float3 basef{0,0,0};
 	//const float3 factor = (float3) fract(scaled_pos, (float3 *) &basef);
   const float3 factor = // fract is absent; so use Khronos' definition:
     cl::sycl::fmin(scaled_pos - cl::sycl::floor(scaled_pos), 0x1.fffffep-1f);
   //float3 basef = cl::sycl::floor(scaled_pos);
 
-  const int3 vsm1{v.size.get_value(0) - 1,
-                  v.size.get_value(1) - 1,
-                  v.size.get_value(2) - 1};
+  const int3 vsm1((int)v.size.x()-1, (int)v.size.y()-1, (int)v.size.z()-1);
 	const int3 lower_lower = max(base - int3{1,1,1}, int3{0,0,0});
 	const int3 lower_upper = max(base,               int3{0,0,0});
 	const int3 upper_lower = min(base + int3{1,1,1}, vsm1);
@@ -756,10 +757,12 @@ float4 raycast(const Volume<T> v, const uint2 pos, const Matrix4 view,
   const float3 tmax = cl::sycl::fmax(ttop, tbot);
 
 	// find the largest tmin and the smallest tmax
-	const float largest_tmin  = cl::sycl::fmax(cl::sycl::fmax(tmin.x(), tmin.y()),
-                                   cl::sycl::fmax(tmin.x(), tmin.z()));
-	const float smallest_tmax = cl::sycl::fmin(cl::sycl::fmin(tmax.x(), tmax.y()),
-                                   cl::sycl::fmin(tmax.x(), tmax.z()));
+	const float largest_tmin =
+    cl::sycl::fmax((float)cl::sycl::fmax((float)tmin.x(), (float)tmin.y()),
+                   (float)cl::sycl::fmax((float)tmin.x(), (float)tmin.z()));
+	const float smallest_tmax =
+    cl::sycl::fmin((float)cl::sycl::fmin((float)tmax.x(), (float)tmax.y()),
+                   (float)cl::sycl::fmin((float)tmax.x(), (float)tmax.z()));
 
 	// check against near and far plane
 	const float tnear = cl::sycl::fmax(largest_tmin, nearPlane);
@@ -899,7 +902,7 @@ bool Kfusion::integration(float4 k, const uint integration_rate,
           {
             const float sdf = cl::sycl::fmin(1.f, diff/mu);
             float2 data = getVolume(vol,pix);
-            data.x() = clamp((data.y()*data.x() + sdf)/(((float)data.y()) + 1),-1.f,1.f);
+            data.x() = clamp((float)(data.y()*data.x() + sdf)/((float)data.y() + 1),-1.f,1.f);
             data.y() = cl::sycl::fmin(((float)data.y())+1, maxweight);
             setVolume(vol,pix,data);
           }
