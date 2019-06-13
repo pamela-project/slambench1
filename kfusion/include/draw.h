@@ -53,7 +53,8 @@ void drawit(T* scene, uint2 size) {
 	char * t = (char*) "toto";
 	int g = 1;
 #ifdef SYCL
-	if (lastsize.x() != size.x() || lastsize.y() != size.y()) {
+	if ((uint)lastsize.x() != (uint)size.x() ||
+      (uint)lastsize.y() != (uint)size.y()) {
 #else
 	if (lastsize.x != size.x || lastsize.y != size.y) {
 #endif
@@ -91,7 +92,8 @@ void drawthem(A* scene1, B* scene2, C* scene3, D* scene4, E*, uint2 size) {
 	char * t = (char*) "toto";
 	int g = 1;
 #ifdef SYCL
-	if (lastsize.x() != size.x() || lastsize.y() != size.y()) {
+	if ((uint)lastsize.x() != (uint)size.x() ||
+      (uint)lastsize.y() != (uint)size.y()) {
 #else
 	if (lastsize.x != size.x || lastsize.y != size.y) {
 #endif
