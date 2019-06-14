@@ -37,8 +37,14 @@ const int default_compute_size_ratio = 1;
 const int default_integration_rate = 2;
 const int default_rendering_rate = 4;
 const int default_tracking_rate = 1;
+#ifdef SYCL
+// Can't access cl::sycl::float3/uint3 element addresses (for Qt GUI callbacks)
 const cl_uint3  default_volume_resolution{256, 256, 256};
 const cl_float3 default_volume_size{2.f, 2.f, 2.f};
+#else
+const uint3     default_volume_resolution{256, 256, 256};
+const float3    default_volume_size{2.f, 2.f, 2.f};
+#endif
 const float3 default_initial_pos_factor = make_float3(0.5f, 0.5f, 0.0f);
 const bool default_no_gui = false;
 const bool default_render_volume_fullsize = false;
@@ -86,8 +92,13 @@ struct Configuration {
 	int integration_rate;
 	int rendering_rate;
 	int tracking_rate;
+#ifdef SYCL
 	cl_uint3 volume_resolution; // cl_uint3  can access element addresses for GUI
 	cl_float3 volume_size;      // cl_float3        ""
+#else
+	uint3 volume_resolution;
+	float3 volume_size;
+#endif
 	float3 initial_pos_factor;
 	std::vector<int> pyramid;
 	std::string dump_volume_file;

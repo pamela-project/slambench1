@@ -141,11 +141,13 @@ int main(int argc, char ** argv) {
 
 #ifdef SYCL
 	float3 init_pose=config.initial_pos_factor * to_float3(config.volume_size);
-#else
-	float3 init_pose=config.initial_pos_factor *           config.volume_size;
-#endif
 	kfusion = new Kfusion(computationSize, to_uint3(config.volume_resolution),
 			to_float3(config.volume_size), init_pose, config.pyramid);
+#else
+	float3 init_pose=config.initial_pos_factor *           config.volume_size;
+	kfusion = new Kfusion(computationSize, config.volume_resolution,
+			config.volume_size, init_pose, config.pyramid);
+#endif
 
 	//temporary fix to test rendering fullsize
 	config.render_volume_fullsize = false;

@@ -88,11 +88,12 @@ int main(int argc, char ** argv) {
 	std::cout.precision(10);
 	std::cerr.precision(10);
 
-	float3 init_pose = config.initial_pos_factor * to_float3(config.volume_size);
 #ifdef SYCL
-	      uint2 inputSize = reader->getinputSize();
+	float3 init_pose = config.initial_pos_factor * to_float3(config.volume_size);
+	const uint2 inputSize = reader->getinputSize();
 	std::cerr << "input Size is = " << inputSize.x() << "," << inputSize.y()
 #else
+	float3 init_pose = config.initial_pos_factor * config.volume_size;
 	const uint2 inputSize = reader->getinputSize();
 	std::cerr << "input Size is = " << inputSize.x << "," << inputSize.y
 #endif
@@ -125,6 +126,9 @@ int main(int argc, char ** argv) {
 			sizeof(uchar4) * computationSize.x() * computationSize.y());
 	uchar4* volumeRender = (uchar4*) malloc(
 			sizeof(uchar4) * computationSize.x() * computationSize.y());
+
+	Kfusion kfusion(computationSize, to_uint3(config.volume_resolution),
+			to_float3(config.volume_size), init_pose, config.pyramid);
 #else
 	uint16_t* inputDepth = (uint16_t*) malloc(
 			sizeof(uint16_t) * inputSize.x * inputSize.y);
@@ -134,12 +138,12 @@ int main(int argc, char ** argv) {
 			sizeof(uchar4) * computationSize.x * computationSize.y);
 	uchar4* volumeRender = (uchar4*) malloc(
 			sizeof(uchar4) * computationSize.x * computationSize.y);
+
+	Kfusion kfusion(computationSize, config.volume_resolution,
+			config.volume_size, init_pose, config.pyramid);
 #endif
 
 	uint frame = 0;
-
-	Kfusion kfusion(computationSize, to_uint3(config.volume_resolution),
-			to_float3(config.volume_size), init_pose, config.pyramid);
 
 	double timings[7];
 	timings[0] = tock();
