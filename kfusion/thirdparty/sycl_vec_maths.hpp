@@ -12,7 +12,6 @@
 using cl::sycl::accessor; using cl::sycl::buffer;  using cl::sycl::handler;
 using cl::sycl::nd_range; using cl::sycl::range;
 using cl::sycl::nd_item;  using cl::sycl::item;
-namespace sycl_a = cl::sycl::access;
 
 using cl::sycl::float2;    using cl::sycl::float3; using cl::sycl::float4;
 using cl::sycl::int2;      using cl::sycl::int3;
@@ -82,17 +81,6 @@ inline float3 fmaxf(float3 a, float3 b) {
 inline float  min(float3 a) { return fminf(a.x(), fminf(a.y(), a.z())); }
 inline uint   max(uint3 a)  { 	
   return max((uint)a.x(), max((uint)a.y(), (uint)a.z())); 
-}
-inline float3 operator*(float b, float3 a) {
-	return float3{b*a.x(), b*a.y(), b*a.z()};
-}
-inline uint2 operator*(uint b, uint2 a) { return uint2{b * a.x(), b * a.y()}; }
-// SYCL's dot, length, normalize etc. don't work on host 
-inline float my_dot(float3 a, float3 b) {
-  return a.x() * b.x() + a.y() * b.y() + a.z() * b.z();
-}
-inline float my_dot(float4 a, float4 b) {
-  return a.x() * b.x() + a.y() * b.y() + a.z() * b.z() + a.w() * b.w();
 }
 
 #endif // _SYCL_VEC_MATHS_

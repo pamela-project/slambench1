@@ -88,7 +88,6 @@ inline float sq(float r) {
 }
 
 inline uchar4 gs2rgb(double h) {
-	uchar4 rgb;
 	double v;
 	double r, g, b;
 	v = 0.75;
@@ -143,11 +142,7 @@ inline uchar4 gs2rgb(double h) {
 			break;
 		}
 	}
-	rgb.x() = r * 255;
-	rgb.y() = g * 255;
-	rgb.z() = b * 255;
-	rgb.w() = 0; // Only for padding purposes 
-	return rgb;
+	return uchar4{r * 255, g * 255, b * 255, 0};
 }
 
 template <typename T>
@@ -157,11 +152,7 @@ struct Volume {
   T data;
   //  short2 * data;
 
-	Volume() {
-		size = make_uint3(0);
-		dim = make_float3(1);
-		data = nullptr;
-	}
+	Volume() : size{0,0,0}, dim{1,1,1}, data{nullptr} { }
 
 	float2 operator[](const uint3 & pos) const {
 		const short2 d = data[pos.x() + pos.y() * size.x() + pos.z() * size.x() * size.y()];
@@ -310,12 +301,12 @@ struct Volume {
 		size = s;
 		dim  = d;
 		data = (short2 *) malloc((uint)size.x() * (uint)size.y() * (uint)size.z() * sizeof(short2));
-		assert(data != NULL);
+		assert(data != nullptr);
 	}
 
 	void release() {
 		free(data);
-		data = NULL;
+		data = nullptr;
 	}
 };
 
@@ -333,17 +324,16 @@ struct TrackData {
 	float J[6];
 };
 
-// SYCL's host dot implementation is missing
 inline float3 operator*(const Matrix4 & M, const float3 & v) {
-	return make_float3(my_dot(make_float3(M.data[0]), v) + M.data[0].w(),
-                     my_dot(make_float3(M.data[1]), v) + M.data[1].w(),
-                     my_dot(make_float3(M.data[2]), v) + M.data[2].w());
+	return make_float3(dot(make_float3(M.data[0]), v) + M.data[0].w(),
+                     dot(make_float3(M.data[1]), v) + M.data[1].w(),
+                     dot(make_float3(M.data[2]), v) + M.data[2].w());
 }
 
 inline float3 rotate(const Matrix4 & M, const float3 & v) {
-  return make_float3(my_dot(make_float3(M.data[0]), v),
-                     my_dot(make_float3(M.data[1]), v),
-                     my_dot(make_float3(M.data[2]), v));
+  return make_float3(dot(make_float3(M.data[0]), v),
+                     dot(make_float3(M.data[1]), v),
+                     dot(make_float3(M.data[2]), v));
 }
 
 inline Matrix4 getCameraMatrix(const float4 & k) {
@@ -364,10 +354,10 @@ inline Matrix4 getInverseCameraMatrix(const float4 & k) {
 	return invK;
 }
 inline float4 operator*(const Matrix4 & M, const float4 & v) {
-	return make_float4(my_dot(M.data[0], v),
-                     my_dot(M.data[1], v),
-                     my_dot(M.data[2], v),
-                     my_dot(M.data[3], v));
+	return make_float4(dot(M.data[0], v),
+                     dot(M.data[1], v),
+                     dot(M.data[2], v),
+                     dot(M.data[3], v));
 }
 
 inline Matrix4 inverse(const Matrix4 & A) {
@@ -554,8 +544,7 @@ template<typename T>
 void writefile(std::string prefix, int idx, T * data, uint2 size) {
 	writefile(prefix, idx, data, size.x() * size.y());
 }
-inline
-void writeposfile(std::string prefix, int idx, Matrix4 m, uint) {
+inline void writeposfile(std::string prefix, int idx, Matrix4 m, uint) {
 
 	writefile("BINARY_" + prefix, idx, m.data, 4);
 
@@ -582,8 +571,7 @@ void writeposfile(std::string prefix, int idx, Matrix4 m, uint) {
 	pFile.close();
 }
 template <typename T>
-inline
-void writeVolume(std::string filename, Volume<T> v) {
+inline void writeVolume(std::string filename, Volume<T> v) {
 
 	std::ofstream fDumpFile;
 	fDumpFile.open(filename.c_str(), std::ios::out | std::ios::binary);

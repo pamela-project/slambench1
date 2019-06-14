@@ -172,13 +172,6 @@ void Kfusion::reset() {
 void init()  { } // stub
 void clean() { } // stub
 
-// Remove once param #1 is const: operator*(Matrix4 &, const float3 &) commons.h
-inline float3 Mat4TimeFloat3(const Matrix4 M, const float3 v) {
-	return float3{dot(make_float3(M.data[0]), v) + M.data[0].w(),
-                dot(make_float3(M.data[1]), v) + M.data[1].w(),
-                dot(make_float3(M.data[2]), v) + M.data[2].w()};
-}
-
 template <typename T>
 inline void setVolume(Volume<T> v, const uint3 pos, const float2 d) {
   const short2 d2((float)d.x() * 32766.0f, d.y());
@@ -210,9 +203,7 @@ bool updatePoseKernel(Matrix4 & pose, const float * output, float icp_threshold)
 	TooN::Matrix<8, 32, const float, TooN::Reference::RowMajor> values(output);
 	TooN::Vector<6> x = solve(values[0].slice<1, 27>());
 	TooN::SE3<> delta(x);
-	// pose = toMatrix4(delta) * pose; // * is nonconst; toMatrix4 is an rvalue
-  auto tmp = toMatrix4(delta);
-	pose = tmp * pose;
+	pose = toMatrix4(delta) * pose;
 
 	// Return validity test result of the tracking
 	if (norm(x) < icp_threshold)
@@ -290,7 +281,7 @@ bool Kfusion::preprocessing(const uint16_t *inputDepth, const uint2 inSize)
           // n.b. unsigned + signed is unsigned! Bug in OpenCL C version?
           const int px = ix[0] + i; const int sx = ix.get_range()[0] - 1;
           const int py = ix[1] + i; const int sy = ix.get_range()[1] - 1;
-          const int   curPosx = clamp(px,0,sx);
+          const int   curPosx  = clamp(px,0,sx);
           const int   curPosy  = clamp(py,0,sy);
           const float curPix   = in[curPosx + curPosy * ix.get_range()[0]];
           if (curPix > 0) {
@@ -324,7 +315,7 @@ bool Kfusion::tracking(float4 k, float icp_threshold,
 		uint2 outSize{(uint)computationSize.x() / (int) ::pow(2, i),
                   (uint)computationSize.y() / (int) ::pow(2, i)};
 
-    auto r   = range<2>{outSize.x(),outSize.y()};
+    const auto r   = range<2>{outSize.x(),outSize.y()};
 		uint2 inSize{((uint)outSize.x())*2,((uint)outSize.y())*2}; // Seems redundant
     q.submit([&](handler &cgh) {
       const auto  in = ocl_ScaledDepth[i-1]->get_access<mode::read>(cgh);
@@ -340,8 +331,8 @@ bool Kfusion::tracking(float4 k, float icp_threshold,
         const int r        = 1;
         const float e_d    = e_delta * 3;
         const float center = in[(uint)centerPixel.x()+(uint)centerPixel.y()*(uint)inSize.x()];
-        for(int i = -r + 1; i <= r; ++i) {
-          for(int j = -r + 1; j <= r; ++j) {
+        for (int i = -r + 1; i <= r; ++i) {
+          for (int j = -r + 1; j <= r; ++j) {
             const int2 x{(uint)centerPixel.x()+j, (uint)centerPixel.y()+i};
             const int2 minval{0,0};
             const int2 maxval{(uint)inSize.x()-1, (uint)inSize.y()-1};
@@ -361,8 +352,7 @@ bool Kfusion::tracking(float4 k, float icp_threshold,
 	// prepare the 3D information from the input depth maps
 	uint2 localimagesize = computationSize;
 	for (unsigned int i = 0; i < iterations.size(); ++i) {
-		float4 tmp{k / float(1 << i)};
-		Matrix4 invK = getInverseCameraMatrix(tmp);   // Needs a non-const (tmp)
+		Matrix4 invK = getInverseCameraMatrix(k / float(1 << i));
     const range<2> r{localimagesize.x(),localimagesize.y()};
 
     q.submit([&](handler &cgh) {
@@ -444,12 +434,14 @@ bool Kfusion::tracking(float4 k, float icp_threshold,
           }  
           
           float3 inVertexPixel = inVertex[(uint)pixel.x() + ix.get_range()[0] * (uint)pixel.y()];
-          const float3 projectedVertex = Mat4TimeFloat3(pose, inVertexPixel);
-          const float3 projectedPos    = Mat4TimeFloat3(view, projectedVertex);
+          const float3 projectedVertex = pose * inVertexPixel;
+          const float3 projectedPos    = view * projectedVertex;
           const float2 projPixel{projectedPos.x() / projectedPos.z() + 0.5f,
                                  projectedPos.y() / projectedPos.z() + 0.5f};
-          if ((float)projPixel.x() < 0.0f || (float)projPixel.x() > static_cast<float>((uint)outputSize.x()-1) ||
-              (float)projPixel.y() < 0.0f || (float)projPixel.y() > static_cast<float>((uint)outputSize.y()-1)) {
+          if ((float)projPixel.x() < 0.0f ||
+              (float)projPixel.x() > (float)((uint)outputSize.x()-1) ||
+              (float)projPixel.y() < 0.0f ||
+              (float)projPixel.y() > (float)((uint)outputSize.y()-1)) {
             row.result = -2;
             return;
           }
@@ -562,7 +554,7 @@ bool Kfusion::tracking(float4 k, float icp_threshold,
           for (int i = 0; i < 32; ++i)
             S[sline * 32 + i] = sums[i];
 
-          ix.barrier(sycl_a::fence_space::local_space);
+          ix.barrier(cl::sycl::access::fence_space::local_space);
 
           // sum up columns and copy to global memory in the final 32 threads
           if (sline < 32) {
@@ -600,15 +592,15 @@ inline float vs(const uint3 pos, const Volume<T> v) {
 
 template <typename T>
 inline float interp(const float3 pos, const Volume<T> v) {
-	const float3 scaled_pos = {(((float)pos.x()) * ((uint)v.size.x()) / ((float)v.dim.x())) - 0.5f,
-                               (((float)pos.y()) * ((uint)v.size.y()) / ((float)v.dim.y())) - 0.5f,
-                               (((float)pos.z()) * ((uint)v.size.z()) / ((float)v.dim.z())) - 0.5f};
+	const float3 scaled_pos
+    {((float)pos.x() * (uint)v.size.x() / (float)v.dim.x()) - 0.5f,
+     ((float)pos.y() * (uint)v.size.y() / (float)v.dim.y()) - 0.5f,
+     ((float)pos.z() * (uint)v.size.z() / (float)v.dim.z()) - 0.5f};
 //	float3 basef{0,0,0};
-  float3 tmp = cl::sycl::floor(scaled_pos);
+  float3 tmp = floor(scaled_pos);
 	const int3 base{tmp.x(),tmp.y(),tmp.z()};
 //	const float3 factor{cl::sycl::fract(scaled_pos, (float3 *) &basef)};
-  const float3 factor =
-    cl::sycl::fmin(scaled_pos - cl::sycl::floor(scaled_pos), 0x1.fffffep-1f);
+  const float3 factor = fmin(scaled_pos - floor(scaled_pos), 0x1.fffffep-1f);
   //float3 basef = cl::sycl::floor(scaled_pos);
 
   const int3 lower = max(base, int3{0,0,0});
@@ -631,16 +623,16 @@ inline float interp(const float3 pos, const Volume<T> v) {
 
 template <typename T>
 inline float3 grad(float3 pos, const Volume<T> v) {
-	const float3 scaled_pos = {(((float)pos.x()) * ((uint)v.size.x()) / ((float)v.dim.x())) - 0.5f,
-								   ((float)(pos.y()) * ((uint)v.size.y()) / ((float)v.dim.y())) - 0.5f,
-                                   ((float)(pos.z()) * ((uint)v.size.z()) / ((float)v.dim.z())) - 0.5f};
-	const int3 base{cl::sycl::floor((float)scaled_pos.x()),
-                  cl::sycl::floor((float)scaled_pos.y()),
-			            cl::sycl::floor((float)scaled_pos.z())};
+	const float3 scaled_pos
+    {((float)pos.x() * (uint)v.size.x() / (float)v.dim.x()) - 0.5f,
+     ((float)pos.y() * (uint)v.size.y() / (float)v.dim.y()) - 0.5f,
+     ((float)pos.z() * (uint)v.size.z() / (float)v.dim.z()) - 0.5f};
+  float3 tmp = floor(scaled_pos);
+	const int3 base{tmp.x(),tmp.y(),tmp.z()};
 	//const float3 basef{0,0,0};
 	//const float3 factor = (float3) fract(scaled_pos, (float3 *) &basef);
-  const float3 factor = // fract is absent; so use Khronos' definition:
-    cl::sycl::fmin(scaled_pos - cl::sycl::floor(scaled_pos), 0x1.fffffep-1f);
+  // fract is absent; so use Khronos' definition:
+  const float3 factor = fmin(scaled_pos - floor(scaled_pos), 0x1.fffffep-1f);
   //float3 basef = cl::sycl::floor(scaled_pos);
 
   const int3 vsm1((int)v.size.x()-1, (int)v.size.y()-1, (int)v.size.z()-1);
@@ -749,7 +741,7 @@ float4 raycast(const Volume<T> v, const uint2 pos, const Matrix4 view,
 	// www.siggraph.org/education/materials/HyperGraph/raytrace/rtinter3.htm
 	// compute intersection of ray with all six bbox planes
   const float3 invR{1.0f/direction.x(), 1.0f/direction.y(), 1.0f/direction.z()};
-  const float3 tbot = -1 * invR * origin;
+  const float3 tbot = -1.0f * invR * origin;
 	const float3 ttop = invR * (v.dim - origin);
 
   // re-order intersections to find smallest and largest on each axis
@@ -825,10 +817,10 @@ bool Kfusion::raycasting(float4 k, const float mu, const uint frame) {
         if ((float)hit.w() > 0.0f) {
           pos3D[(uint)pos.x() + sizex * (uint)pos.y()] = test;
           const float3 surfNorm = grad(test,volume);
-          if (cl::sycl::length(surfNorm) == 0)
+          if (length(surfNorm) == 0)
             normal[(int)pos.x() + sizex * pos.y()] = invalid3;
           else
-            normal[(int)pos.x() + sizex * pos.y()] = cl::sycl::normalize(surfNorm);
+            normal[(int)pos.x() + sizex * pos.y()] = normalize(surfNorm);
         } else {
           pos3D [(int)pos.x() + sizex * pos.y()] = float3{0,0,0};
           normal[(int)pos.x() + sizex * pos.y()] = invalid3;
@@ -871,8 +863,8 @@ bool Kfusion::integration(float4 k, const uint integration_rate,
         uint3 pix{ix[0],ix[1],0};
         const int sizex = ix.get_range()[0];
 
-        float3 pos     = Mat4TimeFloat3(invTrack, posVolume(vol,pix));
-        float3 cameraX = Mat4TimeFloat3(K, pos);
+        float3 pos     = invTrack * posVolume(vol,pix);
+        float3 cameraX = K * pos;
 
         for (pix.z() = 0; (uint)pix.z() < (uint)vol.size.z();
                pix.z() = (uint)pix.z()+1, pos += delta, cameraX += cameraDelta)
@@ -884,9 +876,9 @@ bool Kfusion::integration(float4 k, const uint integration_rate,
                              cameraX.y()/cameraX.z() + 0.5f};
 
           if ((float)pixel.x() < 0.0f ||
-              (float)pixel.x() > static_cast<float>((uint)depthSize.x()-1) ||
+              (float)pixel.x() > (float)((uint)depthSize.x()-1) ||
               (float)pixel.y() < 0.0f ||
-              (float)pixel.y() > static_cast<float>((uint)depthSize.y()-1))
+              (float)pixel.y() > (float)((uint)depthSize.y()-1))
             continue;
 
           const uint2 px{pixel.x(), pixel.y()};
@@ -951,7 +943,7 @@ void Kfusion::renderVolume(uchar4 *out, const uint2 outputSize, const int frame,
 	if (frame % raycast_rendering_rate != 0) return;
 
   const range<2> r{computationSize.x(), computationSize.y()};
-  const Matrix4 view = *(this->viewPose) * getInverseCameraMatrix(k);
+  const Matrix4 view = *this->viewPose * getInverseCameraMatrix(k);
   buffer<uchar4,1> ob(out,{(uint)outputSize.x() * (uint)outputSize.y()});
 
   q.submit([&](handler &cgh) {
