@@ -169,6 +169,8 @@ void Viewer::plotWaveSelectionChanged() {
 							}
 							plot->yAxis->setLabel("");
 							allowMixedPlot = WARNING;
+            default:
+              break; 
 						}
 						*holdProcessing = false;
 						return;
