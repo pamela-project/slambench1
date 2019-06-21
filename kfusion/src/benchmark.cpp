@@ -91,7 +91,7 @@ int main(int argc, char ** argv) {
 #ifdef SYCL
 	float3 init_pose = config.initial_pos_factor * to_float3(config.volume_size);
 	const uint2 inputSize = reader->getinputSize();
-	std::cerr << "input Size is = " << inputSize.x() << "," << inputSize.y()
+	std::cerr << "input Size is = " << (uint)inputSize.x() << "," << (uint)inputSize.y()
 #else
 	float3 init_pose = config.initial_pos_factor * config.volume_size;
 	const uint2 inputSize = reader->getinputSize();
