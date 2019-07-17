@@ -896,7 +896,7 @@ case 'T':
 	//  }
 	// break;
 case 'Q':
-	exit(0);
+  close();    // calls this->closeEvent(QCloseEvent *);
 	break;
 case 'C':
 	if (resetCallback) {
@@ -1034,7 +1034,7 @@ void ApplicationWindow::useOpenNI() {
 
 }
 void ApplicationWindow::closeEvent(QCloseEvent *event) {
-exit(0);
+//exit(0); // Avoid a hard exit. Instead, let main continue, and so free memory
 }
 
 void ApplicationWindow::updateChoices() {

@@ -592,16 +592,13 @@ public:
 		cameraOpen = false;
 		cameraActive = false;
 	}
-	bool readNextDepthFrame(float * depthMap) {
-	}
+	bool readNextDepthFrame(float * depthMap) { return false; }
 	bool readNextDepthFrame(uchar3* raw_rgb, unsigned short int * depthMap) {
+    return false;
 	}
-	float4 getK() {
-	}
-	uint2 getinputSize() {
-	}
-	void restart() {
-	}
+	float4 getK() { return float4{0,0,0,0}; }
+	uint2 getinputSize() { return uint2{0,0}; }
+	void restart() { }
 	
 	ReaderType getType() {
 		return (READER_OPENNI);
@@ -787,16 +784,13 @@ public:
 		cameraOpen = false;
 		cameraActive = false;
 	}
-	bool readNextDepthFrame(float * depthMap) {
-	}
+	bool readNextDepthFrame(float * depthMap) { return false; }
 	bool readNextDepthFrame(uchar3* raw_rgb, unsigned short int * depthMap) {
+    return false;
 	}
-	float4 getK() {
-	}
-	uint2 getinputSize() {
-	}
-	void restart() {
-	}
+	float4 getK() { return float4{0,0,0,0}; }
+	uint2 getinputSize() { return uint2{0,0}; }
+	void restart() { }
 
 	ReaderType getType() {
 		return (READER_OPENNI);

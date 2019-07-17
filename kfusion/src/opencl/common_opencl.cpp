@@ -61,7 +61,7 @@ void opencl_init(void) {
 	std::cerr << "Using OpenCL Platform: " << platformName
 			<< std::endl;
 
-	delete platforms;
+	delete[] platforms;
 
 	// Connect to a compute device
 	//
