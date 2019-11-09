@@ -8,8 +8,6 @@ set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF) # ensure we create -std=c++11 NOT -std=gnu++11
 
-#set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -g -O3 -std=gnu++11   ")
-#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -O3 -std=gnu++11  ")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -g -O3 ")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -O3 ")
 
@@ -26,6 +24,7 @@ endif(APPLE)
 # /usr was 5.3.0 and the defualt installation via download of the latest version
 # was 5.4.0 and this went into /usr/local
 set(PAPI_PREFIX "/usr/local") 
+
 
  # ---- PREPARE COMMON DEPENDENCIES  ------------ 
 
@@ -117,5 +116,7 @@ endif(APPLE)
 
 endfunction()
 
+
 add_subdirectory( kfusion )
+
 

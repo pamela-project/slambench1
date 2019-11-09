@@ -59,6 +59,9 @@ int main(int argc, char ** argv) {
 	  dest = argv[2];
 	}
 
+	
+
+
 	uint16_t * depthImage = (uint16_t*) malloc(
 			imageSize.x * imageSize.y * sizeof(uint16_t));
 	uchar3 * rgbImage = (uchar3*) malloc(
@@ -115,33 +118,34 @@ int main(int argc, char ** argv) {
 
 	}
 
-	if(!device.isFile())
-	{
-		openni::VideoMode newDepthMode;
-		newDepthMode.setFps(30);
-		newDepthMode.setPixelFormat(openni::PIXEL_FORMAT_DEPTH_1_MM);
-		newDepthMode.setResolution(640,480);
-
-		rc = depth.setVideoMode(newDepthMode);
-		if(rc != openni::STATUS_OK)
+		if(!device.isFile())
 		{
-			std::cout << "Could not set videomode" << std::endl;
-			exit(3);
+			openni::VideoMode newDepthMode;
+			newDepthMode.setFps(30);
+			newDepthMode.setPixelFormat(openni::PIXEL_FORMAT_DEPTH_1_MM);
+			newDepthMode.setResolution(640,480);
+
+			rc = depth.setVideoMode(newDepthMode);
+			if(rc != openni::STATUS_OK)
+			{
+				std::cout << "Could not set videomode" << std::endl;
+				exit(3);
+			}
+
+			openni::VideoMode newRGBMode;
+			newRGBMode.setFps(30);
+			newRGBMode.setPixelFormat(openni::PIXEL_FORMAT_RGB888);
+			newRGBMode.setResolution(640,480);
+
+			rc = rgb.setVideoMode(newRGBMode);
+			if(rc != openni::STATUS_OK)
+			{
+				std::cout << "Could not set videomode" << std::endl;
+
+				exit(1);
+			}
 		}
 
-		openni::VideoMode newRGBMode;
-		newRGBMode.setFps(30);
-		newRGBMode.setPixelFormat(openni::PIXEL_FORMAT_RGB888);
-		newRGBMode.setResolution(640,480);
-
-		rc = rgb.setVideoMode(newRGBMode);
-		if(rc != openni::STATUS_OK)
-		{
-			std::cout << "Could not set videomode" << std::endl;
-
-			exit(1);
-		}
-	}
 
 	openni::VideoMode depthMode = depth.getVideoMode();
 	openni::VideoMode colorMode = rgb.getVideoMode();
@@ -165,13 +169,15 @@ int main(int argc, char ** argv) {
 
 	device.setImageRegistrationMode(openni::IMAGE_REGISTRATION_DEPTH_TO_COLOR);
 
-	if(device.isFile())
-	{
-		device.getPlaybackControl()->setRepeatEnabled(false);
-		depthFrame.release();
-		colorFrame.release();
-		device.getPlaybackControl()->setSpeed(-1); // Set the playback in a manual mode i.e. read a frame whenever the application requests it
-	}
+
+		if(device.isFile())
+		{
+			device.getPlaybackControl()->setRepeatEnabled(false);
+			depthFrame.release();
+			colorFrame.release();
+			device.getPlaybackControl()->setSpeed(-1); // Set the playback in a manual mode i.e. read a frame whenever the application requests it
+		}
+
 
 	// The allocators must survive this initialization function.
 	MyDepthFrameAllocator *depthAlloc = new MyDepthFrameAllocator(depthImage);

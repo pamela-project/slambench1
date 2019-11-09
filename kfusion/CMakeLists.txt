@@ -20,6 +20,7 @@ find_package(Qt5PrintSupport)
 
 include_directories(./include ${TOON_INCLUDE_PATHS} ./thirdparty)
 
+
 if (CUDA_FOUND) 
  SET( CUDA_PROPAGATE_HOST_FLAGS OFF )
 endif(CUDA_FOUND)
@@ -77,8 +78,8 @@ set(kfusion_cuda_srcs
 	thirdparty/kfusion.h
 	)
 	
-    cuda_add_library(${appname}-cuda    STATIC  ${kfusion_cuda_srcs} OPTIONS -O3 -std=c++11 )
-	target_link_libraries(${appname}-cuda   ${common_libraries})	
+    cuda_add_library(${appname}-cuda    STATIC  ${kfusion_cuda_srcs} OPTIONS -O3 )
+        target_link_libraries(${appname}-cuda   ${common_libraries})	
     add_version(${appname} cuda    "" "")
 
 endif(CUDA_FOUND)
@@ -86,4 +87,5 @@ endif(CUDA_FOUND)
 #  ----------------- thirdparty ----------------- 
 
 add_subdirectory( thirdparty    )
+
 

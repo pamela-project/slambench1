@@ -944,6 +944,9 @@ void Kfusion::renderDepth(__device_builtin__uchar4 * out,
 	cudaMemcpy(out, depthModel.getDeviceImage().data(), outputSize.x * outputSize.y * sizeof(uchar4), cudaMemcpyDeviceToHost);
 }
 
+
+
+
 void synchroniseDevices() {
 	cudaDeviceSynchronize();
 }

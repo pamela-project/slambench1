@@ -50,7 +50,6 @@ int papi_read();
     double elapsed_time;
 
 #endif
-
 PowerMonitor::PowerMonitor() {
 	powerA7 = NULL;
 	powerA15 = NULL;
@@ -183,7 +182,6 @@ float PowerMonitor::getPower(Sensor sensor) {
 			return (power);
 		}
 	}
-
 	return 0;
 }
 
@@ -202,7 +200,6 @@ int PowerMonitor::enableSensor(Sensor sensor) {
 
 				sprintf(enableFile, "/sys/bus/i2c/drivers/INA231/%d-00%d/sensor_W",
 					dn, sensor);
-
 				if ((tmp = fopen(enableFile, "r")) != 0) {
 					switch (sensor) {
 					case SENSOR_A7:
@@ -221,7 +218,7 @@ int PowerMonitor::enableSensor(Sensor sensor) {
 					return (0);
 				}
 			}
-	  }
+	  	}
 	} 
 	return (1);
 }

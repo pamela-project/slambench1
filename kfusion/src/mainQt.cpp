@@ -140,11 +140,11 @@ int main(int argc, char ** argv) {
 	volumeRender = (uchar4*) malloc(sizeof(uchar4) * width * height);
 
 #ifdef SYCL
-	float3 init_pose=config.initial_pos_factor * to_float3(config.volume_size);
+	float3 init_pose = config.initial_pos_factor * to_float3(config.volume_size);
 	kfusion = new Kfusion(computationSize, to_uint3(config.volume_resolution),
 			to_float3(config.volume_size), init_pose, config.pyramid);
 #else
-	float3 init_pose=config.initial_pos_factor *           config.volume_size;
+	float3 init_pose = config.initial_pos_factor * config.volume_size;
 	kfusion = new Kfusion(computationSize, config.volume_resolution,
 			config.volume_size, init_pose, config.pyramid);
 #endif
@@ -205,7 +205,6 @@ int main(int argc, char ** argv) {
 			config.log_filestream.close();
 		}
     }
-
 	//  =========  FREE BASIC BUFFERS  =========
 
 	free(inputDepth);

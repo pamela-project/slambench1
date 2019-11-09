@@ -147,7 +147,7 @@ struct Configuration {
 		std ::cerr << "-y  (--pyramid-levels)           : default is 10,5,4     " << std::endl;
 		std ::cerr << "-z  (--rendering-rate)   : default is " << default_rendering_rate << std::endl;
 	}
-	void print_values(std::ostream& out) {
+  void print_values(std::ostream& out) {
     time_t rawtime;
 		struct tm *timeinfo;
 		char buffer[80];

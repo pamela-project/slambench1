@@ -31,7 +31,7 @@
 #include <iterator>
 
 // Internal dependencies
-#include <default_parameters.h> // (CUDA) includes vector_types.h + cutil_math.h
+#include <default_parameters.h>
 #ifndef CUDA
 #ifdef SYCL
 #include <sycl_vec_maths.hpp>

@@ -87,10 +87,6 @@ static void newKfusion(bool resetPose) {
 	iterations.assign(default_iterations,
 			default_iterations + DEFAULT_ITERATION_COUNT);
 
-  auto &vr  = config->volume_resolution;
-  auto &vs  = config->volume_size;
-  auto &ipf = config->initial_pos_factor;
-
 	if (*kfusion_pp)
 		delete *kfusion_pp;
 	if (!resetPose)
@@ -104,9 +100,13 @@ static void newKfusion(bool resetPose) {
 				make_float3(config->volume_size.s[0], config->volume_size.s[0],
 						config->volume_size.s[0]), 
 #else
-      make_uint3(vr.x, vr.x, vr.x), make_float3(vs.x, vs.x, vs.x),
+				make_uint3(config->volume_resolution.x,
+						config->volume_resolution.x,
+						config->volume_resolution.x),
+				make_float3(config->volume_size.x, config->volume_size.x,
+						config->volume_size.x), 
 #endif
-      init_pose, config->pyramid);
+            init_pose, config->pyramid);
 	else {
 #ifdef SYCL
 		trans = SE3<float>::exp(
@@ -126,22 +126,29 @@ static void newKfusion(bool resetPose) {
       make_uint2(640 / config->compute_size_ratio,
                  480 / config->compute_size_ratio),
 #ifdef SYCL
-			make_uint3(config->volume_resolution.s[0],
-					config->volume_resolution.s[0],
-					config->volume_resolution.s[0]),
-			make_float3(config->volume_size.s[0], config->volume_size.s[0],
-					config->volume_size.s[0]),
-			config->initial_pos_factor
-					* make_float3(config->volume_size.s[0],
-							config->volume_size.s[0], config->volume_size.s[0]), 
-							config->pyramid);
+				make_uint3(config->volume_resolution.s[0],
+						config->volume_resolution.s[0],
+						config->volume_resolution.s[0]),
+				make_float3(config->volume_size.s[0], config->volume_size.s[0],
+						config->volume_size.s[0]),
+				config->initial_pos_factor
+						* make_float3(config->volume_size.s[0],
+								config->volume_size.s[0], config->volume_size.s[0]),
+				config->pyramid);
 #else
-      make_uint3(vr.x, vr.x, vr.x), make_float3(vs.x, vs.x, vs.x),
-		  ipf	* make_float3(vs.x, vs.x, vs.x), config->pyramid);
+				make_uint3(config->volume_resolution.x,
+						config->volume_resolution.x,
+						config->volume_resolution.x),
+				make_float3(config->volume_size.x, config->volume_size.x,
+						config->volume_size.x),
+				config->initial_pos_factor
+						* make_float3(config->volume_size.x,
+								config->volume_size.x, config->volume_size.x),
+				config->pyramid);
 #endif
 	}
-  appWindow->viewers->setBufferSize(640 / config->compute_size_ratio,
-                                    480 / config->compute_size_ratio);
+	appWindow->viewers->setBufferSize(640 / config->compute_size_ratio,
+			480 / config->compute_size_ratio);
 	reset = true;
 }
 static void continueWithNewKfusion() {
@@ -330,8 +337,8 @@ void qtLinkKinectQt(int argc, char *argv[], Kfusion **_kfusion,
 					(config->volume_size.s[0]) * ((float)config->initial_pos_factor.z()),
 #else
 			makeVector(config->initial_pos_factor.x * config->volume_size.x,
-                 config->initial_pos_factor.y * config->volume_size.x,
-                 config->initial_pos_factor.z * config->volume_size.x,
+					config->initial_pos_factor.y * config->volume_size.x,
+					config->volume_size.x * config->initial_pos_factor.z,
 #endif
                  0, 0, 0));
 	QApplication a(argc, argv);

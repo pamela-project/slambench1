@@ -82,7 +82,6 @@ void drawit(T* scene, uint2 size) {
 	glPixelStorei(GL_UNPACK_ROW_LENGTH, size.x);
 	glDrawPixels(size.x, size.y, gl<T>::format, gl<T>::type, scene);
 #endif
-	
 	glutSwapBuffers();
 
 }

@@ -13,7 +13,6 @@
 #ifdef SYCL
 #include <sycl/interface.h> // myfloatN.x -> myfloatN.x() many times
 #else
-
 #ifdef __APPLE__
     #include <mach/clock.h>
     #include <mach/mach.h>
@@ -146,6 +145,7 @@ public:
 
 	inline bool readNextDepthFrame(uchar3*, unsigned short int * depthMap) {
 
+
 		bool res = readNextDepthFrame(FloatdepthMap);
 
 		for (unsigned int i = 0; i < _size.x * _size.y; i++) {
@@ -225,14 +225,14 @@ public:
 			_blocking_read = blocking_read;
 			fseek(_pFile, 0, SEEK_SET);
 
- 		UintdepthMap = (unsigned short int*) malloc(_size.x * _size.y * sizeof(unsigned short int));
+		UintdepthMap = (unsigned short int*) malloc(_size.x * _size.y * sizeof(unsigned short int));
 		}
 	};
 	ReaderType getType() {
 		return (READER_RAW);
 	}
-	inline bool readNextDepthFrame(uchar3* raw_rgb, unsigned short int *depthMap)
-  {
+	inline bool readNextDepthFrame(uchar3* raw_rgb,
+			unsigned short int * depthMap) {
 
 		int total = 0;
 		int expected_size = 0;
@@ -683,7 +683,7 @@ public:
  std::cout << ( "OpenNI15DepthReader ERROR !!!") << std::endl;
         } else {
 	  _image_available = true;
-
+	}
         _rc = _context.StartGeneratingAll();
         if (_rc != XN_STATUS_OK) {
  std::cout << ( "OpenNI15DepthReader ERROR !!!") << std::endl;
