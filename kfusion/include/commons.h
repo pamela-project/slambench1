@@ -33,9 +33,13 @@
 // Internal dependencies
 #include <default_parameters.h>
 #ifndef CUDA
+#ifdef SYCL
+#include <sycl_vec_maths.hpp>
+#else
 #include <vector_types.h>
 #include <cutil_math.h>
-#endif
+#endif // SYCL
+#endif // CUDA
 
 //External dependencies
 #undef isnan
@@ -44,7 +48,7 @@
 #include <TooN/se3.h>
 #include <TooN/GR_SVD.h>
 
-////////////////////////// MATh STUFF //////////////////////
+////////////////////////// MATH STUFF //////////////////////
 
 
 // DATA TYPE

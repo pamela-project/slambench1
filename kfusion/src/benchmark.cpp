@@ -54,8 +54,13 @@ int main(int argc, char ** argv) {
 	std::ofstream logfilestream;
 	assert(config.compute_size_ratio > 0);
 	assert(config.integration_rate > 0);
+#ifdef SYCL
+	assert(config.volume_size.s[0] > 0);
+	assert(config.volume_resolution.s[0] > 0);
+#else
 	assert(config.volume_size.x > 0);
 	assert(config.volume_resolution.x > 0);
+#endif
 
 	if (config.log_file != "") {
 		logfilestream.open(config.log_file.c_str());
@@ -83,16 +88,28 @@ int main(int argc, char ** argv) {
 	std::cout.precision(10);
 	std::cerr.precision(10);
 
+#ifdef SYCL
+	float3 init_pose = config.initial_pos_factor * to_float3(config.volume_size);
+	const uint2 inputSize = reader->getinputSize();
+	std::cerr << "input Size is = " << (uint)inputSize.x() << "," << (uint)inputSize.y()
+#else
 	float3 init_pose = config.initial_pos_factor * config.volume_size;
 	const uint2 inputSize = reader->getinputSize();
 	std::cerr << "input Size is = " << inputSize.x << "," << inputSize.y
+#endif
 			<< std::endl;
 
 	//  =========  BASIC PARAMETERS  (input size / computation size )  =========
 
+#ifdef SYCL
+  uint2 computationSize = make_uint2(
+			((uint)inputSize.x()) / config.compute_size_ratio,
+			((uint)inputSize.y()) / config.compute_size_ratio);
+#else
 	const uint2 computationSize = make_uint2(
 			inputSize.x / config.compute_size_ratio,
 			inputSize.y / config.compute_size_ratio);
+#endif
 	float4 camera = reader->getK() / config.compute_size_ratio;
 
 	if (config.camera_overrided)
@@ -100,6 +117,19 @@ int main(int argc, char ** argv) {
 	//  =========  BASIC BUFFERS  (input / output )  =========
 
 	// Construction Scene reader and input buffer
+#ifdef SYCL
+	uint16_t* inputDepth = (uint16_t*) malloc(
+			sizeof(uint16_t) * inputSize.x() * inputSize.y());
+	uchar4* depthRender = (uchar4*) malloc(
+			sizeof(uchar4) * computationSize.x() * computationSize.y());
+	uchar4* trackRender = (uchar4*) malloc(
+			sizeof(uchar4) * computationSize.x() * computationSize.y());
+	uchar4* volumeRender = (uchar4*) malloc(
+			sizeof(uchar4) * computationSize.x() * computationSize.y());
+
+	Kfusion kfusion(computationSize, to_uint3(config.volume_resolution),
+			to_float3(config.volume_size), init_pose, config.pyramid);
+#else
 	uint16_t* inputDepth = (uint16_t*) malloc(
 			sizeof(uint16_t) * inputSize.x * inputSize.y);
 	uchar4* depthRender = (uchar4*) malloc(
@@ -109,10 +139,11 @@ int main(int argc, char ** argv) {
 	uchar4* volumeRender = (uchar4*) malloc(
 			sizeof(uchar4) * computationSize.x * computationSize.y);
 
-	uint frame = 0;
-
 	Kfusion kfusion(computationSize, config.volume_resolution,
 			config.volume_size, init_pose, config.pyramid);
+#endif
+
+	uint frame = 0;
 
 	double timings[7];
 	timings[0] = tock();
@@ -126,9 +157,15 @@ int main(int argc, char ** argv) {
 
 		Matrix4 pose = kfusion.getPose();
 
+#ifdef SYCL
+		float xt = pose.data[0].w() - init_pose.x();
+		float yt = pose.data[1].w() - init_pose.y();
+		float zt = pose.data[2].w() - init_pose.z();
+#else
 		float xt = pose.data[0].w - init_pose.x;
 		float yt = pose.data[1].w - init_pose.y;
 		float zt = pose.data[2].w - init_pose.z;
+#endif
 
 		timings[1] = tock();
 

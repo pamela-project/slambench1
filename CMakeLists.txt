@@ -4,8 +4,12 @@ project(pamela_testcases)
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -g -O3 -std=gnu++11   ")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -O3 -std=gnu++11  ")
+set(CMAKE_CXX_STANDARD 11)         
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF) # ensure we create -std=c++11 NOT -std=gnu++11
+
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -g -O3 ")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -O3 ")
 
 #set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -g -O3      -Wall -Wno-unknown-pragmas -Wextra -Werror ")
 #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -O3  -Wall -Wno-unknown-pragmas -Wextra -Werror ")

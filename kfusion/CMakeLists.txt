@@ -4,6 +4,7 @@ set(appname kfusion)
 
 find_package(TooN   REQUIRED)
 find_package(OpenCL )
+find_package(SYCL   )
 find_package(CUDA   )
 find_package(GLUT   )
 find_package(OpenGL )
@@ -17,7 +18,7 @@ find_package(Qt5Gui)
 find_package(Qt5OpenGL)
 find_package(Qt5PrintSupport)
 
-include_directories(./include ${TOON_INCLUDE_PATH} ./thirdparty)
+include_directories(./include ${TOON_INCLUDE_PATHS} ./thirdparty)
 
 
 if (CUDA_FOUND) 
@@ -35,6 +36,15 @@ endif(APPLE)
 set(common_compile_flags "")
 
 
+ # ----------------- SYCL VERSION ----------------- 
+
+if    (SYCL_FOUND)    # For this, CXX must also be set to syclcc
+  add_library(${appname}-sycl  src/sycl/kernels.cpp)
+  target_link_libraries(${appname}-sycl   ${common_libraries})
+  target_compile_definitions(${appname}-sycl PUBLIC -DSYCL)
+  add_version(${appname} sycl "" "") # Paths 
+endif (SYCL_FOUND)
+
  # ----------------- CPP VERSION ----------------- 
 
 add_library(${appname}-cpp  src/cpp/kernels.cpp)
@@ -43,10 +53,23 @@ add_version(${appname} cpp "" "")
 
  # ----------------- OPENMP VERSION ----------------- 
 
+# -syclcc-use-host asks the syclcc driver to use g++, while most SYCL compilers
+# can compile standard C++ code some (ComputeCpp) do not come with the built in 
+# libraries most standard compilers come with. In the case of OpenMP this can 
+# result in a linker error when it can't find libomp, as it's not packaged with
+# ComputeCpp like it is with Clang/GCC. Note: if you compile one componet with
+# gcc you must compile it all with g++, object files aren't neccessarily 
+# ABI compatible when linking with two compilers.
+set(openmp_compile_flags   "-fopenmp")
+if    (SYCL_FOUND) 
+  set(openmp_compile_flags   "${openmp_compile_flags} -syclcc-use-host")
+endif (SYCL_FOUND)
+
 add_library(${appname}-openmp  src/cpp/kernels.cpp)
 target_link_libraries(${appname}-openmp   ${common_libraries})	
-SET_TARGET_PROPERTIES(${appname}-openmp PROPERTIES COMPILE_FLAGS "-fopenmp")
-add_version(${appname} openmp "-fopenmp" "-fopenmp")
+SET_TARGET_PROPERTIES(${appname}-openmp PROPERTIES COMPILE_FLAGS "${openmp_compile_flags}")
+add_version(${appname} openmp "${openmp_compile_flags}" "${openmp_compile_flags}")
+
 
 
  #  ----------------- OCL VERSION ----------------- 
@@ -67,9 +90,9 @@ set(kfusion_cuda_srcs
 	src/cuda/kernels.cu
 	thirdparty/kfusion.h
 	)
-   	
+	
     cuda_add_library(${appname}-cuda    STATIC  ${kfusion_cuda_srcs} OPTIONS -O3 )
-	target_link_libraries(${appname}-cuda   ${common_libraries})	
+        target_link_libraries(${appname}-cuda   ${common_libraries})	
     add_version(${appname} cuda    "" "")
 
 endif(CUDA_FOUND)
