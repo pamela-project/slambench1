@@ -102,16 +102,40 @@ CMAKE_PREFIX_PATH=~/.local/qt/ make
 
 #### Compilation of SYCL Module ####
 
-To compile the SYCL benchmarks you require the syclcc scripts from https://github.com/agozillon/syclcc as well as the DAGR DSL at https://github.com/agozillon/dagr. 
+To compile the SYCL benchmarks you require the syclcc scripts from: https://github.com/agozillon/syclcc
 
-You will also require the ComputeCpp SYCL compiler. The benchmarks have been tested and compile with ComputeCpp Versions 0.2.1 to 0.5.1 on Ubuntu. The benchmarks work best with versions 0.3.2 and above.
+You will also require the ComputeCpp SYCL compiler. The benchmarks have been 
+tested and compile with ComputeCpp Versions 0.2.1 to 2.0.0 on Ubuntu. The 
+benchmarks work best with versions 0.3.2 and above. It's worth noting that you 
+should set the SYCLCC_COMPUTECPP_BACKEND enviornment variable to spirv64 for 
+ComputeCpp versions 1.2.0+ when used with Intel's OpenCL CPU driver. You may also
+wish to modify the backend target via SYCLCC_COMPUTECPP_BACKEND depending on 
+your chosen hardware.
 
-Ubuntu Steps: 
-1) Create an environment variable COMPUTECPP that points to your ComputeCpp root directory.
+Ubuntu Steps:
+1) Create an environment variable COMPUTECPP_DIR that points to your ComputeCpp 
+   root directory.
 2) Add the root of the syclcc installation directory to your PATH.
    (Further information for steps 1 and 2 can be found in the syclcc readme).
-3) Set the CXX environment variable to syclcc and then invoke CMake.
-4) Compile the desired sycl modules using make; for example make kfusion-qt-sycl
+3) Set the CXX environment variable to syclcc, ComputeCpp will be used as the 
+   default SLAMBench compiler now, for everything except the OpenMP and CUDA 
+   modules.
+4) Now invoke CMake.
+5) Compile the desired sycl modules using make; for example make kfusion-qt-sycl
+
+Optional Steps:
+1) Set the SYCLCC_COMPUTECPP_BACKEND environment variable before compilation to 
+   modify the underlying hardware target for SYCL kernels. e.g: 
+    `export SYCLCC_COMPUTECPP_BACKEND=spirv64`
+2) Set the COMPUTECPP_TARGET enviornment variable, this tells the SYCL runtime 
+   which backend it must select if your system has multiple available backends.
+   This can be a cause of runtime errors, as the SYCL runtime may select the 
+   incorrect backend for your compiled binaries. This can also be handled by a 
+   SYCL selector class, if a user wishes to alter the SLAMBench SYCL module to 
+   add one. An example usage: `export COMPUTECPP_TARGET=intel:cpu`, this 
+   restricts SYCL to Intel CPU backends. Further documentation for this variable
+   can be found in ComputeCpp documentation, as it's a ComputeCpp environment 
+   variable.
 
 The CMake commands for building the module inside a subdirectory of the SLAMBench root directory:
 
@@ -120,14 +144,6 @@ The CMake commands for building the module inside a subdirectory of the SLAMBenc
 export CXX=syclcc && cmake ..
 make kfusion-benchmark-sycl
 make kfusion-qt-sycl
-```
-
-Afterwards you can set the CXX variable back to your usual C++ compiler and invoke CMake again to compile other modules.
-
-```
-#!
-export CXX=g++ && cmake ..
-make kfusion-benchmark-cpp
 ```
 
 ### Running SLAMBench ###
@@ -434,7 +450,7 @@ SlamBench
        │   ├── cpp      : C++/OpenMP implementation
        │   ├── opencl   : OpenCL implementation
        │   ├── cuda    : CUDA implementation
-	   │   ├── sycl    : SYCL implementation 
+       │   ├── sycl    : SYCL implementation 
        └── thridparty    : Includes several tools use by Makefile and 3rd party headers.
 ```
  

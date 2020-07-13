@@ -40,8 +40,8 @@ set(common_compile_flags "")
 
 if    (SYCL_FOUND)    # For this, CXX must also be set to syclcc
   add_library(${appname}-sycl  src/sycl/kernels.cpp)
-  target_link_libraries(${appname}-sycl   ${common_libraries})	
-  add_definitions( -DSYCL )
+  target_link_libraries(${appname}-sycl   ${common_libraries})
+  target_compile_definitions(${appname}-sycl PUBLIC -DSYCL)
   add_version(${appname} sycl "" "") # Paths 
 endif (SYCL_FOUND)
 
@@ -53,10 +53,23 @@ add_version(${appname} cpp "" "")
 
  # ----------------- OPENMP VERSION ----------------- 
 
+# -syclcc-use-host asks the syclcc driver to use g++, while most SYCL compilers
+# can compile standard C++ code some (ComputeCpp) do not come with the built in 
+# libraries most standard compilers come with. In the case of OpenMP this can 
+# result in a linker error when it can't find libomp, as it's not packaged with
+# ComputeCpp like it is with Clang/GCC. Note: if you compile one componet with
+# gcc you must compile it all with g++, object files aren't neccessarily 
+# ABI compatible when linking with two compilers.
+set(openmp_compile_flags   "-fopenmp")
+if    (SYCL_FOUND) 
+  set(openmp_compile_flags   "${openmp_compile_flags} -syclcc-use-host")
+endif (SYCL_FOUND)
+
 add_library(${appname}-openmp  src/cpp/kernels.cpp)
 target_link_libraries(${appname}-openmp   ${common_libraries})	
-SET_TARGET_PROPERTIES(${appname}-openmp PROPERTIES COMPILE_FLAGS "-fopenmp")
-add_version(${appname} openmp "-fopenmp" "-fopenmp")
+SET_TARGET_PROPERTIES(${appname}-openmp PROPERTIES COMPILE_FLAGS "${openmp_compile_flags}")
+add_version(${appname} openmp "${openmp_compile_flags}" "${openmp_compile_flags}")
+
 
 
  #  ----------------- OCL VERSION ----------------- 
